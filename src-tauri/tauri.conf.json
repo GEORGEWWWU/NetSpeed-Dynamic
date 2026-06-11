@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "netspeed-dynamic",
-  "version": "0.1.0",
+  "version": "0.3.1",
   "identifier": "com.ryen.nsd",
   "build": {
     "beforeDevCommand": "npm run dev",

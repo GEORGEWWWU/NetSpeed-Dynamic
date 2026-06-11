@@ -2,12 +2,7 @@
     <div class="panel-container">
         <header class="panel-header">
             <div class="brand">
-                <div class="logo-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white"
-                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-lightning">
-                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                    </svg>
-                </div>
+                <img src="../assets/logo.png" class="logo-icon">
                 <div>
                     <h1>NetSpeed Dynamic</h1>
                     <p class="subtitle">NSD 桌面动态组件 v1.0.0</p>
@@ -169,14 +164,10 @@ const toggleWidget = async () => {
 }
 
 .logo-icon {
-    background: linear-gradient(135deg, #007aff, #00c6ff);
     width: 48px;
     height: 48px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     border-radius: 12px;
-    box-shadow: 0 4px 16px rgba(0, 122, 255, 0.25);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
 
 .svg-lightning {
@@ -220,7 +211,7 @@ const toggleWidget = async () => {
 }
 
 .status-badge.is-active {
-    color: #10b981;
+    color: #2b2b2b;
 }
 
 .divider {
@@ -429,7 +420,7 @@ const toggleWidget = async () => {
 }
 
 input:checked+.slider {
-    background-color: #007aff;
+    background-color: #2b2b2b;
 }
 
 input:checked+.slider:before {
@@ -458,9 +449,9 @@ input:disabled+.slider {
     height: 20px;
     border-radius: 50%;
     background: #ffffff;
-    border: 2px solid #007aff;
+    border: 2px solid #2b2b2b;
     cursor: pointer;
-    box-shadow: 0 2px 6px rgba(0, 122, 255, 0.3);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
     transition: transform 0.1s;
 }
 
@@ -479,13 +470,13 @@ input:disabled+.slider {
 }
 
 .action-link {
-    color: #007aff;
+    color: #2b2b2b;
     cursor: pointer;
     transition: color 0.2s;
 }
 
 .action-link:hover {
-    color: #0056b3;
+    color: #2b2b2b;
     text-decoration: underline;
 }
 </style>
