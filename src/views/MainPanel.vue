@@ -121,8 +121,7 @@ import { ref, onMounted, onUnmounted, watch } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { emit, listen } from '@tauri-apps/api/event';
 import { getVersion } from '@tauri-apps/api/app';
-
-const echarts = (window as any).echarts;
+import * as echarts from 'echarts';
 
 const isWidgetVisible = ref(false);
 const autoStart = ref(false);
