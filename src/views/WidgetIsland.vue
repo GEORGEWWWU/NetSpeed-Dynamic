@@ -2,12 +2,12 @@
     <div class="island-container" data-tauri-drag-region>
         <div class="speed-box" data-tauri-drag-region>
             <div class="speed-item">
-                <span class="label">↑</span>
+                <span :class="['label', { 'high-traffic': isHighUpload }]">↑</span>
                 <span class="value">{{ uploadSpeed }}</span>
             </div>
             <div class="divider"></div>
             <div class="speed-item">
-                <span class="label">↓</span>
+                <span :class="['label', { 'high-traffic': isHighDownload }]">↓</span>
                 <span class="value">{{ downloadSpeed }}</span>
             </div>
         </div>
@@ -23,6 +23,10 @@ import { getCurrentWindow, currentMonitor, PhysicalPosition } from '@tauri-apps/
 const uploadSpeed = ref('0 KB/s');
 const downloadSpeed = ref('0 KB/s');
 
+// 记录当前是否属于大流量状态
+const isHighDownload = ref(false);
+const isHighUpload = ref(false);
+
 // 网络状态指示灯：good(绿), warning(黄), error(红)
 const networkStatus = ref<'good' | 'warning' | 'error'>('good');
 
@@ -31,19 +35,40 @@ let lastTx = 0;
 let speedTimer: number;
 let pingTimer: number;
 
+// === 新增：防抖控制变量 ===
+let lowTrafficStartTime = Date.now(); // 记录进入“无流量/低流量”的起始时间
+const RED_DELAY_MS = 5000;          // 流量消失后，等待 5 秒再允许变红
+
 const formatSpeed = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B/s';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB/s';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB/s';
 };
 
-// 任务一：纯粹计算流量数字，绝不插手任何状态灯的颜色改变
+// 任务一：计算流量数字，并实时更新大流量状态
 const fetchSpeedStats = async () => {
     try {
         const [currentRx, currentTx] = await invoke<[number, number]>('get_network_stats');
         if (lastRx !== 0) {
-            downloadSpeed.value = formatSpeed(currentRx - lastRx);
-            uploadSpeed.value = formatSpeed(currentTx - lastTx);
+            const rxDiff = currentRx - lastRx;
+            const txDiff = currentTx - lastTx;
+
+            downloadSpeed.value = formatSpeed(rxDiff);
+            uploadSpeed.value = formatSpeed(txDiff);
+
+            // 1MB = 1048576 字节
+            const limit = 1024 * 1024;
+            const currentDownloadHigh = rxDiff >= limit;
+            const currentUploadHigh = txDiff >= limit;
+
+            isHighDownload.value = currentDownloadHigh;
+            isHighUpload.value = currentUploadHigh;
+
+            // === 核心逻辑：维护低流量持续时间 ===
+            if (currentDownloadHigh || currentUploadHigh) {
+                // 如果目前依然是大流量，重置计时器，强制让“低流量开始时间”保持在当下
+                lowTrafficStartTime = Date.now();
+            }
         }
         lastRx = currentRx;
         lastTx = currentTx;
@@ -52,20 +77,35 @@ const fetchSpeedStats = async () => {
     }
 };
 
-// 任务二：纯粹通过真实延迟控制状态灯
+// 任务二：通过真实延迟控制状态灯（加入大流量避让判断）
 const checkNetworkLatency = async () => {
     try {
         const latency = await invoke<number>('get_network_latency');
 
-        // 只要能拿到延迟数字，就说明网络肯定是通的（绝不可能是红灯）
+        // 只要能拿到延迟数字，说明网络肯定是通的
         if (latency < 150) {
             networkStatus.value = 'good';      // 延迟优秀，绿色
         } else {
             networkStatus.value = 'warning';   // 延迟高/不稳定，黄色
         }
     } catch (error) {
-        // 只有当 Rust 端抛出异常（即 TcpStream 连接超时 1.5 秒或彻底断开）时，才变红
-        networkStatus.value = 'error';         // 真正没网，红色
+        // === 核心逻辑：当 Rust 抛出超时异常时 ===
+
+        // 1. 如果当前正处于大流量状态，绝不变红，降级显示为黄灯
+        if (isHighDownload.value || isHighUpload.value) {
+            networkStatus.value = 'warning';
+            return;
+        }
+
+        // 2. 如果流量刚刚消失，判断距离大流量结束是否超过了设定的缓冲时间（例如 5 秒）
+        const timeSinceLowTraffic = Date.now() - lowTrafficStartTime;
+        if (timeSinceLowTraffic < RED_DELAY_MS) {
+            // 还在缓冲期内，判定为大流量带来的余波卡顿，依然保持黄灯
+            networkStatus.value = 'warning';
+        } else {
+            // 已经下了好几秒都没流量了，结果还连不上，说明是真的断网了，变红！
+            networkStatus.value = 'error';
+        }
     }
 };
 
@@ -106,9 +146,11 @@ onMounted(async () => {
     fetchSpeedStats();
     checkNetworkLatency();
 
-    // 流量 1 秒刷一次保证数字灵敏度；延迟 2.5 秒检测一次，避免高频握手本身对带宽造成干扰
+    // 流量 1 秒刷一次保持数字灵敏度
     speedTimer = setInterval(fetchSpeedStats, 1000) as unknown as number;
-    pingTimer = setInterval(checkNetworkLatency, 2500) as unknown as number;
+
+    // 调大 Ping 间隔：从 2.5 秒调大到 5.5 秒，避免自身高频检测造成的网络竞争
+    pingTimer = setInterval(checkNetworkLatency, 5500) as unknown as number;
 });
 
 onUnmounted(() => {
@@ -185,6 +227,18 @@ onUnmounted(() => {
     font-size: 10px;
     color: rgba(255, 255, 255, 0.4);
     font-weight: bold;
+    /* 预留过渡动画，让视觉变化更平滑 */
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: all 0.3s ease;
+}
+
+/* 新增：高流量时的 label 样式 */
+.label.high-traffic {
+    color: rgba(255, 255, 255, 0.9);
+    /* 文字稍微变亮，增加可读性 */
+    background: rgba(255, 255, 255, 0.15);
+    /* 浅白色半透明背景 */
 }
 
 .value {
@@ -209,16 +263,19 @@ onUnmounted(() => {
 
 .good {
     background-color: #34C759;
+    box-shadow: 0 0 10px rgba(52, 199, 89, 0.5);
     /* 绿 */
 }
 
 .warning {
     background-color: #FFCC00;
+    box-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
     /* 黄 */
 }
 
 .error {
     background-color: #FF3B30;
+    box-shadow: 0 0 10px rgba(255, 59, 48, 0.5);
     /* 红 */
 }
 </style>
