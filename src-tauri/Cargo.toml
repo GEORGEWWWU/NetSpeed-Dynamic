@@ -27,6 +27,7 @@ windows-sys = { version = "0.59", features = [
     "Win32_UI_Controls",
 ] }
 tauri-plugin-single-instance = "2.0.0" # 根据你的Tauri2版本调整具体小版本
-
+tokio = { version = "1", features = ["full", "rt-multi-thread"] }
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2"
+pinger = "0.2"

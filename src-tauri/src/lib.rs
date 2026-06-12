@@ -3,6 +3,7 @@ use tauri::{State, Manager};
 use sysinfo::Networks;
 use std::net::{SocketAddr, TcpStream};
 use std::time::{Duration, Instant};
+use pinger::{ping, PingResult};
 
 // 引入 autostart 所需的 MacosLauncher (即使只在 Windows 上运行，这也是标准的初始化参数)
 use tauri_plugin_autostart::MacosLauncher;
@@ -47,6 +48,32 @@ fn get_network_latency() -> Result<u128, String> {
 }
 
 #[tauri::command]
+async fn ping_game_host(host: String) -> Result<u32, String> {
+    let receiver = match ping(host.clone()) {
+        Ok(rx) => rx,
+        Err(e) => return Err(format!("Ping 初始化失败: {}", e)),
+    };
+
+    let timeout_duration = Duration::from_millis(1500);
+    
+    match tokio::time::timeout(timeout_duration, tokio::task::spawn_blocking(move || {
+        while let Ok(result) = receiver.recv() {
+            // ✅ Updated to use the correct Pong variant
+            if let PingResult::Pong(duration) = result {
+                return Ok(duration.as_millis() as u32);
+            }
+        }
+        Err("无有效响应".to_string())
+    })).await {
+        Err(_) => Err("请求超时".to_string()),
+        Ok(join_result) => match join_result {
+            Ok(ping_result) => ping_result,
+            Err(join_err) => Err(format!("Ping 任务异常: {}", join_err)),
+        }
+    }
+}
+
+#[tauri::command]
 fn is_widget_visible(app: tauri::AppHandle) -> bool {
     match app.get_webview_window("widget") {
         Some(win) => win.is_visible().unwrap_or(false),
@@ -72,7 +99,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_network_stats, 
             is_widget_visible, 
-            get_network_latency
+            get_network_latency,
+            ping_game_host
         ])
         .setup(|app| {
             // 2. 【系统托盘右键菜单】仅创建一个 "强制退出" 按钮

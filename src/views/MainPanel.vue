@@ -5,7 +5,7 @@
                 <img src="../assets/logo.png" class="logo-icon">
                 <div>
                     <h1>NetSpeed Dynamic</h1>
-                    <p class="subtitle">NSD 桌面动态组件 v1.0.0</p>
+                    <p class="subtitle">NSD 桌面动态组件 v{{ appVersion }}</p>
                 </div>
             </div>
 
@@ -162,9 +162,8 @@ const themeMode = ref(['light', 'dark', 'system'].includes(savedTheme) ? savedTh
 const uploadSpeed = ref('0 B/s');
 const downloadSpeed = ref('0 B/s');
 
-// ==========================================================================
-// 游戏模式核心逻辑状态
-// ==========================================================================
+const appVersion = ref('1.0.0');
+
 const isGameMode = ref(false);
 
 interface GameServer {
@@ -177,14 +176,15 @@ interface GameServer {
 
 // 收集的各大热门竞技游戏公开测试/核心骨干网服务器 IP
 const gameServers = ref<GameServer[]>([
-    { id: 'valorant', name: '无畏契约', region: '国服 (腾讯广东节点)', ip: '43.229.65.1', ping: null },
-    { id: 'csgo', name: '反恐精英 2 (CSGO)', region: '国服 (完美世界北京)', ip: '111.30.155.1', ping: null },
-    { id: 'lol', name: '英雄联盟', region: '国服 (电信一区艾欧尼亚)', ip: '183.60.224.1', ping: null },
-    { id: 'pubg', name: '绝地求生 (PUBG)', region: '亚洲区 (韩国首尔 AWS)', ip: '161.202.0.1', ping: null },
+    { id: 'valorant', name: '无畏契约', region: '国服 (腾讯广东节点)', ip: '43.198.0.1', ping: null },
+    { id: 'csgo', name: '反恐精英 2 (CSGO)', region: '国服 (完美世界北京)', ip: '124.243.200.1', ping: null },
+    { id: 'lol', name: '英雄联盟', region: '国服 (电信一区艾欧尼亚)', ip: '119.29.29.29', ping: null },
+    { id: 'pubg', name: '绝地求生 (PUBG)', region: '亚洲区 (韩国首尔 AWS)', ip: '13.124.63.251', ping: null },
     { id: 'apex', name: 'APEX 英雄', region: '亚洲区 (中国香港 Cloudflare)', ip: '104.18.27.147', ping: null },
     { id: 'naraka', name: '永劫无间', region: '国服 (网易杭州机房)', ip: '223.252.199.1', ping: null }
 ]);
 
+// 切换游戏模式
 const toggleGameMode = () => {
     isGameMode.value = !isGameMode.value;
     if (isGameMode.value) {
@@ -195,6 +195,7 @@ const toggleGameMode = () => {
     }
 };
 
+// 测试所有ip
 const runAllPings = async () => {
     // 异步并行测试所有服务器延迟
     await Promise.all(gameServers.value.map(async (server) => {
@@ -203,21 +204,10 @@ const runAllPings = async () => {
             const result = await invoke<number>('ping_game_host', { host: server.ip });
             server.ping = result;
         } catch (error) {
-            // 后端未实现时的优雅降级方案：使用前端模拟测试逻辑
-            server.ping = await mockFrontendPing();
+            // 修改这里：明确设置为 -1 表示超时/错误
+            server.ping = -1;
         }
     }));
-};
-
-// 降级模拟函数（在 Rust 未定义对应 Command 时提供演示效果）
-const mockFrontendPing = (): Promise<number> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const isTimeout = Math.random() > 0.98;
-            if (isTimeout) resolve(-1);
-            else resolve(Math.floor(Math.random() * 45) + 5); // 随机生成 5~50ms 之间的延迟
-        }, 200);
-    });
 };
 
 // 状态色彩分级
@@ -243,6 +233,7 @@ watch(isGameMode, async (newVal) => {
     }
 });
 
+// 切换开机自启动
 const toggleAutoStart = async () => {
     try {
         if (autoStart.value) {
@@ -339,6 +330,7 @@ const updateChartOption = () => {
     });
 };
 
+// 获取流量
 const fetchSpeedStats = async () => {
     try {
         const [currentRx, currentTx] = await invoke<[number, number]>('get_network_stats');
@@ -361,6 +353,7 @@ const fetchSpeedStats = async () => {
     }
 };
 
+// 检查更新
 const checkUpdate = async () => {
     try {
         const localVersionStr = await getVersion();
@@ -415,6 +408,7 @@ const checkUpdate = async () => {
     }
 };
 
+// 主题切换
 const applyTheme = () => {
     const root = document.documentElement;
     if (themeMode.value === 'dark') {
@@ -466,6 +460,13 @@ onMounted(async () => {
         autoStart.value = await isEnabled();
     } catch (e) {
         console.error("获取自启动状态失败:", e);
+    }
+
+    // 获取当前应用版本号 (自动读取 tauri.conf.json)
+    try {
+        appVersion.value = await getVersion();
+    } catch (e) {
+        console.error("获取应用版本号失败:", e);
     }
 
     await listen<{ visible: boolean }>('island-status-sync', (event) => {
