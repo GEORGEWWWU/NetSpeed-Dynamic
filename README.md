@@ -2,6 +2,8 @@
 
 一款基于 **Tauri 2 + Vue 3** 构建的桌面动态网速监控工具，提供灵动岛风格的悬浮窗实时显示网络速度，并支持竞技游戏服务器延迟测试。
 
+![NetSpeed Dynamic 效果图](./src/assets/screenshot.png)
+
 ## 功能特性
 
 ### 网速监控
