@@ -109,11 +109,49 @@ const networkStatus = ref<'good' | 'warning' | 'error'>('good');
 // 音乐控制功能开关
 const isMusicCtlEnabled = ref(localStorage.getItem('nsd_music_ctrl') === 'true');
 const isPlaying = ref(false);
-const togglePlay = () => {
-    // 将状态取反 (true 变 false，false 变 true)
-    isPlaying.value = !isPlaying.value;
+// 只需要增加定时获取音乐状态的逻辑，并补全你的 prevTrack, nextTrack, togglePlay 方法
 
-    // （可选）之后你可以把调用 Tauri Rust 后端控制系统媒体播放的代码写在这里
+// 引入网易云官方的一个免签的搜索纠错/图片匹配基准（或使用通用黑胶唱片封面）
+// 因为直接提取本地网易云封面需要注入或读取加密缓存，维护成本高。
+// 我们可以通过计算属性给你的 .cover-inner 绑定一个优美的背景图
+const coverUrl = ref('');
+
+// 替换你的 togglePlay, prevTrack, nextTrack 内部实现
+const togglePlay = async () => {
+    isPlaying.value = !isPlaying.value;
+    await invoke('control_system_media', { action: 'play_pause' });
+};
+
+const prevTrack = async () => {
+    await invoke('control_system_media', { action: 'prev' });
+};
+
+const nextTrack = async () => {
+    await invoke('control_system_media', { action: 'next' });
+};
+
+// 核心同步函数：塞入到你的 fetchSpeedStats 同一频次的定时器中
+const syncMusicStatus = async () => {
+    try {
+        // 调用 Rust 提取网易云标题
+        const res = await invoke<[string, string, boolean] | null>('fetch_netease_music_info');
+        if (res) {
+            const [song, artist, playing] = res;
+            currentTrackInfo.value = `${song} - ${artist}`;
+
+            // 如果切歌了，可以动态给封面增加一个随机网易云占位图，或者保持动感
+            // 推荐低维护成本做法：在此处触发封面变化，或直接给 .cover-inner 绑定背景色/封面
+            // 比如使用开源的音乐封面占位：coverUrl.value = `https://music.163.com/api/search/get/web?s=${song}&type=1` (按需异步拉取)
+
+            // 根据实际网易云窗口是否存活及多媒体状态微调，如果需要强制同步播放状态：
+            // isPlaying.value = playing; 
+        } else {
+            currentTrackInfo.value = '未在播放歌曲 - 网易云音乐';
+            isPlaying.value = false;
+        }
+    } catch (err) {
+        console.error('音乐信息获取失败:', err);
+    }
 };
 
 const showInfo = ref(false);
@@ -147,16 +185,6 @@ const handleMusicBoxEnter = () => {
 // 鼠标彻底离开整个音乐控制区域
 const handleMusicBoxLeave = () => {
     startHideTimer();    // 离开后，再开启倒计时恢复为歌曲名称显示
-};
-
-const prevTrack = () => {
-    console.log('上一首');
-    // 调用上一首逻辑
-};
-
-const nextTrack = () => {
-    console.log('下一首');
-    // 调用下一首逻辑
 };
 
 let lastRx = 0;
@@ -514,8 +542,13 @@ onMounted(async () => {
     fetchSpeedStats();
     checkNetworkLatency();
 
-    // 流量1秒刷一次保持数字灵敏度
-    speedTimer = setInterval(fetchSpeedStats, 1000) as unknown as number;
+    // 在你原有的每秒刷新定时器中，顺带执行音乐同步
+    speedTimer = setInterval(() => {
+        fetchSpeedStats();
+        if (isMusicCtlEnabled.value) {
+            syncMusicStatus(); // 当音乐控制器启用时，每秒顺带检查网易云状态
+        }
+    }, 1000) as unknown as number;
 
     // 调大Ping间隔：从2.5秒调大到5.5秒
     pingTimer = setInterval(checkNetworkLatency, 5500) as unknown as number;

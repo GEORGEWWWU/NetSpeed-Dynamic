@@ -11,6 +11,84 @@ use tauri_plugin_autostart::MacosLauncher;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
 
+use winapi::um::winuser::{EnumWindows, GetWindowTextW, IsWindowVisible, GetClassNameW};
+use winapi::shared::windef::HWND;
+use std::os::windows::ffi::OsStringExt;
+
+// 结构体：用于在窗口枚举中传递和存储找到的歌词/音乐信息
+struct MusicInfo {
+    title: String,
+}
+
+// 外部枚举的回调函数
+unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: winapi::shared::minwindef::LPARAM) -> winapi::shared::minwindef::BOOL {
+    if IsWindowVisible(hwnd) == 0 {
+        return 1; // 继续寻找
+    }
+
+    // 获取类名
+    let mut class_name = [0u16; 256];
+    GetClassNameW(hwnd, class_name.as_mut_ptr(), class_name.len() as i32);
+    let class_str = String::from_utf16_lossy(&class_name);
+
+    // 网易云音乐的主窗口类名通常包含 "Orpheus" 或由其内核派生
+    // 同时也支持直接匹配标题，双重保险
+    if class_str.contains("Orpheus") || class_str.contains("CloudMusic") {
+        let mut title = [0u16; 512];
+        GetWindowTextW(hwnd, title.as_mut_ptr(), title.len() as i32);
+        let title_str = String::from_utf16_lossy(&title);
+        let clean_title = title_str.trim_matches('\0').trim().to_string();
+
+        // 排除掉未播放状态或者辅助窗口
+        if !clean_title.is_empty() && clean_title != "网易云音乐" && clean_title != "DesktopLyric" {
+            let info = &mut *(lparam as *mut MusicInfo);
+            info.title = clean_title;
+            return 0; // 找到目标，停止枚举
+        }
+    }
+    1 // 继续枚举
+}
+
+#[tauri::command]
+fn fetch_netease_music_info() -> Result<Option<(String, String, bool)>, String> {
+    let mut music_info = MusicInfo { title: String::new() };
+    
+    unsafe {
+        EnumWindows(Some(enum_windows_proc), &mut music_info as *mut _ as winapi::shared::minwindef::LPARAM);
+    }
+
+    if music_info.title.is_empty() {
+        return Ok(None); // 没有检测到正在播放的网易云
+    }
+
+    // 格式通常是: "歌名 - 歌手"
+    let parts: Vec<&str> = music_info.title.splitn(2, " - ").collect();
+    if parts.len() == 2 {
+        let song_name = parts[0].trim().to_string();
+        let artist_name = parts[1].trim().to_string();
+        Ok(Some((song_name, artist_name, true))) // 返回 歌名, 歌手, 是否在播放
+    } else {
+        // 有可能某些特殊歌名没有 - 分隔
+        Ok(Some((music_info.title, "未知歌手".to_string(), true)))
+    }
+}
+
+// 模拟多媒体控制指令（发送全局系统媒体按键：最稳定、免去绑定特定进程）
+#[tauri::command]
+fn control_system_media(action: String) {
+    use winapi::um::winuser::{keybd_event, VK_MEDIA_NEXT_TRACK, VK_MEDIA_PLAY_PAUSE, VK_MEDIA_PREV_TRACK};
+    unsafe {
+        let vk = match action.as_str() {
+            "play_pause" => VK_MEDIA_PLAY_PAUSE,
+            "next" => VK_MEDIA_NEXT_TRACK,
+            "prev" => VK_MEDIA_PREV_TRACK,
+            _ => return,
+        };
+        keybd_event(vk as u8, 0, 0, 0);
+        keybd_event(vk as u8, 0, 2, 0); // key up
+    }
+}
+
 struct AppState {
     networks: Mutex<Networks>,
 }
@@ -72,7 +150,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_network_stats,
             is_widget_visible,
-            get_network_latency
+            get_network_latency,
+            fetch_netease_music_info,
+            control_system_media
         ])
         .setup(|app| {
             // --- 新增：处理静默启动逻辑 ---
