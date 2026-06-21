@@ -5,34 +5,46 @@
 
             <div class="inner-wrapper">
                 <transition @enter="onInnerEnter" @leave="onInnerLeave" :css="false">
-                    <div class="music-ctl-box" v-show="isMusicCtlEnabled" key="music">
+                    <div class="music-ctl-box" v-show="isMusicCtlEnabled" :key="musicBoxKey"
+                        @mouseenter="handleMusicBoxEnter" @mouseleave="handleMusicBoxLeave">
+
                         <div class="album-cover" :class="{ 'is-playing': isPlaying }">
                             <div class="cover-inner"></div>
                         </div>
 
-                        <div class="music-controls">
-                            <button class="ctl-btn" @click="prevTrack">
-                                <svg viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
-                                </svg>
-                            </button>
+                        <transition name="fade">
+                            <div class="music-controls" v-show="!showInfo">
+                                <button class="ctl-btn" @click="prevTrack">
+                                    <svg viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+                                    </svg>
+                                </button>
 
-                            <button class="ctl-btn play-btn" @click="togglePlay">
-                                <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-                                </svg>
+                                <button class="ctl-btn play-btn" @click="togglePlay">
+                                    <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                                    </svg>
+                                    <svg v-else viewBox="0 0 24 24" fill="currentColor"
+                                        style="transform: translateX(1px);">
+                                        <path d="M8 5v14l11-7z" />
+                                    </svg>
+                                </button>
 
-                                <svg v-else viewBox="0 0 24 24" fill="currentColor" style="transform: translateX(1px);">
-                                    <path d="M8 5v14l11-7z" />
-                                </svg>
-                            </button>
+                                <button class="ctl-btn" @click="nextTrack">
+                                    <svg viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </transition>
 
-                            <button class="ctl-btn" @click="nextTrack">
-                                <svg viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
-                                </svg>
-                            </button>
-                        </div>
+                        <transition name="fade">
+                            <div class="music-info-mask-box" v-show="showInfo">
+                                <div class="music-info-text">
+                                    {{ currentTrackInfo }}
+                                </div>
+                            </div>
+                        </transition>
                     </div>
                 </transition>
 
@@ -102,6 +114,39 @@ const togglePlay = () => {
     isPlaying.value = !isPlaying.value;
 
     // （可选）之后你可以把调用 Tauri Rust 后端控制系统媒体播放的代码写在这里
+};
+
+const showInfo = ref(false);
+const currentTrackInfo = ref('未在播放歌曲 - 未知歌手'); // 默认显示内容
+let hideControlsTimer: number | null = null;
+
+// 启动倒计时隐藏控件
+const startHideTimer = () => {
+    stopHideTimer();
+    hideControlsTimer = window.setTimeout(() => {
+        showInfo.value = true;
+    }, 800);
+};
+
+const stopHideTimer = () => {
+    if (hideControlsTimer) {
+        clearTimeout(hideControlsTimer);
+        hideControlsTimer = null;
+    }
+};
+
+// 定义一个用于强制刷新的 key
+const musicBoxKey = ref(0);
+
+// 鼠标进入整个音乐控制区域
+const handleMusicBoxEnter = () => {
+    stopHideTimer();     // 清除可能正在倒计时的隐藏任务
+    showInfo.value = false; // 立刻切换为显示控制按钮
+};
+
+// 鼠标彻底离开整个音乐控制区域
+const handleMusicBoxLeave = () => {
+    startHideTimer();    // 离开后，再开启倒计时恢复为歌曲名称显示
 };
 
 const prevTrack = () => {
@@ -382,6 +427,9 @@ const onInnerEnter = (el: Element, done: () => void) => {
                 htmlEl.style.transform = 'none';
                 htmlEl.style.opacity = '1';
                 done();
+
+                // 【新增核心调用】控制箱入场弹簧动画完全结束后，开启 1s 倒计时隐藏控件
+                startHideTimer();
             }
         };
         requestAnimationFrame(animate);
@@ -431,15 +479,28 @@ onMounted(async () => {
         e.preventDefault();
     }, { capture: true }); // 使用捕获阶段，确保先于 Tauri 底层拦截
 
+    // 修改音乐控制器状态监听器
+    await listen<{ enabled: boolean }>('control-music-ctl', (event) => {
+        const isEnabled = event.payload.enabled;
+        isMusicCtlEnabled.value = isEnabled;
+        if (isEnabled) {
+            showInfo.value = false;
+            musicBoxKey.value++;
+            stopHideTimer();
+        }
+    });
+
     // 监听来自控制台的透明度同步指令
     await listen<{ opacity: number }>('control-island-opacity', (event) => {
         islandOpacity.value = event.payload.opacity;
     });
 
+    // 监听来自控制台的主题同步指令
     await listen<{ theme: string }>('control-island-theme', (event) => {
         islandTheme.value = event.payload.theme;
     });
 
+    // 监听来自控制台的音乐控制器状态同步指令
     await listen<{ enabled: boolean }>('control-music-ctl', (event) => {
         isMusicCtlEnabled.value = event.payload.enabled;
     });
@@ -474,11 +535,14 @@ onMounted(async () => {
             isIslandVisible.value = false;
         }
     });
+
+    startHideTimer();
 });
 
 onUnmounted(() => {
     clearInterval(speedTimer);
     clearInterval(pingTimer);
+    stopHideTimer();
 });
 </script>
 
@@ -745,5 +809,49 @@ onUnmounted(() => {
 .play-btn svg {
     width: 20px;
     height: 20px;
+}
+
+/* 控件显隐淡入淡出动画过渡 */
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity 0.25s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
+}
+
+/* 歌曲信息遮罩容器：挨着封面靠左，占据右侧剩余空间 */
+.music-info-mask-box {
+    position: absolute;
+    left: 24px;
+    /* 紧贴 24px 宽的专辑封面 */
+    right: 20px;
+    /* 给右侧网络指示灯留出安全间距 */
+    height: 100%;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    padding-left: 8px;
+    -webkit-app-region: no-drag;
+    /* 允许在文本区域触发 hover */
+    transform: translateY(-1px);
+
+    /* 核心过渡遮罩：右侧文字溢出边缘呈渐隐效果 */
+    mask-image: linear-gradient(to right, #000 75%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, #000 75%, transparent 100%);
+}
+
+/* 歌曲文本基础样式 */
+.music-info-text {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+    font-size: 12.5px;
+    font-weight: 500;
+    white-space: nowrap;
+    /* 强制单行不换行 */
+    overflow: hidden;
+    color: inherit;
+    opacity: 0.9;
 }
 </style>
