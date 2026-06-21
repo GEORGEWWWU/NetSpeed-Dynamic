@@ -9,7 +9,9 @@
                         @mouseenter="handleMusicBoxEnter" @mouseleave="handleMusicBoxLeave">
 
                         <div class="album-cover" :class="{ 'is-playing': isPlaying }">
-                            <div class="cover-inner"></div>
+                            <div class="cover-inner"
+                                :style="coverUrl ? { backgroundImage: `url(${coverUrl})`, backgroundSize: 'cover' } : {}">
+                            </div>
                         </div>
 
                         <transition name="fade">
@@ -109,6 +111,7 @@ const networkStatus = ref<'good' | 'warning' | 'error'>('good');
 // 音乐控制功能开关
 const isMusicCtlEnabled = ref(localStorage.getItem('nsd_music_ctrl') === 'true');
 const isPlaying = ref(false);
+let isClickingToggle = false;
 // 只需要增加定时获取音乐状态的逻辑，并补全你的 prevTrack, nextTrack, togglePlay 方法
 
 // 引入网易云官方的一个免签的搜索纠错/图片匹配基准（或使用通用黑胶唱片封面）
@@ -119,7 +122,20 @@ const coverUrl = ref('');
 // 替换你的 togglePlay, prevTrack, nextTrack 内部实现
 const togglePlay = async () => {
     isPlaying.value = !isPlaying.value;
-    await invoke('control_system_media', { action: 'play_pause' });
+
+    // 开启锁，告知轮询此时不需要同步状态
+    isClickingToggle = true;
+
+    try {
+        await invoke('control_system_media', { action: 'play_pause' });
+    } catch (err) {
+        console.error(err);
+    }
+
+    // 1500ms 后释放锁，给系统多媒体足够的反应时间
+    setTimeout(() => {
+        isClickingToggle = false;
+    }, 1500);
 };
 
 const prevTrack = async () => {
@@ -143,8 +159,9 @@ const syncMusicStatus = async () => {
             // 推荐低维护成本做法：在此处触发封面变化，或直接给 .cover-inner 绑定背景色/封面
             // 比如使用开源的音乐封面占位：coverUrl.value = `https://music.163.com/api/search/get/web?s=${song}&type=1` (按需异步拉取)
 
-            // 根据实际网易云窗口是否存活及多媒体状态微调，如果需要强制同步播放状态：
-            // isPlaying.value = playing; 
+            if (!isClickingToggle) {
+                isPlaying.value = playing;
+            }
         } else {
             currentTrackInfo.value = '未在播放歌曲 - 网易云音乐';
             isPlaying.value = false;
