@@ -59,25 +59,63 @@ async fn get_random_cover_url(song_name: String, artist_name: String) -> Result<
     let query = format!("{} {}", song_name, artist_name);
     let encoded_query = urlencoding::encode(&query);
 
-    // 【数据源 1】网易云官方公开搜索接口 (最精准)
-    let netease_url = format!(
-        "https://music.163.com/api/search/get/web?s={}&type=1&limit=1",
-        encoded_query
-    );
+    // 公共 User-Agent，网易云会校验 UA
+    let ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
-    if let Ok(resp) = client.get(&netease_url)
+    // ========== 【数据源 1】网易云搜索接口 (POST 方式，修正后最精准) ==========
+    // 关键修正：此接口必须用 POST + 表单提交，GET 方式经常返回空结果！
+    let netease_search_url = "https://music.163.com/api/search/get/web";
+
+    if let Ok(resp) = client.post(netease_search_url)
         .header("Referer", "https://music.163.com")
-        .send().await 
+        .header("User-Agent", ua)
+        .form(&[
+            ("s", query.as_str()),
+            ("type", "1"),       // 1=歌曲
+            ("limit", "1"),
+            ("offset", "0"),
+        ])
+        .send().await
     {
         if let Ok(json) = resp.json::<serde_json::Value>().await {
             if let Some(pic) = json.pointer("/result/songs/0/al/picUrl").and_then(|v| v.as_str()) {
-                // 将 http 升级为 https，并指定缩略图尺寸以加快加载
-                return Ok(pic.replace("http://", "https://") + "?param=150y150");
+                if !pic.is_empty() && pic != "http://p4.music.126.net/UeTuwE7pvjBpypWLudqukQ==/3135032972947607.jpg" {
+                    // 排除网易云默认的无封面占位图
+                    return Ok(pic.replace("http://", "https://") + "?param=300y300");
+                }
             }
         }
     }
 
-    // 【数据源 2】iTunes Search API (极其稳定的备用方案)
+    // ========== 【数据源 2】Deezer API (极其稳定，中文歌支持优秀) ==========
+    // Deezer 公开搜索接口，无需鉴权，返回专辑封面 cover_medium (250x250) / cover_big (500x500)
+    let deezer_url = format!(
+        "https://api.deezer.com/search?q=track:\"{}\" artist:\"{}\"&limit=1",
+        urlencoding::encode(&song_name),
+        urlencoding::encode(&artist_name)
+    );
+
+    if let Ok(resp) = client.get(&deezer_url)
+        .header("User-Agent", ua)
+        .send().await
+    {
+        if let Ok(json) = resp.json::<serde_json::Value>().await {
+            // 优先取 cover_medium (250x250)，清晰度足够灵动岛使用
+            if let Some(cover) = json.pointer("/data/0/album/cover_medium").and_then(|v| v.as_str()) {
+                if !cover.is_empty() {
+                    return Ok(cover.to_string());
+                }
+            }
+            // 备选：取 cover_big (500x500)
+            if let Some(cover) = json.pointer("/data/0/album/cover_big").and_then(|v| v.as_str()) {
+                if !cover.is_empty() {
+                    return Ok(cover.to_string());
+                }
+            }
+        }
+    }
+
+    // ========== 【数据源 3】iTunes Search API (稳定备用方案) ==========
     let itunes_url = format!(
         "https://itunes.apple.com/search?term={}&media=music&limit=1",
         encoded_query
@@ -86,15 +124,16 @@ async fn get_random_cover_url(song_name: String, artist_name: String) -> Result<
     if let Ok(resp) = client.get(&itunes_url).send().await {
         if let Ok(json) = resp.json::<serde_json::Value>().await {
             if let Some(artwork) = json.pointer("/results/0/artworkUrl100").and_then(|v| v.as_str()) {
-                // iTunes 返回的是 100x100，可以替换字符串获取更高清的版本
+                // iTunes 返回的是 100x100，替换字符串获取更高清的版本
                 return Ok(artwork.replace("100x100bb", "300x300bb"));
             }
         }
     }
 
-    // 【数据源 3】终极保底：返回一个不会失败的 Unsplash 占位图
-    // 如果连 Unsplash 也不想依赖，可以直接返回一段 Base64 编码的纯色/渐变 SVG
-    Ok("https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=150&h=150&fit=crop".to_string())
+    // ========== 【数据源 4】终极保底：返回纯色渐变 SVG (永不失败) ==========
+    // 不再依赖外部图片服务（Unsplash 在国内可能加载慢或被墙）
+    // 使用内联 Base64 SVG 作为绝对兜底，保证永远有图显示
+    Ok("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNhOGVkZWEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNmZWQ2ZTMiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgcng9Ijc1IiBmaWxsPSJ1cmwoI2cpIi8+PC9zdmc+".to_string())
 }
 
 #[tauri::command]
