@@ -151,13 +151,13 @@
                         </div>
                     </div>
 
-                    <div class="set-item disabled-set-item">
+                    <div class="set-item">
                         <div class="set-item-meta">
                             <span class="set-item-title">音乐控制器</span>
                             <span class="set-item-desc">检测到音乐播放时展示控制面板</span>
                         </div>
                         <label class="switch">
-                            <input type="checkbox" v-model="enableMusicCtrl" disabled="true">
+                            <input type="checkbox" v-model="enableMusicCtrl">
                             <span class="slider"></span>
                         </label>
                     </div>
@@ -264,7 +264,7 @@ const isChecking = ref(false);
 
 // 灵动岛设置相关的 UI 状态绑定
 const islandTheme = ref(localStorage.getItem('nsd_island_theme') || 'black');
-const enableMusicCtrl = ref(false);
+const enableMusicCtrl = ref(localStorage.getItem('nsd_music_ctrl') === 'true');
 const enableMsgNotify = ref(false);
 const enableHardwareMon = ref(false);
 
@@ -677,6 +677,14 @@ watch(opacity, async (newVal) => {
 watch(islandTheme, async (newVal) => {
     localStorage.setItem('nsd_island_theme', newVal);
     await emit('control-island-theme', { theme: newVal });
+    console.log('灵动岛颜色切换为:', newVal);
+});
+
+// 添加监听器，将状态同步给灵动岛
+watch(enableMusicCtrl, async (newVal) => {
+    localStorage.setItem('nsd_music_ctrl', newVal.toString());
+    await emit('control-music-ctl', { enabled: newVal });
+    console.log('音乐控制器状态切换为:', newVal);
 });
 
 onMounted(async () => {

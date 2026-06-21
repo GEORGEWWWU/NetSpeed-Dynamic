@@ -2,7 +2,36 @@
     <transition @enter="onEnter" @leave="onLeave" :css="false">
         <div v-show="isIslandVisible" class="island-container" @mousedown="handleMouseDown" :style="islandStyle"
             @contextmenu="handleRightClick">
-            <div class="speed-box">
+            <div class="music-ctl-box" v-if="isMusicCtlEnabled">
+                <div class="album-cover" :class="{ 'is-playing': isPlaying }">
+                    <div class="cover-inner"></div>
+                </div>
+
+                <div class="music-controls">
+                    <button class="ctl-btn" @click="prevTrack">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+                        </svg>
+                    </button>
+
+                    <button class="ctl-btn play-btn" @click="togglePlay">
+                        <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                        </svg>
+
+                        <svg v-else viewBox="0 0 24 24" fill="currentColor" style="transform: translateX(1px);">
+                            <path d="M8 5v14l11-7z" />
+                        </svg>
+                    </button>
+
+                    <button class="ctl-btn" @click="nextTrack">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="speed-box" v-else>
                 <div class="speed-item">
                     <span :class="['label', { 'high-traffic': isHighUpload }]">↑</span>
                     <span class="value">{{ uploadSpeed }}</span>
@@ -55,6 +84,26 @@ const isHighUpload = ref(false);
 
 // 网络状态指示灯：good(绿), warning(黄), error(红)
 const networkStatus = ref<'good' | 'warning' | 'error'>('good');
+
+// 音乐控制功能开关
+const isMusicCtlEnabled = ref(localStorage.getItem('nsd_music_ctrl') === 'true');
+const isPlaying = ref(false);
+const togglePlay = () => {
+    // 将状态取反 (true 变 false，false 变 true)
+    isPlaying.value = !isPlaying.value;
+
+    // （可选）之后你可以把调用 Tauri Rust 后端控制系统媒体播放的代码写在这里
+};
+
+const prevTrack = () => {
+    console.log('上一首');
+    // 调用上一首逻辑
+};
+
+const nextTrack = () => {
+    console.log('下一首');
+    // 调用下一首逻辑
+};
 
 let lastRx = 0;
 let lastTx = 0;
@@ -239,6 +288,9 @@ const onLeave = (el: Element, done: () => void) => {
 };
 
 const handleMouseDown = async (event: MouseEvent) => {
+    // 如果点击的是按钮或按钮内部的 SVG 图标，直接返回，不触发拖拽
+    if ((event.target as HTMLElement).closest('.ctl-btn')) return;
+
     // 只有按鼠标左键时才触发窗口拖拽，把右键留给自定义菜单
     if (event.button === 0) {
         try {
@@ -303,6 +355,10 @@ onMounted(async () => {
 
     await listen<{ theme: string }>('control-island-theme', (event) => {
         islandTheme.value = event.payload.theme;
+    });
+
+    await listen<{ enabled: boolean }>('control-music-ctl', (event) => {
+        isMusicCtlEnabled.value = event.payload.enabled;
     });
 
     await adjustWindowPosition();
@@ -486,5 +542,109 @@ onUnmounted(() => {
 .island-container[style*="background-color: rgba(0, 0, 0, 0)"] .label.high-traffic {
     background: rgba(0, 0, 0, 0.1) !important;
     color: var(--text-primary) !important;
+}
+
+/* --- 音乐控制器样式 --- */
+.music-ctl-box {
+    position: relative;
+    /* 改为相对定位，作为内部绝对居中的参考系 */
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    /* 确保撑满高度 */
+}
+
+.album-cover {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    /* 变成纯圆球形 */
+    box-sizing: unset !important;
+    border: 2px solid rgba(255, 255, 255, 0.2) !important;
+    /* 2px 的外环 */
+    background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+    flex-shrink: 0;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.250);
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    z-index: 2;
+    transform: translateX(-5px);
+    /* 确保层级比控制器高 */
+}
+
+/* 亮色模式下的外环颜色自动变暗 */
+:deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .album-cover {
+    border-color: rgba(0, 0, 0, 0.15);
+}
+
+.album-cover.is-playing {
+    transform: scale(1.08) translateX(-5px);
+}
+
+.cover-inner {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.music-controls {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    /* 核心：让控件组在灵动岛内绝对水平居中 */
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    /* 间距拉开一点更舒展 */
+    z-index: 1;
+}
+
+.ctl-btn {
+    background: transparent;
+    /* 默认透明，无背景色 */
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    /* 稍微加大内边距，让 hover 时的圆圈更好看 */
+    border-radius: 50%;
+    transition: background-color 0.2s ease, opacity 0.2s ease, transform 0.1s ease;
+    outline: none;
+    -webkit-app-region: no-drag;
+}
+
+/* 只有在 hover 的时候才出现背景色 */
+.ctl-btn:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
+:deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .ctl-btn:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.ctl-btn:active {
+    opacity: 0.6;
+    transform: scale(0.92);
+    /* 加上按压时的微缩放反馈，手感更好 */
+}
+
+.ctl-btn svg {
+    width: 16px;
+    height: 16px;
+    pointer-events: none;
+}
+
+/* 播放键稍微比切歌键大一点点，突出视觉中心 */
+.play-btn svg {
+    width: 20px;
+    height: 20px;
 }
 </style>
