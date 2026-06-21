@@ -1,71 +1,75 @@
 <template>
     <transition @enter="onEnter" @leave="onLeave" :css="false">
-        <div v-show="isIslandVisible" class="island-container" @mousedown="handleMouseDown" :style="islandStyle"
-            @contextmenu="handleRightClick">
+        <div v-show="isIslandVisible" :class="['island-container', { 'has-music-border': isGlowBorderEnabled }]"
+            @mousedown="handleMouseDown" :style="islandStyle" @contextmenu="handleRightClick">
 
-            <div class="inner-wrapper">
-                <transition @enter="onInnerEnter" @leave="onInnerLeave" :css="false">
-                    <div class="music-ctl-box" v-show="isMusicCtlEnabled" :key="musicBoxKey"
-                        @mouseenter="handleMusicBoxEnter" @mouseleave="handleMusicBoxLeave">
+            <div class="rainbow-border-glow" v-if="isGlowBorderEnabled"></div>
 
-                        <div class="album-cover" :class="{ 'is-playing': isPlaying }">
-                            <div class="cover-inner"
-                                :style="coverUrl ? { backgroundImage: `url(${coverUrl})`, backgroundSize: 'cover' } : {}">
-                            </div>
-                        </div>
+            <div class="island-core-content" :style="coreContentStyle">
+                <div class="inner-wrapper">
+                    <transition @enter="onInnerEnter" @leave="onInnerLeave" :css="false">
+                        <div class="music-ctl-box" v-show="isMusicCtlEnabled" :key="musicBoxKey"
+                            @mouseenter="handleMusicBoxEnter" @mouseleave="handleMusicBoxLeave">
 
-                        <transition name="fade">
-                            <div class="music-controls" v-show="!showInfo">
-                                <button class="ctl-btn" @click="prevTrack">
-                                    <svg viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
-                                    </svg>
-                                </button>
-
-                                <button class="ctl-btn play-btn" @click="togglePlay">
-                                    <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-                                    </svg>
-                                    <svg v-else viewBox="0 0 24 24" fill="currentColor"
-                                        style="transform: translateX(1px);">
-                                        <path d="M8 5v14l11-7z" />
-                                    </svg>
-                                </button>
-
-                                <button class="ctl-btn" @click="nextTrack">
-                                    <svg viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
-                                    </svg>
-                                </button>
-                            </div>
-                        </transition>
-
-                        <transition name="fade">
-                            <div class="music-info-mask-box" v-show="showInfo">
-                                <div class="music-info-text">
-                                    {{ currentTrackInfo }}
+                            <div class="album-cover" :class="{ 'is-playing': isPlaying }">
+                                <div class="cover-inner"
+                                    :style="coverUrl ? { backgroundImage: `url(${coverUrl})`, backgroundSize: 'cover' } : {}">
                                 </div>
                             </div>
-                        </transition>
-                    </div>
-                </transition>
 
-                <transition @enter="onInnerEnter" @leave="onInnerLeave" :css="false">
-                    <div class="speed-box" v-show="!isMusicCtlEnabled" key="speed">
-                        <div class="speed-item">
-                            <span :class="['label', { 'high-traffic': isHighUpload }]">↑</span>
-                            <span class="value">{{ uploadSpeed }}</span>
+                            <transition name="fade">
+                                <div class="music-controls" v-show="!showInfo">
+                                    <button class="ctl-btn" @click="prevTrack">
+                                        <svg viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+                                        </svg>
+                                    </button>
+
+                                    <button class="ctl-btn play-btn" @click="togglePlay">
+                                        <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                                        </svg>
+                                        <svg v-else viewBox="0 0 24 24" fill="currentColor"
+                                            style="transform: translateX(1px);">
+                                            <path d="M8 5v14l11-7z" />
+                                        </svg>
+                                    </button>
+
+                                    <button class="ctl-btn" @click="nextTrack">
+                                        <svg viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </transition>
+
+                            <transition name="fade">
+                                <div class="music-info-mask-box" v-show="showInfo">
+                                    <div class="music-info-text">
+                                        {{ currentTrackInfo }}
+                                    </div>
+                                </div>
+                            </transition>
                         </div>
-                        <div class="divider"></div>
-                        <div class="speed-item">
-                            <span :class="['label', { 'high-traffic': isHighDownload }]">↓</span>
-                            <span class="value">{{ downloadSpeed }}</span>
+                    </transition>
+
+                    <transition @enter="onInnerEnter" @leave="onInnerLeave" :css="false">
+                        <div class="speed-box" v-show="!isMusicCtlEnabled" key="speed">
+                            <div class="speed-item">
+                                <span :class="['label', { 'high-traffic': isHighUpload }]">↑</span>
+                                <span class="value">{{ uploadSpeed }}</span>
+                            </div>
+                            <div class="divider"></div>
+                            <div class="speed-item">
+                                <span :class="['label', { 'high-traffic': isHighDownload }]">↓</span>
+                                <span class="value">{{ downloadSpeed }}</span>
+                            </div>
                         </div>
-                    </div>
-                </transition>
+                    </transition>
+                </div>
+
+                <div :class="['status-dot', networkStatus]"></div>
             </div>
-
-            <div :class="['status-dot', networkStatus]"></div>
         </div>
     </transition>
 </template>
@@ -98,6 +102,18 @@ const islandStyle = computed(() => {
     };
 });
 
+const coreContentStyle = computed(() => {
+    // 这里的背景色应该跟着主题走，保持是不透明的（或者很高的不透明度），用来遮挡中间的流光
+    if (islandTheme.value === 'white') {
+        return {
+            backgroundColor: '#ffffff'
+        };
+    }
+    return {
+        backgroundColor: '#000000' // 黑色主题时，核心区域为纯黑
+    };
+});
+
 const uploadSpeed = ref('0 KB/s');
 const downloadSpeed = ref('0 KB/s');
 
@@ -112,25 +128,20 @@ const networkStatus = ref<'good' | 'warning' | 'error'>('good');
 const isMusicCtlEnabled = ref(localStorage.getItem('nsd_music_ctrl') === 'true');
 const isPlaying = ref(false);
 let isClickingToggle = false;
-// 只需要增加定时获取音乐状态的逻辑，并补全你的 prevTrack, nextTrack, togglePlay 方法
+// 【修改】流光边框默认状态完全镜像音乐控制器（只要音乐控制器开着它就开，关了就一起关）
+const isGlowBorderEnabled = ref(isMusicCtlEnabled.value);
 
 const coverUrl = ref('');
 const coverCache = new Map<string, string>();
 
-// 替换你的 togglePlay, prevTrack, nextTrack 内部实现
 const togglePlay = async () => {
     isPlaying.value = !isPlaying.value;
-
-    // 开启锁，告知轮询此时不需要同步状态
     isClickingToggle = true;
-
     try {
         await invoke('control_system_media', { action: 'play_pause' });
     } catch (err) {
         console.error(err);
     }
-
-    // 1500ms 后释放锁，给系统多媒体足够的反应时间
     setTimeout(() => {
         isClickingToggle = false;
     }, 1500);
@@ -428,7 +439,7 @@ const handleRightClick = async (event: MouseEvent) => {
     event.preventDefault();
     event.stopPropagation(); // 阻止冒泡
 
-    // 1. 创建“重置位置”菜单项
+    // 创建“重置位置”菜单项
     const resetPositionItem = await MenuItem.new({
         text: '重置位置',
         id: 'reset_position',
@@ -438,7 +449,16 @@ const handleRightClick = async (event: MouseEvent) => {
         }
     });
 
-    // 2. 创建“关闭”菜单项
+    const toggleGlowBorderItem = await MenuItem.new({
+        text: isGlowBorderEnabled.value ? '关闭流光边框' : '开启流光边框',
+        id: 'toggle_glow_border',
+        enabled: isMusicCtlEnabled.value, // 核心约束：只有在音乐控制器开着的前提下，菜单才允许点击切换
+        action: () => {
+            isGlowBorderEnabled.value = !isGlowBorderEnabled.value;
+        }
+    });
+
+    // 创建“关闭”菜单项
     const closeItem = await MenuItem.new({
         text: '关闭',
         id: 'close',
@@ -455,6 +475,7 @@ const handleRightClick = async (event: MouseEvent) => {
 
     // 3. 创建菜单并按顺序追加进去
     const menu = await Menu.new();
+    await menu.append(toggleGlowBorderItem);
     await menu.append(resetPositionItem);
     await menu.append(closeItem); // 两个菜单项会上下排列
 
@@ -548,10 +569,14 @@ onMounted(async () => {
         e.preventDefault();
     }, { capture: true }); // 使用捕获阶段，确保先于 Tauri 底层拦截
 
-    // 修改音乐控制器状态监听器
+    // 【修改】统一合并后的音乐控制器状态监听器
     await listen<{ enabled: boolean }>('control-music-ctl', (event) => {
         const isEnabled = event.payload.enabled;
         isMusicCtlEnabled.value = isEnabled;
+
+        // 核心联动：只要触发了开关指令，流光边框无视之前的状态，强行跟随最新开关状态
+        isGlowBorderEnabled.value = isEnabled;
+
         if (isEnabled) {
             showInfo.value = false;
             musicBoxKey.value++;
@@ -571,7 +596,13 @@ onMounted(async () => {
 
     // 监听来自控制台的音乐控制器状态同步指令
     await listen<{ enabled: boolean }>('control-music-ctl', (event) => {
-        isMusicCtlEnabled.value = event.payload.enabled;
+        const isEnabled = event.payload.enabled;
+        isMusicCtlEnabled.value = isEnabled;
+
+        // 【新增】同样加入联动逻辑
+        if (localStorage.getItem('nsd_glow_border') === null) {
+            isGlowBorderEnabled.value = isEnabled;
+        }
     });
 
     await adjustWindowPosition();
@@ -643,25 +674,68 @@ onUnmounted(() => {
     border: none !important;
 }
 
+/* 1. 外层包裹层：负责裁切多余的流光，并提供呼吸扩散的高斯模糊效果 */
 .island-container {
     position: absolute;
     top: 0;
     left: 0;
     width: 100% !important;
     height: 100% !important;
-    background: rgba(0, 0, 0, 1);
-    backdrop-filter: blur(20px) !important;
     border-radius: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    /* 这里的 2px 决定了流光边框的粗细 */
+    user-select: none;
+    -webkit-user-select: none;
+    overflow: hidden;
+    /* 牢牢把流光裁剪成一条圆角线 */
+    background: transparent;
+    transition: background 0.4s ease;
+}
+
+/* 2. 隐藏在底层的巨大旋转渐变层 */
+.rainbow-border-glow {
+    position: absolute;
+    /* 关键：把它的尺寸设定为远超出容器的巨大正方形，解决大方块旋转露角的问题 */
+    width: 300px;
+    height: 300px;
+    top: calc(50% - 150px);
+    left: calc(50% - 150px);
+    z-index: 1;
+    background: conic-gradient(from 0deg,
+            #ff3b30, #ff9500, #ffcc00, #4cd964, #5ac8fa, #007aff, #5856d6, #ff3b30);
+    animation: rainbow-rotate 3s linear infinite;
+    will-change: transform;
+}
+
+/* 3. 核心遮罩内容块：挡在旋转渐变层的上方 */
+.island-core-content {
+    position: relative;
+    z-index: 2;
+    /* 压在流光上面 */
+    width: 100%;
+    height: 100%;
+    border-radius: 98px;
+    /* 稍微比外层缩小一点 */
+    backdrop-filter: blur(20px) !important;
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0 14px;
-    color: white;
-    user-select: none;
-    box-shadow: none !important;
-    border: none !important;
-    -webkit-user-select: none;
     overflow: hidden;
+}
+
+/* 4. 顺时针匀速旋转 */
+@keyframes rainbow-rotate {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 [data-tauri-drag-region] {
