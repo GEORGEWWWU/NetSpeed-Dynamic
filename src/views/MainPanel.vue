@@ -216,7 +216,8 @@
         </div>
 
         <footer class="panel-footer">
-            <span>&copy; 2026 Ryen. All rights reserved.</span>
+            <span>&copy; 2026 <button class="openmywebsite" @click="openMywebsite">Ryen.</button> All rights
+                reserved.</span>
             <span class="action-link"
                 :style="{ opacity: isChecking ? 0.5 : 1, pointerEvents: isChecking ? 'none' : 'auto' }"
                 @click="checkUpdate">
@@ -574,6 +575,10 @@ const fetchSpeedStats = async () => {
         console.error('控制台流量获取失败:', error);
     }
 };
+
+const openMywebsite = () => {
+    openUrl('https://blog.georgewu.top');
+}
 
 const checkUpdate = async () => {
     if (isChecking.value) return; // 防止连点
@@ -1176,10 +1181,29 @@ input:checked+.slider:before {
 .panel-footer {
     margin-top: 32px;
     display: flex;
+    flex-direction: row;
     justify-content: space-between;
     font-size: 12px;
     color: var(--footer-text);
     font-weight: 500;
+}
+
+.panel-footer span {
+    display: flex;
+}
+
+.openmywebsite {
+    background: none;
+    border: none;
+    cursor: pointer;
+    outline: none;
+    font-size: 12px;
+    color: var(--footer-text);
+    font-weight: bold;
+}
+
+.openmywebsite:hover {
+    text-decoration: underline;
 }
 
 .action-link {

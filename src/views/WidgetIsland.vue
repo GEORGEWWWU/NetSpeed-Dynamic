@@ -868,7 +868,7 @@ onUnmounted(() => {
     box-sizing: unset !important;
     border: 2px solid rgba(255, 255, 255, 0.5) !important;
     /* 2px 的外环 */
-    /* background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); */
+    background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
     flex-shrink: 0;
     overflow: hidden;
     display: flex;
