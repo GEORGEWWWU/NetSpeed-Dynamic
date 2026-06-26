@@ -26,19 +26,19 @@
                             <div class="hw-item">
                                 <span class="hw-label">CPU</span>
                                 <span class="hw-value" :class="{ 'high-usage': parseInt(cpuUsage) >= 90 }">{{ cpuUsage
-                                    }}</span>
+                                }}</span>
                             </div>
                             <div class="hw-divider"></div>
                             <div class="hw-item">
                                 <span class="hw-label">GPU</span>
                                 <span class="hw-value" :class="{ 'high-usage': parseInt(gpuUsage) >= 90 }">{{ gpuUsage
-                                    }}</span>
+                                }}</span>
                             </div>
                             <div class="hw-divider"></div>
                             <div class="hw-item">
                                 <span class="hw-label">RAM</span>
                                 <span class="hw-value" :class="{ 'high-usage': parseInt(memUsage) >= 90 }">{{ memUsage
-                                    }}</span>
+                                }}</span>
                             </div>
                         </div>
                     </transition>
@@ -877,8 +877,8 @@ onMounted(async () => {
 
     // 在你原有的每秒刷新定时器中，顺带执行音乐同步
     speedTimer = setInterval(async () => {
-        // 如果灵动岛可见，且【右键菜单没有打开】，才去呼叫底层置顶
-        if (isIslandVisible.value && !isMenuOpen.value) {
+        // 🌟 终极优化：只有在“置于任务栏”开启、灵动岛可见、且右键菜单未打开时，才呼叫底层强置顶
+        if (isPinnedToTaskbar.value && isIslandVisible.value && !isMenuOpen.value) {
             invoke('force_window_topmost').catch(() => { });
         }
 

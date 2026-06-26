@@ -192,7 +192,12 @@
 
                     <div class="set-item">
                         <div class="set-item-meta">
-                            <span class="set-item-title">置于任务栏</span>
+                            <span class="set-item-title">
+                                置于任务栏
+                                <span class="tooltip-wrapper" data-tooltip="若要在全屏游戏中使用灵动岛请关闭此项！">
+                                    <p class="set-item-tips-tag">🙋‍♂️</p>
+                                </span>
+                            </span>
                             <span class="set-item-desc">将灵动岛锁定至任务栏左下角</span>
                         </div>
                         <label class="switch">

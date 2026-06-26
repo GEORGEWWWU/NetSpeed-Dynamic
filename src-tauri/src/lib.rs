@@ -354,7 +354,7 @@ fn force_window_topmost(app: tauri::AppHandle) {
     #[cfg(target_os = "windows")]
     {
         unsafe {
-            // 1. 优雅避让：检测当前是否存在右键菜单
+            // 1. 优雅避让：检测当前是否存在右键菜单 或 【全屏游戏】
             let fg_hwnd = winapi::um::winuser::GetForegroundWindow();
             if !fg_hwnd.is_null() {
                 let mut class_name = [0u16; 256];
@@ -365,6 +365,31 @@ fn force_window_topmost(app: tauri::AppHandle) {
                 if class_str == "#32768" {
                     return; // 如果发现前台正在展示右键菜单，立刻收手不置顶，保护菜单不被遮挡！
                 }
+
+                // ================= 新增核心修复：全屏防闪退检测 =================
+                // 获取当前最前台窗口的坐标和尺寸
+                let mut rect: winapi::shared::windef::RECT = std::mem::zeroed();
+                winapi::um::winuser::GetWindowRect(fg_hwnd, &mut rect);
+
+                // 获取该窗口所在的物理显示器尺寸
+                let monitor = winapi::um::winuser::MonitorFromWindow(fg_hwnd, winapi::um::winuser::MONITOR_DEFAULTTONEAREST);
+                let mut mi: winapi::um::winuser::MONITORINFO = std::mem::zeroed();
+                mi.cbSize = std::mem::size_of::<winapi::um::winuser::MONITORINFO>() as u32;
+                winapi::um::winuser::GetMonitorInfoW(monitor, &mut mi);
+
+                // 判断前台窗口的尺寸是否和显示器物理尺寸完全一致（即：是不是全屏）
+                if rect.left == mi.rcMonitor.left &&
+                   rect.top == mi.rcMonitor.top &&
+                   rect.right == mi.rcMonitor.right &&
+                   rect.bottom == mi.rcMonitor.bottom {
+                    
+                    // 排除 Windows 自己的桌面壁纸层（桌面本身也是全屏，但此时需要置顶）
+                    if class_str != "Progman" && class_str != "WorkerW" {
+                        // 判定为正在运行全屏游戏或全屏视频！立刻终止置顶操作，放过焦点！
+                        return; 
+                    }
+                }
+                // ===============================================================
             }
 
             // 2. 静默置顶：彻底解决抢占焦点的问题
@@ -374,8 +399,7 @@ fn force_window_topmost(app: tauri::AppHandle) {
                         hwnd.0 as _,
                         -1isize as _, 
                         0, 0, 0, 0,
-                        // 核心魔法数字 19 = SWP_NOACTIVATE (16) | SWP_NOMOVE (2) | SWP_NOSIZE (1)
-                        // SWP_NOACTIVATE 代表“仅调整层级，绝对不触碰当前焦点”，神不知鬼不觉
+                        // 19 = SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE
                         19, 
                     );
                 }
