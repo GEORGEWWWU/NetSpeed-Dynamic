@@ -184,63 +184,84 @@ async fn control_system_media(action: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn get_random_cover_url(song_name: String, artist_name: String) -> Result<String, String> {
+    // 设置全局最大超时时间为 3 秒
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(3))
         .build()
         .map_err(|e| e.to_string())?;
 
-    let query = format!("{} {}", song_name, artist_name);
-    let encoded_query = urlencoding::encode(&query);
-    let ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+    // 创建一个通道，用于接收最快返回的封面 URL (并发竞速)
+    let (tx, mut rx) = tokio::sync::mpsc::channel(3);
 
-    let netease_search_url = "https://music.163.com/api/search/get/web";
-    if let Ok(resp) = client.post(netease_search_url)
-        .header("Referer", "https://music.163.com")
-        .header("User-Agent", ua)
-        .form(&[
-            ("s", query.as_str()),
-            ("type", "1"),
-            ("limit", "1"),
-            ("offset", "0"),
-        ])
-        .send().await
-    {
-        if let Ok(json) = resp.json::<serde_json::Value>().await {
-            if let Some(pic) = json.pointer("/result/songs/0/al/picUrl").and_then(|v| v.as_str()) {
-                if !pic.is_empty() && pic != "http://p4.music.126.net/UeTuwE7pvjBpypWLudqukQ==/3135032972947607.jpg" {
-                    return Ok(pic.replace("http://", "https://") + "?param=300y300");
+    // 1号赛道：Apple Music (iTunes) - 通常速度最快，且欧美和华语覆盖率极高
+    let tx_itunes = tx.clone();
+    let client_itunes = client.clone();
+    let query_itunes = format!("{} {}", song_name, artist_name);
+    tokio::spawn(async move {
+        let encoded_query = urlencoding::encode(&query_itunes).into_owned();
+        let itunes_url = format!("https://itunes.apple.com/search?term={}&media=music&limit=1", encoded_query);
+        if let Ok(resp) = client_itunes.get(&itunes_url).send().await {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                if let Some(artwork) = json.pointer("/results/0/artworkUrl100").and_then(|v| v.as_str()) {
+                    // iTunes 默认给 100x100，替换为 300x300 保证清晰度
+                    let _ = tx_itunes.send(artwork.replace("100x100bb", "300x300bb")).await;
                 }
             }
         }
-    }
+    });
 
-    let deezer_url = format!(
-        "https://api.deezer.com/search?q=track:\"{}\" artist:\"{}\"&limit=1",
-        urlencoding::encode(&song_name),
-        urlencoding::encode(&artist_name)
-    );
-
-    if let Ok(resp) = client.get(&deezer_url).header("User-Agent", ua).send().await {
-        if let Ok(json) = resp.json::<serde_json::Value>().await {
-            if let Some(cover) = json.pointer("/data/0/album/cover_medium").and_then(|v| v.as_str()) {
-                if !cover.is_empty() { return Ok(cover.to_string()); }
-            }
-            if let Some(cover) = json.pointer("/data/0/album/cover_big").and_then(|v| v.as_str()) {
-                if !cover.is_empty() { return Ok(cover.to_string()); }
-            }
-        }
-    }
-
-    let itunes_url = format!("https://itunes.apple.com/search?term={}&media=music&limit=1", encoded_query);
-    if let Ok(resp) = client.get(&itunes_url).send().await {
-        if let Ok(json) = resp.json::<serde_json::Value>().await {
-            if let Some(artwork) = json.pointer("/results/0/artworkUrl100").and_then(|v| v.as_str()) {
-                return Ok(artwork.replace("100x100bb", "300x300bb"));
+    // 2号赛道：网易云音乐 API (华语原配)
+    let tx_netease = tx.clone();
+    let client_netease = client.clone();
+    let song_netease = song_name.clone();
+    let artist_netease = artist_name.clone();
+    tokio::spawn(async move {
+        let ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+        let query = format!("{} {}", song_netease, artist_netease);
+        if let Ok(resp) = client_netease.post("https://music.163.com/api/search/get/web")
+            .header("Referer", "https://music.163.com")
+            .header("User-Agent", ua)
+            .form(&[("s", query.as_str()), ("type", "1"), ("limit", "1"), ("offset", "0")])
+            .send().await
+        {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                if let Some(pic) = json.pointer("/result/songs/0/al/picUrl").and_then(|v| v.as_str()) {
+                    if !pic.is_empty() && pic != "http://p4.music.126.net/UeTuwE7pvjBpypWLudqukQ==/3135032972947607.jpg" {
+                        let _ = tx_netease.send(pic.replace("http://", "https://") + "?param=300y300").await;
+                    }
+                }
             }
         }
-    }
+    });
 
-    Ok("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNhOGVkZWEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNmZWQ2ZTMiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgcng9Ijc1IiBmaWxsPSJ1cmwoI2cpIi8+PC9zdmc+".to_string())
+    // 3号赛道：Deezer API (备用补充)
+    let tx_deezer = tx.clone();
+    let client_deezer = client.clone();
+    let song_deezer = song_name.clone();
+    let artist_deezer = artist_name.clone();
+    tokio::spawn(async move {
+        let ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+        let deezer_url = format!(
+            "https://api.deezer.com/search?q=track:\"{}\" artist:\"{}\"&limit=1",
+            urlencoding::encode(&song_deezer).into_owned(),
+            urlencoding::encode(&artist_deezer).into_owned()
+        );
+        if let Ok(resp) = client_deezer.get(&deezer_url).header("User-Agent", ua).send().await {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                if let Some(cover) = json.pointer("/data/0/album/cover_medium").and_then(|v| v.as_str()) {
+                    if !cover.is_empty() { let _ = tx_deezer.send(cover.to_string()).await; }
+                } else if let Some(cover) = json.pointer("/data/0/album/cover_big").and_then(|v| v.as_str()) {
+                    if !cover.is_empty() { let _ = tx_deezer.send(cover.to_string()).await; }
+                }
+            }
+        }
+    });
+
+    // 终点线判定：等待第一个成功的请求，谁先返回就用谁的，最多等 3 秒
+    match tokio::time::timeout(std::time::Duration::from_secs(3), rx.recv()).await {
+        Ok(Some(url)) => Ok(url), // 拿到最快返回的那个链接
+        _ => Ok("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNhOGVkZWEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNmZWQ2ZTMiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgcng9Ijc1IiBmaWxsPSJ1cmwoI2cpIi8+PC9zdmc+".to_string()), // 全都失败则返回默认渐变色图
+    }
 }
 
 #[tauri::command]
