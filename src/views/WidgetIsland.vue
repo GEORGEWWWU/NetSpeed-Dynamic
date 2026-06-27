@@ -26,19 +26,19 @@
                             <div class="hw-item">
                                 <span class="hw-label">CPU</span>
                                 <span class="hw-value" :class="{ 'high-usage': parseInt(cpuUsage) >= 90 }">{{ cpuUsage
-                                    }}</span>
+                                }}</span>
                             </div>
                             <div class="hw-divider"></div>
                             <div class="hw-item">
                                 <span class="hw-label">GPU</span>
                                 <span class="hw-value" :class="{ 'high-usage': parseInt(gpuUsage) >= 90 }">{{ gpuUsage
-                                    }}</span>
+                                }}</span>
                             </div>
                             <div class="hw-divider"></div>
                             <div class="hw-item">
                                 <span class="hw-label">RAM</span>
                                 <span class="hw-value" :class="{ 'high-usage': parseInt(memUsage) >= 90 }">{{ memUsage
-                                    }}</span>
+                                }}</span>
                             </div>
                         </div>
                     </transition>
@@ -735,22 +735,25 @@ const handleMsgClick = async () => {
 let trackedPhysicalX = 0;
 let trackedPhysicalY = 0;
 
-// 灵动岛核心代码！（动画函数）
+// 灵动岛核心代码！（优化性能版）
 const animateIslandSize = (targetWidth: number, targetHeight: number) => {
     const startWidth = currentWidth.value;
     const startHeight = currentHeight.value;
-    const start = performance.now();
 
+    // 如果大小没变直接拦截，拒绝无意义的性能损耗
+    if (startWidth === targetWidth && startHeight === targetHeight) return;
+
+    const appWindow = getCurrentWindow();
+    const dpr = window.devicePixelRatio;
+    const centerPhysicalX = trackedPhysicalX + (startWidth * dpr) / 2;
+    const originPhysicalY = trackedPhysicalY;
+
+    const start = performance.now();
     const freq = 2.0;
     const decay = 10.5;
     const duration = 600;
 
-    const appWindow = getCurrentWindow();
-    const dpr = window.devicePixelRatio; // 使用浏览器真实缩放率，不再依赖 Tauri 滞后的底层计算
-
-    // 动画开始时，锁定当前的中心点（物理像素）
-    const centerPhysicalX = trackedPhysicalX + (startWidth * dpr) / 2;
-    const originPhysicalY = trackedPhysicalY;
+    let lastIpcTime = 0; // 用于节流控制 Tauri 底层通讯频率
 
     const run = (time: number) => {
         const t = (time - start) / 1000;
@@ -758,29 +761,35 @@ const animateIslandSize = (targetWidth: number, targetHeight: number) => {
 
         const spring = 1 - Math.cos(freq * t * 2 * Math.PI) * Math.exp(-decay * t);
 
-        const newWidth = startWidth + (targetWidth - startWidth) * spring;
-        const newHeight = startHeight + (targetHeight - startHeight) * spring;
+        const currentW = startWidth + (targetWidth - startWidth) * spring;
+        const currentH = startHeight + (targetHeight - startHeight) * spring;
 
-        // 更新 Vue 的宽高
-        currentWidth.value = newWidth;
-        currentHeight.value = newHeight;
+        // 1. 纯前端内存与 DOM 渲染，绝不阻塞，随便跑满 144Hz/240Hz
+        currentWidth.value = currentW;
+        currentHeight.value = currentH;
 
-        // 绝对计算：新的左边缘 = 中心点 - 新宽度的一半
-        const newLeftX = Math.round(centerPhysicalX - (newWidth * dpr) / 2);
+        // 2. 核心修复：异步平滑追踪
+        // 设置 12 毫秒的节流阀（约 80 FPS），确保不拥堵 Tauri 的 IPC 通道
+        if (time - lastIpcTime > 12) {
+            const currentLeftX = Math.round(centerPhysicalX - (currentW * dpr) / 2);
 
-        // 先 setPosition，再 setSize
-        appWindow.setPosition(new PhysicalPosition(newLeftX, originPhysicalY)).catch(() => { });
-        appWindow.setSize(new PhysicalSize(Math.ceil(newWidth * dpr), Math.ceil(newHeight * dpr))).catch(() => { });
+            // 重点：【千万不要加 await】！直接把指令丢给操作系统后台执行。
+            // 这样系统窗口会每次微调几个像素紧紧包裹 DOM，彻底消除 margin 计算带来的跳跃闪烁！
+            appWindow.setPosition(new PhysicalPosition(currentLeftX, originPhysicalY)).catch(() => { });
+            appWindow.setSize(new PhysicalSize(Math.ceil(currentW * dpr), Math.ceil(currentH * dpr))).catch(() => { });
+
+            lastIpcTime = time;
+        }
 
         if (progress < 1) {
             requestAnimationFrame(run);
         } else {
+            // 动画结束，数值兜底
             currentWidth.value = targetWidth;
             currentHeight.value = targetHeight;
-
-            // 动画结束，精确锁定最终追踪位置
             trackedPhysicalX = Math.round(centerPhysicalX - (targetWidth * dpr) / 2);
 
+            // 进行最后一次严丝合缝的最终尺寸坐标锁定
             appWindow.setPosition(new PhysicalPosition(trackedPhysicalX, originPhysicalY)).catch(() => { });
             appWindow.setSize(new PhysicalSize(Math.ceil(targetWidth * dpr), Math.ceil(targetHeight * dpr))).catch(() => { });
         }

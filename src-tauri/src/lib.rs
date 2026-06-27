@@ -419,6 +419,28 @@ fn force_window_topmost(app: tauri::AppHandle) {
     }
 }
 
+// 新增：底层原子化窗口调整指令，彻底消除位移闪烁
+#[tauri::command]
+fn set_window_bounds(app: tauri::AppHandle, x: i32, y: i32, width: i32, height: i32) {
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(win) = app.get_webview_window("widget") {
+            if let Ok(hwnd) = win.hwnd() {
+                unsafe {
+                    // 0x0014 = SWP_NOACTIVATE (0x0010) | SWP_NOZORDER (0x0004)
+                    // 确保同时修改坐标和尺寸时，不抢占用户焦点，不打乱窗口层级
+                    winapi::um::winuser::SetWindowPos(
+                        hwnd.0 as _,
+                        std::ptr::null_mut(),
+                        x, y, width, height,
+                        0x0014,
+                    );
+                }
+            }
+        }
+    }
+}
+
 struct AppState {
     networks: Mutex<Networks>,
     system: Mutex<System>,
@@ -490,6 +512,7 @@ pub fn run() {
             get_hardware_stats,
             open_app_by_aumid,
             force_window_topmost,
+            set_window_bounds,
         ])
         .setup(|app| {
             let args: Vec<String> = std::env::args().collect();
