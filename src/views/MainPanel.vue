@@ -258,6 +258,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import * as echarts from 'echarts';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 const isWidgetVisible = ref(false);
 const autoStart = ref(false);
@@ -811,6 +812,20 @@ onMounted(async () => {
     } catch (e) {
         console.error("获取应用版本号失败:", e);
     }
+
+    // 监听来自灵动岛右键菜单的“打开设置”信号
+    await listen('open-settings-panel', async () => {
+        // 1. 如果当前不在灵动岛设置页，就切过去
+        if (!isDynamicSet.value) {
+            isDynamicSet.value = true;
+        }
+
+        // 2. 唤醒并聚焦主窗口
+        const appWindow = getCurrentWindow();
+        await appWindow.show();        // 确保窗口显示
+        await appWindow.unminimize();  // 如果最小化了，就恢复
+        await appWindow.setFocus();    // 强制抢占焦点弹到最前面
+    });
 
     await listen<{ visible: boolean }>('island-status-sync', (event) => {
         isWidgetVisible.value = event.payload.visible;

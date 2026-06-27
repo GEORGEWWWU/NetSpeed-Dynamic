@@ -26,19 +26,19 @@
                             <div class="hw-item">
                                 <span class="hw-label">CPU</span>
                                 <span class="hw-value" :class="{ 'high-usage': parseInt(cpuUsage) >= 90 }">{{ cpuUsage
-                                }}</span>
+                                    }}</span>
                             </div>
                             <div class="hw-divider"></div>
                             <div class="hw-item">
                                 <span class="hw-label">GPU</span>
                                 <span class="hw-value" :class="{ 'high-usage': parseInt(gpuUsage) >= 90 }">{{ gpuUsage
-                                }}</span>
+                                    }}</span>
                             </div>
                             <div class="hw-divider"></div>
                             <div class="hw-item">
                                 <span class="hw-label">RAM</span>
                                 <span class="hw-value" :class="{ 'high-usage': parseInt(memUsage) >= 90 }">{{ memUsage
-                                }}</span>
+                                    }}</span>
                             </div>
                         </div>
                     </transition>
@@ -561,7 +561,7 @@ const handleRightClick = async (event: MouseEvent) => {
     event.preventDefault();
     event.stopPropagation(); // 阻止冒泡
 
-    // 创建“重置位置”菜单项
+    // 重置位置
     const resetPositionItem = await MenuItem.new({
         text: isPinnedToTaskbar.value ? '重置位置 (已锁定)' : '重置位置',
         id: 'reset_position',
@@ -571,6 +571,17 @@ const handleRightClick = async (event: MouseEvent) => {
         }
     });
 
+    // 打开设置
+    const openSettingsItem = await MenuItem.new({
+        text: '打开设置',
+        id: 'open_settings',
+        action: async () => {
+            // 发送一个信号给主控制台
+            await emit('open-settings-panel');
+        }
+    });
+
+    // 切换流光边框
     const toggleGlowBorderItem = await MenuItem.new({
         text: isGlowBorderEnabled.value ? '关闭流光边框' : '开启流光边框',
         id: 'toggle_glow_border',
@@ -582,7 +593,7 @@ const handleRightClick = async (event: MouseEvent) => {
         }
     });
 
-    // 创建“关闭”菜单项
+    // 关闭灵动岛
     const closeItem = await MenuItem.new({
         text: '关闭',
         id: 'close',
@@ -599,9 +610,10 @@ const handleRightClick = async (event: MouseEvent) => {
 
     // 3. 创建菜单并按顺序追加进去
     const menu = await Menu.new();
+    await menu.append(openSettingsItem);
     await menu.append(toggleGlowBorderItem);
     await menu.append(resetPositionItem);
-    await menu.append(closeItem); // 两个菜单项会上下排列
+    await menu.append(closeItem);
 
     // 4. 弹出菜单
     try {
