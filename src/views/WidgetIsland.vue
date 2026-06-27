@@ -769,8 +769,8 @@ const animateIslandSize = (targetWidth: number, targetHeight: number) => {
         currentHeight.value = currentH;
 
         // 2. 核心修复：异步平滑追踪
-        // 设置 12 毫秒的节流阀（约 80 FPS），确保不拥堵 Tauri 的 IPC 通道
-        if (time - lastIpcTime > 12) {
+        // 设置 12 毫秒的节流阀（约 60 FPS），确保不拥堵 Tauri 的 IPC 通道
+        if (time - lastIpcTime > 16) {
             const currentLeftX = Math.round(centerPhysicalX - (currentW * dpr) / 2);
 
             // 重点：【千万不要加 await】！直接把指令丢给操作系统后台执行。
@@ -969,7 +969,7 @@ onMounted(async () => {
                 console.error(err);
             }
         }
-    }, 1000) as unknown as number;
+    }, 2000) as unknown as number;
 
     // 调大Ping间隔：从2.5秒调大到5.5秒
     pingTimer = setInterval(checkNetworkLatency, 5500) as unknown as number;
@@ -1044,15 +1044,21 @@ onUnmounted(() => {
 /* 2. 隐藏在底层的巨大旋转渐变层 */
 .rainbow-border-glow {
     position: absolute;
-    /* 关键：把它的尺寸设定为远超出容器的巨大正方形，解决大方块旋转露角的问题 */
     width: 500px;
     height: 500px;
-    top: calc(50% - 300px);
-    left: calc(50% - 300px);
+
+    /* 核心修复：500px 的一半是 250px，修正旋转中心偏移问题 */
+    top: calc(50% - 250px);
+    left: calc(50% - 250px);
+
     z-index: 1;
-    background: conic-gradient(from 0deg,
-            #ff3b30, #ff9500, #ffcc00, #4cd964, #5ac8fa, #007aff, #5856d6, #ff3b30);
-    animation: rainbow-rotate 3s linear infinite;
+
+    /* 重新绘制的完美对称环形渐变，清透不发脏 */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='500' height='500'%3E%3Cdefs%3E%3Cfilter id='b' x='-50%25' y='-50%25' width='200%25' height='200%25'%3E%3CfeGaussianBlur in='SourceGraphic' stdDeviation='60'/%3E%3C/filter%3E%3C/defs%3E%3Cg filter='url(%23b)'%3E%3Ccircle cx='250' cy='90' r='150' fill='%23ff3b30'/%3E%3Ccircle cx='390' cy='170' r='150' fill='%23ff9500'/%3E%3Ccircle cx='390' cy='330' r='150' fill='%234cd964'/%3E%3Ccircle cx='250' cy='410' r='150' fill='%23007aff'/%3E%3Ccircle cx='110' cy='330' r='150' fill='%235856d6'/%3E%3Ccircle cx='110' cy='170' r='150' fill='%23ff2d55'/%3E%3C/g%3E%3C/svg%3E");
+    background-size: cover;
+
+    /* 10秒一圈刚刚好，柔和且不怎么吃 GPU */
+    animation: rainbow-rotate 10s linear infinite;
     will-change: transform;
 }
 
@@ -1063,7 +1069,7 @@ onUnmounted(() => {
     width: 100%;
     height: 100%;
     border-radius: 98px;
-    backdrop-filter: blur(20px);
+    transform: translateZ(0);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1138,22 +1144,17 @@ onUnmounted(() => {
     transition: background-color 0.4s ease;
 }
 
+/* 修改后（去掉发光阴影，改为纯粹的扁平化圆点，干净利落） */
 .good {
     background-color: #34C759;
-    box-shadow: 0 0 10px rgba(52, 199, 89, 0.5);
-    /* 绿 */
 }
 
 .warning {
     background-color: #FFCC00;
-    box-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
-    /* 黄 */
 }
 
 .error {
     background-color: #FF3B30;
-    box-shadow: 0 0 10px rgba(255, 59, 48, 0.5);
-    /* 红 */
 }
 
 /* 让两个盒子脱离彼此的影响，在同一个包裹层内完美的“重叠”放置 */

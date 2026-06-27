@@ -795,7 +795,7 @@ onMounted(async () => {
 
     initChart();
     fetchSpeedStats();
-    speedTimer = setInterval(fetchSpeedStats, 1000) as unknown as number;
+    speedTimer = setInterval(fetchSpeedStats, 2000) as unknown as number;
     window.addEventListener('resize', () => {
         chartInstance?.resize();
         statsChartInstance?.resize();
