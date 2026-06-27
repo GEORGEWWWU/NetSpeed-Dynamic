@@ -234,15 +234,18 @@ const snapToBottomLeft = async () => {
 
 const togglePlay = async () => {
     isPlaying.value = !isPlaying.value;
-    isClickingToggle = true;
+    isClickingToggle = true; // 锁定 UI 不接受后端轮询的覆盖
     try {
         await invoke('control_system_media', { action: 'play_pause' });
     } catch (err) {
         console.error(err);
     }
     setTimeout(() => {
+        // 👇 关键修改点：从 1500 延长到 2500。
+        // 这意味着你点完暂停的 2.5 秒内，图标死死卡住绝对不动。
+        // 2.5 秒后解锁时，后端的 2 秒静音宽限期必定已过，后端就会传来真实的 false（停止输出分贝）！
         isClickingToggle = false;
-    }, 1500);
+    }, 2500);
 };
 
 const prevTrack = async () => {
@@ -1209,11 +1212,18 @@ onUnmounted(() => {
     background-size: cover;
     transition: background-image 0.3s ease;
     /* 切换封面时平滑淡入 */
+
+    /* 👇 新增下面这两行 */
+    animation: rotate 8s linear infinite;
+    animation-play-state: paused;
+    /* 默认让动画处于暂停状态 */
 }
 
 /* 正在播放时的旋转动画 */
 .is-playing .cover-inner {
-    animation: rotate 8s linear infinite;
+    /* 👇 把原来的 animation 替换成下面这行 */
+    animation-play-state: running;
+    /* 当有播放状态时，让动画跑起来 */
 }
 
 @keyframes rotate {
