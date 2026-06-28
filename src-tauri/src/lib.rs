@@ -108,18 +108,78 @@ async fn control_system_media(action: String) -> Result<(), String> {
     Ok(())
 }
 
+// 💡 【辅助工具 1】：纯手工轻量 Base64 编码器（不依赖任何第三方库，小白用最安全）
+fn inline_base64_encode(input: &[u8]) -> String {
+    const CHARSET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut result = String::with_capacity((input.len() + 2) / 3 * 4);
+    for chunk in input.chunks(3) {
+        match chunk.len() {
+            3 => {
+                result.push(CHARSET[(chunk[0] >> 2) as usize] as char);
+                result.push(CHARSET[(((chunk[0] & 0x03) << 4) | (chunk[1] >> 4)) as usize] as char);
+                result.push(CHARSET[(((chunk[1] & 0x0F) << 2) | (chunk[2] >> 6)) as usize] as char);
+                result.push(CHARSET[(chunk[2] & 0x3F) as usize] as char);
+            }
+            2 => {
+                result.push(CHARSET[(chunk[0] >> 2) as usize] as char);
+                result.push(CHARSET[(((chunk[0] & 0x03) << 4) | (chunk[1] >> 4)) as usize] as char);
+                result.push(CHARSET[(((chunk[1] & 0x0F) << 2)) as usize] as char);
+                result.push('=');
+            }
+            1 => {
+                result.push(CHARSET[(chunk[0] >> 2) as usize] as char);
+                result.push(CHARSET[(((chunk[0] & 0x03) << 4)) as usize] as char);
+                result.push('=');
+                result.push('=');
+            }
+            _ => {}
+        }
+    }
+    result
+}
+
+// 💡 【辅助工具 2】：利用微软官方 SMTC API 直接把网易云的本地封面榨出来
+fn get_smtc_thumbnail() -> Option<String> {
+    use windows::Storage::Streams::{Buffer, InputStreamOptions, DataReader};
+
+    // 1. 获取当前网易云的媒体会话
+    let session = get_target_media_session()?;
+    // 2. 拔出媒体属性
+    let properties = session.TryGetMediaPropertiesAsync().ok()?.get().ok()?;
+    // 3. 拿到封面引用流
+    let thumbnail_ref = properties.Thumbnail().ok()?;
+    let stream = thumbnail_ref.OpenReadAsync().ok()?.get().ok()?;
+    let size = stream.Size().ok()? as u32;
+    if size == 0 { return None; }
+
+    // 4. 将 Windows 内存流转换为 Rust 的字节数组
+    let buffer = Buffer::Create(size).ok()?;
+    stream.ReadAsync(&buffer, size, InputStreamOptions::None).ok()?.get().ok()?;
+    let reader = DataReader::FromBuffer(&buffer).ok()?;
+    let mut bytes = vec![0u8; size as usize];
+    reader.ReadBytes(&mut bytes).ok()?;
+
+    // 5. 拼装成前端 <img> 标签直接能吃的 base64 图片格式
+    Some(format!("data:image/jpeg;base64,{}", inline_base64_encode(&bytes)))
+}
+
+// 🎯 这是你修改后的核心封面命令
 #[tauri::command]
 async fn get_random_cover_url(song_name: String, artist_name: String) -> Result<String, String> {
-    // 设置全局最大超时时间为 3 秒
+    // 🔥 【王炸第一优先级】：直接用 SMTC 从系统本地抠出当前歌曲的高清封面！
+    if let Some(base64_cover) = get_smtc_thumbnail() {
+        return Ok(base64_cover);
+    }
+
+    // 🛡️ 【完美后路】：如果本地提取失败（比如刚开软件还没缓存），无缝走你原有的三大网络赛道并发竞速方案
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(3))
         .build()
         .map_err(|e| e.to_string())?;
 
-    // 创建一个通道，用于接收最快返回的封面 URL (并发竞速)
     let (tx, mut rx) = tokio::sync::mpsc::channel(3);
 
-    // 1号赛道：Apple Music (iTunes) - 通常速度最快，且欧美和华语覆盖率极高
+    // 1号赛道：Apple Music
     let tx_itunes = tx.clone();
     let client_itunes = client.clone();
     let query_itunes = format!("{} {}", song_name, artist_name);
@@ -129,14 +189,13 @@ async fn get_random_cover_url(song_name: String, artist_name: String) -> Result<
         if let Ok(resp) = client_itunes.get(&itunes_url).send().await {
             if let Ok(json) = resp.json::<serde_json::Value>().await {
                 if let Some(artwork) = json.pointer("/results/0/artworkUrl100").and_then(|v| v.as_str()) {
-                    // iTunes 默认给 100x100，替换为 300x300 保证清晰度
                     let _ = tx_itunes.send(artwork.replace("100x100bb", "300x300bb")).await;
                 }
             }
         }
     });
 
-    // 2号赛道：网易云音乐 API (华语原配)
+    // 2号赛道：网易云 API
     let tx_netease = tx.clone();
     let client_netease = client.clone();
     let song_netease = song_name.clone();
@@ -160,7 +219,7 @@ async fn get_random_cover_url(song_name: String, artist_name: String) -> Result<
         }
     });
 
-    // 3号赛道：Deezer API (备用补充)
+    // 3号赛道：Deezer API
     let tx_deezer = tx.clone();
     let client_deezer = client.clone();
     let song_deezer = song_name.clone();
@@ -183,10 +242,10 @@ async fn get_random_cover_url(song_name: String, artist_name: String) -> Result<
         }
     });
 
-    // 终点线判定：等待第一个成功的请求，谁先返回就用谁的，最多等 3 秒
+    // 终点线判定：谁最快返回就用谁的，最多等 3 秒，全失败则返回默认渐变色图
     match tokio::time::timeout(std::time::Duration::from_secs(3), rx.recv()).await {
-        Ok(Some(url)) => Ok(url), // 拿到最快返回的那个链接
-        _ => Ok("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNhOGVkZWEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNmZWQ2ZTMiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgcng9Ijc1IiBmaWxsPSJ1cmwoI2cpIi8+PC9zdmc+".to_string()), // 全都失败则返回默认渐变色图
+        Ok(Some(url)) => Ok(url),
+        _ => Ok("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNhOGVkZWEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNmZWQ2ZTMiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgcng9Ijc1IiBmaWxsPSJ1cmwoI2cpIi8+PC9zdmc+".to_string()),
     }
 }
 
