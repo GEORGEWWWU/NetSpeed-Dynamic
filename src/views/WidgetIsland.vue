@@ -1,7 +1,8 @@
 <template>
     <transition @enter="onEnter" @leave="onLeave" :css="false">
         <div v-show="isIslandVisible" :class="['island-container', { 'has-music-border': isGlowBorderEnabled }]"
-            @mousedown="handleMouseDown" @mousemove="handleMouseMove" @mouseup="handleMouseUp" :style="islandStyle"
+            @mousedown="handleMouseDown" @mousemove="handleMouseMove" @mouseup="handleMouseUp"
+            @mouseleave="handleMouseLeave" @mouseenter="handleMouseEnter" :style="islandStyle"
             @contextmenu="handleRightClick">
 
             <div class="rainbow-border-glow" v-if="isGlowBorderEnabled" :style="{ opacity: glowOpacity }"></div>
@@ -778,33 +779,40 @@ const collapseMusic = () => {
 
 // 音乐控制器点击展开方法
 const expandMusic = (e: MouseEvent) => {
-    // 👇 新增防误触：如果鼠标发生了滑动（拖拽超过 5 像素），就不触发点击展开！
     if (Math.abs(e.clientX - mouseDownX) > 5 || Math.abs(e.clientY - mouseDownY) > 5) {
         return;
     }
 
-    // 如果点击的是播放、切歌等小按钮，不要触发缩放
     if ((e.target as HTMLElement).closest('.ctl-btn')) return;
 
     if (isMusicExpanded.value) {
-        // 如果已经展开了，随便点一下重置 3 秒倒计时
-        if (musicExpandTimer) clearTimeout(musicExpandTimer);
-        musicExpandTimer = window.setTimeout(collapseMusic, 3000);
-        return;
+        return; // 如果已经展开了，点击直接无视
     }
 
     // 1. 弹性按压动画 (先微微变小)
     animateIslandSize(245, 38);
 
-    // 2. 延迟 120 毫秒后，打断缩小，直接猛烈展开 (模拟果冻回弹)
+    // 2. 延迟 120 毫秒后，打断缩小，直接猛烈展开
     setTimeout(() => {
         isMusicExpanded.value = true;
-        animateIslandSize(320, 115); //这里可以修改音乐控制器展开时的宽度！
-
-        // 3. 开启 3 秒未响应自动收缩
-        if (musicExpandTimer) clearTimeout(musicExpandTimer);
-        musicExpandTimer = window.setTimeout(collapseMusic, 3000);
+        animateIslandSize(320, 115);
     }, 120);
+};
+
+// 鼠标离开灵动岛时：开启 1 秒倒计时再收缩
+const handleMouseLeave = () => {
+    if (!isMusicExpanded.value) return; // 如果本来就没展开，啥也不干
+
+    if (musicExpandTimer) clearTimeout(musicExpandTimer);
+    musicExpandTimer = window.setTimeout(collapseMusic, 1000); // ⏱️ 1000毫秒 = 1秒
+};
+
+// 鼠标重新移入灵动岛时：立刻打断并取消收缩倒计时
+const handleMouseEnter = () => {
+    if (musicExpandTimer) {
+        clearTimeout(musicExpandTimer);
+        musicExpandTimer = null; // 🧼 擦除定时器，保住展开状态
+    }
 };
 
 watch(displayMusic, (newVal: boolean) => {
