@@ -9,64 +9,55 @@
 
             <div class="island-core-content" :style="coreContentStyle">
                 <div class="inner-wrapper">
-                    <transition @enter="onInnerEnter" @leave="onInnerLeave" :css="false">
-                        <div class="msg-box" v-show="isMsgActive" key="msg" @click="handleMsgClick"
+                    <transition mode="out-in" @enter="onInnerEnter" @leave="onInnerLeave" :css="false">
+                        <div v-if="isMsgActive" class="msg-box" key="msg" @click="handleMsgClick"
                             style="cursor: pointer;">
                             <div class="msg-avatar">
                                 <img :src="currentMsgIcon" alt="消息图标" class="msg-avatar-img">
                             </div>
-
                             <div class="msg-text-wrapper">
                                 <div class="msg-title">{{ msgTitle }}</div>
                                 <div class="msg-body">{{ msgBody }}</div>
                             </div>
                         </div>
-                    </transition>
 
-                    <transition @enter="onInnerEnter" @leave="onInnerLeave" :css="false">
-                        <div class="systemstate-box" v-show="displayHardware" key="hardware">
+                        <div v-else-if="displayHardware" class="systemstate-box" key="hardware">
                             <div class="hw-item">
                                 <span class="hw-label">CPU</span>
                                 <span class="hw-value" :class="{ 'high-usage': parseInt(cpuUsage) >= 90 }">{{ cpuUsage
-                                }}</span>
+                                    }}</span>
                             </div>
                             <div class="hw-divider"></div>
                             <div class="hw-item">
                                 <span class="hw-label">GPU</span>
                                 <span class="hw-value" :class="{ 'high-usage': parseInt(gpuUsage) >= 90 }">{{ gpuUsage
-                                }}</span>
+                                    }}</span>
                             </div>
                             <div class="hw-divider"></div>
                             <div class="hw-item">
                                 <span class="hw-label">RAM</span>
                                 <span class="hw-value" :class="{ 'high-usage': parseInt(memUsage) >= 90 }">{{ memUsage
-                                }}</span>
+                                    }}</span>
                             </div>
                         </div>
-                    </transition>
 
-                    <transition @enter="onInnerEnter" @leave="onInnerLeave" :css="false">
-                        <div class="music-ctl-box" :class="{ 'expanded': isMusicExpanded }" v-show="displayMusic"
-                            :key="musicBoxKey" @click="expandMusic" style="cursor: pointer;">
-
+                        <div v-else-if="displayMusic" class="music-ctl-box" :class="{ 'expanded': isMusicExpanded }"
+                            :key="'music_' + musicBoxKey" @click="expandMusic" style="cursor: pointer;">
                             <div class="music-top-row">
                                 <div class="album-cover" :class="{ 'is-playing': isPlaying }">
                                     <div class="cover-inner"
                                         :style="coverUrl ? { backgroundImage: `url(${coverUrl})`, backgroundSize: 'cover' } : {}">
                                     </div>
                                 </div>
-
                                 <div class="music-info-mask-box">
-                                    <div class="music-info-text single-line" :class="{ 'fade-out': isMusicExpanded }">
-                                        {{ currentTrackInfo }}
-                                    </div>
+                                    <div class="music-info-text single-line" :class="{ 'fade-out': isMusicExpanded }">{{
+                                        currentTrackInfo }}</div>
                                     <div class="music-info-text double-line" :class="{ 'fade-in': isMusicExpanded }">
                                         <div class="song-title">{{ currentSongName }}</div>
                                         <div class="song-artist">{{ currentArtistName }}</div>
                                     </div>
                                 </div>
                             </div>
-
                             <transition name="fade">
                                 <div class="music-controls" v-show="isMusicExpanded">
                                     <button class="ctl-btn" @click.stop="prevTrack">
@@ -74,7 +65,6 @@
                                             <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
                                         </svg>
                                     </button>
-
                                     <button class="ctl-btn play-btn" @click.stop="togglePlay">
                                         <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor">
                                             <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
@@ -84,7 +74,6 @@
                                             <path d="M8 5v14l11-7z" />
                                         </svg>
                                     </button>
-
                                     <button class="ctl-btn" @click.stop="nextTrack">
                                         <svg viewBox="0 0 24 24" fill="currentColor">
                                             <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
@@ -93,10 +82,8 @@
                                 </div>
                             </transition>
                         </div>
-                    </transition>
 
-                    <transition @enter="onInnerEnter" @leave="onInnerLeave" :css="false">
-                        <div class="speed-box" v-show="displaySpeed" key="speed">
+                        <div v-else-if="displaySpeed" class="speed-box" key="speed">
                             <div class="speed-item">
                                 <span :class="['label', { 'high-traffic': isHighUpload }]">↑</span>
                                 <span class="value">{{ uploadSpeed }}</span>
@@ -109,15 +96,18 @@
                     </transition>
                 </div>
 
-                <div v-if="displayMusic" class="audio-spectrum"
-                    :class="{ 'is-playing': isPlaying, 'expanded': isMusicExpanded }">
-                    <span class="bar"></span>
-                    <span class="bar"></span>
-                    <span class="bar"></span>
-                    <span class="bar"></span>
-                    <span class="bar"></span>
-                </div>
-                <div v-else :class="['status-dot', networkStatus]"></div>
+                <transition mode="out-in" @enter="onInnerEnter" @leave="onInnerLeave" :css="false">
+                    <div v-if="displayMusic" class="audio-spectrum"
+                        :class="{ 'is-playing': isPlaying, 'expanded': isMusicExpanded }" key="spectrum">
+                        <span class="bar"></span>
+                        <span class="bar"></span>
+                        <span class="bar"></span>
+                        <span class="bar"></span>
+                        <span class="bar"></span>
+                    </div>
+
+                    <div v-else :class="['status-dot', networkStatus]" key="dot"></div>
+                </transition>
             </div>
         </div>
     </transition>
@@ -370,6 +360,8 @@ let lastRx = 0;
 let lastTx = 0;
 let speedTimer: number;
 let pingTimer: number;
+let musicTimer: number;  // ✨ 新增这行
+let notifyTimer: number; // ✨ 新增这行
 
 // 防抖控制变量
 let lowTrafficStartTime = Date.now();
@@ -683,7 +675,7 @@ const onInnerEnter = (el: Element, done: () => void) => {
     let start = performance.now();
 
     // 统一使用简单的渐变淡入 (200毫秒)
-    const duration = 200;
+    const duration = 180;
     htmlEl.style.transformOrigin = 'center';
     htmlEl.style.opacity = '0';
     htmlEl.style.transform = 'none'; // 确保没有位移
@@ -705,7 +697,7 @@ const onInnerEnter = (el: Element, done: () => void) => {
 const onInnerLeave = (el: Element, done: () => void) => {
     const htmlEl = el as HTMLElement;
     let start = performance.now();
-    const duration = 150;
+    const duration = 140;
 
     const animate = (time: number) => {
         let progress = (time - start) / duration;
@@ -951,94 +943,79 @@ onMounted(async () => {
     checkNetworkLatency();
 
     // 在你原有的每秒刷新定时器中，顺带执行音乐同步
+    // 1. 高频定时器：专门负责网速和硬件监控（每 500ms ~ 1000ms 刷新一次）
     speedTimer = setInterval(async () => {
-        // 🌟 终极优化：只有在“置于任务栏”开启、灵动岛可见、且右键菜单未打开时，才呼叫底层强置顶
+        // 强置顶逻辑
         if (isPinnedToTaskbar.value && isIslandVisible.value && !isMenuOpen.value) {
             invoke('force_window_topmost').catch(() => { });
         }
 
+        // 刷新网速
         fetchSpeedStats();
 
-        if (isMusicCtlEnabled.value || isRotationEnabled.value) {
-            syncMusicStatus();
-        }
-
-        // 每秒实时拉取系统硬件状态
+        // 刷新硬件状态
         if (isHardwareMonEnabled.value || isRotationEnabled.value) {
             try {
                 const [cpu, usedMem, totalMem] = await invoke<[number, number, number]>('get_hardware_stats');
                 cpuUsage.value = Math.round(cpu) + '%';
-                // 增加防呆设计，防止除以 0 导致报错
                 if (totalMem > 0) {
                     memUsage.value = Math.round((usedMem / totalMem) * 100) + '%';
                 }
-
                 await fetchGpuUsage();
             } catch (err) {
                 console.error('获取硬件信息失败:', err);
             }
         }
+    }, 800) as unknown as number; // 👈 改为 800 毫秒，网速和硬件瞬间灵敏
 
-        // 定时轮询系统通知状态
-        const enabled = localStorage.getItem('nsd_msg_notify') === 'true';
-        if (enabled) {
-            try {
-                // 注意这里类型变了，接收任意对象
-                const res = await invoke<any>('fetch_latest_notification');
-                if (res) {
-                    // res 结构：{ app_name: string, title: string, body: string }
 
-                    // 1. 标题直接显示程序名
-                    msgTitle.value = res.app_name;
-                    msgAumid.value = res.aumid;
-
-                    // 2. 内容拼接原来的 [标题: 内容]
-                    if (res.body) {
-                        msgBody.value = `${res.title}: ${res.body}`;
-                    } else {
-                        msgBody.value = res.title;
-                    }
-
-                    // 3. 动态替换头像
-                    currentMsgIcon.value = getAppIcon(res.app_name);
-
-                    if (!isMsgActive.value) {
-                        isMsgActive.value = true;
-
-                        // 【新增】：如果开了消息模式，先让窗口现身并触发入场动画
-                        if (isMsgModeEnabled.value && !isIslandVisible.value) {
-                            getCurrentWindow().show();
-                            isIslandVisible.value = true;
-                        }
-
-                        // 👇 拦截：如果没有锁定在任务栏，才允许灵动岛变大
-                        if (!isPinnedToTaskbar.value) {
-                            animateIslandSize(360, 65);
-                        }
-                    }
-
-                    if ((window as any).msgTimer) clearTimeout((window as any).msgTimer);
-                    (window as any).msgTimer = setTimeout(() => {
-                        isMsgActive.value = false;
-                        // 💡 恢复时缩小尺寸
-                        animateIslandSize(260, 42);
-
-                        // 【新增】：如果是消息模式，等缩小动画放完（约 600 毫秒）再隐藏窗口
-                        if (isMsgModeEnabled.value) {
-                            setTimeout(() => {
-                                // 确认期间没有新的消息进来，再把它藏掉触发离场动画
-                                if (!isMsgActive.value) {
-                                    isIslandVisible.value = false;
-                                }
-                            }, 600);
-                        }
-                    }, 5000);
-                }
-            } catch (err) {
-                console.error(err);
-            }
+    // 2. 中频定时器：专门负责音乐状态同步（每 2000ms 刷新一次即可）
+    musicTimer = setInterval(() => {
+        if (isMusicCtlEnabled.value || isRotationEnabled.value) {
+            syncMusicStatus();
         }
-    }, 2000) as unknown as number;
+    }, 2000);
+
+
+    // 3. 低频定时器：专门轮询系统通知（通知不需要抢时间，2.5秒换来极低的资源占用）
+    notifyTimer = setInterval(async () => {
+        const enabled = localStorage.getItem('nsd_msg_notify') === 'true';
+        if (!enabled) return;
+
+        try {
+            const res = await invoke<any>('fetch_latest_notification');
+            if (res) {
+                msgTitle.value = res.app_name;
+                msgAumid.value = res.aumid;
+                msgBody.value = res.body ? `${res.title}: ${res.body}` : res.title;
+                currentMsgIcon.value = getAppIcon(res.app_name);
+
+                if (!isMsgActive.value) {
+                    isMsgActive.value = true;
+                    if (isMsgModeEnabled.value && !isIslandVisible.value) {
+                        getCurrentWindow().show();
+                        isIslandVisible.value = true;
+                    }
+                    if (!isPinnedToTaskbar.value) {
+                        animateIslandSize(360, 65);
+                    }
+                }
+
+                if ((window as any).msgTimer) clearTimeout((window as any).msgTimer);
+                (window as any).msgTimer = setTimeout(() => {
+                    isMsgActive.value = false;
+                    animateIslandSize(260, 42);
+                    if (isMsgModeEnabled.value) {
+                        setTimeout(() => {
+                            if (!isMsgActive.value) isIslandVisible.value = false;
+                        }, 600);
+                    }
+                }, 5000);
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }, 2500);
 
     // 调大Ping间隔：从2.5秒调大到5.5秒
     pingTimer = setInterval(checkNetworkLatency, 5500) as unknown as number;
@@ -1072,6 +1049,8 @@ onUnmounted(() => {
     clearInterval(speedTimer);
     clearInterval(pingTimer);
     stopRotation();
+    clearInterval(musicTimer);
+    clearInterval(notifyTimer);
 });
 </script>
 
