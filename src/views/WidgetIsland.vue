@@ -25,19 +25,19 @@
                             <div class="hw-item">
                                 <span class="hw-label">CPU</span>
                                 <span class="hw-value" :class="{ 'high-usage': parseInt(cpuUsage) >= 90 }">{{ cpuUsage
-                                    }}</span>
+                                }}</span>
                             </div>
                             <div class="hw-divider"></div>
                             <div class="hw-item">
                                 <span class="hw-label">GPU</span>
                                 <span class="hw-value" :class="{ 'high-usage': parseInt(gpuUsage) >= 90 }">{{ gpuUsage
-                                    }}</span>
+                                }}</span>
                             </div>
                             <div class="hw-divider"></div>
                             <div class="hw-item">
                                 <span class="hw-label">RAM</span>
                                 <span class="hw-value" :class="{ 'high-usage': parseInt(memUsage) >= 90 }">{{ memUsage
-                                    }}</span>
+                                }}</span>
                             </div>
                         </div>
 
@@ -127,6 +127,10 @@ const islandOpacity = ref(Number(localStorage.getItem('nsd_island_opacity') || '
 
 const islandTheme = ref(localStorage.getItem('nsd_island_theme') || 'black');
 
+// 1. 瞬间判定当前是否处于大窗口状态
+const isExpandedSize = computed(() => isMusicExpanded.value || isMsgActive.value);
+
+// 2. 外层容器：状态一变，立马切成目标圆角
 const islandStyle = computed<CSSProperties>(() => {
     const linear = islandOpacity.value / 100;
     const alpha = Math.pow(linear, 1 / 2.2);
@@ -140,28 +144,31 @@ const islandStyle = computed<CSSProperties>(() => {
 
     return {
         ...baseStyle,
-        width: `${currentWidth.value}px`,   // ✨ 还原它：精确绑定
-        height: `${currentHeight.value}px`, // ✨ 还原它：精确绑定
-        borderRadius: currentHeight.value > 60 ? '24px' : '100px',
+        width: '100vw',
+        height: '100vh',
+        // ✅ 核心：只要展开就是 24px，收起就是 100px
+        borderRadius: isExpandedSize.value ? '24px' : '100px',
         position: 'relative',
     };
 });
 
+// 3. 内层核心：永远比外层小 2px
 const coreContentStyle = computed(() => {
     const linear = islandOpacity.value / 100;
     const alpha = Math.pow(linear, 1 / 2.2);
-    // 👇 新增这一行：内层圆角稍微比外层小一点点，贴合更完美
-    const radius = currentHeight.value > 60 ? '22px' : '98px';
+
+    // ✅ 核心：展开 22px，收起 98px
+    const innerRadius = isExpandedSize.value ? '22px' : '98px';
 
     if (islandTheme.value === 'white') {
         return {
             backgroundColor: `rgba(255, 255, 255, ${alpha})`,
-            borderRadius: radius // 👇 加上它
+            borderRadius: innerRadius
         };
     }
     return {
         backgroundColor: `rgba(0, 0, 0, ${alpha})`,
-        borderRadius: radius // 👇 加上它
+        borderRadius: innerRadius
     };
 });
 
@@ -1077,7 +1084,7 @@ onUnmounted(() => {
     border: none !important;
 }
 
-/* 1. 外层包裹层：负责裁切多余的流光，并提供呼吸扩散的高斯模糊效果 */
+/* 1. 外层包裹层：负责裁切多余的流光 */
 .island-container {
     /* 移除 position: absolute; top: 0; */
     margin: 0 auto;
@@ -1091,8 +1098,11 @@ onUnmounted(() => {
     -webkit-user-select: none;
     overflow: hidden;
     background: transparent;
-    transition: background 0.4s ease, border-radius 0.15s ease;
+    transition: background 0.4s ease;
     box-sizing: border-box;
+    transform: translateZ(0);
+    will-change: width, height, border-radius;
+    contain: strict;
 }
 
 /* 2. 隐藏在底层的巨大旋转渐变层 */
@@ -1129,7 +1139,6 @@ onUnmounted(() => {
     justify-content: space-between;
     padding: 0 14px;
     overflow: hidden;
-    transition: border-radius 0.15s ease;
 }
 
 /* 4. 顺时针匀速旋转 */

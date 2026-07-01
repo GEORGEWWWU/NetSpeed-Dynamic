@@ -488,7 +488,6 @@ async fn start_island_animation(
         if let Ok(hwnd) = window.hwnd() {
             use winapi::um::winuser::{GetWindowRect, SetWindowPos};
             use winapi::shared::windef::RECT;
-            use std::f64::consts::PI;
 
             let mut rect: RECT = unsafe { std::mem::zeroed() };
             unsafe { GetWindowRect(hwnd.0 as _, &mut rect); }
@@ -504,15 +503,15 @@ async fn start_island_animation(
             let window_clone = window.clone();
             let hwnd_raw = hwnd.0 as isize;
 
-            // 异步抛给后台进行渲染，10ms 一帧非阻塞推进 (稳过 60 帧，上限取决于屏幕刷新率)
-            tokio::spawn(async move {
+            std::thread::spawn(move || {
                 let start_time = std::time::Instant::now();
                 let duration = std::time::Duration::from_millis(400); // 400ms Snappy 高级回弹感
                 let freq = 2.4;
                 let decay = 12.0;
 
                 while start_time.elapsed() < duration {
-                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    // 标准的线程休眠，约 8ms (目标 120FPS 刷新率)
+                    std::thread::sleep(std::time::Duration::from_millis(8));
 
                     // 检查是否被后面的新指令打断
                     if ANIMATION_ID.load(Ordering::SeqCst) != id {
@@ -524,7 +523,7 @@ async fn start_island_animation(
                     if progress >= 1.0 { break; }
 
                     // 高阶标准弹簧衰减方程
-                    let spring = 1.0 - (freq * elapsed * 2.0 * PI).cos() * (-decay * elapsed).exp();
+                    let spring = 1.0 - (freq * elapsed * 2.0 * std::f64::consts::PI).cos() * (-decay * elapsed).exp();
                     let current_w = start_width + (target_width - start_width) * spring;
                     let current_h = start_height + (target_height - start_height) * spring;
 
@@ -532,14 +531,11 @@ async fn start_island_animation(
                     let phys_window_w = (current_w * scale_factor).round() as i32;
                     let phys_window_h = (current_h * scale_factor).round() as i32;
 
-                    // ✨ 核心修复：根据两种排版模式，进行完全不同的物理几何坐标计算
                     let (final_x, final_y) = if is_pinned {
-                        // 任务栏靠左模式：左侧固定，底部固定，高度向上伸展
                         let left_x = *ANIMATION_LEFT_X.lock().unwrap().as_ref().unwrap();
                         let bottom_y = *ANIMATION_BOTTOM_Y.lock().unwrap().as_ref().unwrap();
                         (left_x, bottom_y - phys_window_h)
                     } else {
-                        // 顶部居中模式：中心点固定，高度向下伸展
                         let center_x = *ANIMATION_CENTER_X.lock().unwrap().as_ref().unwrap();
                         let origin_y = *ANIMATION_ORIGIN_Y.lock().unwrap().as_ref().unwrap();
                         (center_x - phys_window_w / 2, origin_y)
@@ -548,9 +544,6 @@ async fn start_island_animation(
                     unsafe {
                         SetWindowPos(hwnd_raw as _, std::ptr::null_mut(), final_x, final_y, phys_window_w, phys_window_h, 0x0014);
                     }
-
-                    // 顺畅地同步反馈给前端
-                    let _ = window_clone.emit("island-resize", vec![current_w, current_h]);
                 }
 
                 // 终点精准收尾
