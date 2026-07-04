@@ -194,6 +194,13 @@
                                 <img src="../assets/echomusic.ico" class="platform-icon" alt="icon">
                                 EchoMusic
                             </div>
+                            <div class="capsule-btn" :class="{ 'is-active': targetPlayer === 'smtc' }"
+                                @click="setTargetPlayer('smtc')">
+                                <svg viewBox="0 0 24 24" fill="currentColor" class="platform-icon" style="width:14px;height:14px;opacity:0.8;">
+                                    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+                                </svg>
+                                SMTC
+                            </div>
                         </div>
                     </div>
                     <div class="set-item">
@@ -1970,8 +1977,9 @@ input:disabled+.slider {
 
 /* 音乐平台六宫格样式 */
 .player-grid {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
     gap: 4px;
     width: 100%;
     padding: 4px;

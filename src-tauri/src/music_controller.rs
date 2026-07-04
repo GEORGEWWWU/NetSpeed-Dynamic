@@ -33,6 +33,18 @@ fn get_target_media_session() -> Option<GlobalSystemMediaTransportControlsSessio
     };
 
     for session in sessions {
+        if target == "smtc" {
+            // SMTC 模式：返回第一个有活跃媒体的会话（不限制来源）
+            if let Ok(playback) = session.GetPlaybackInfo() {
+                if let Ok(status) = playback.PlaybackStatus() {
+                    if status != GlobalSystemMediaTransportControlsSessionPlaybackStatus::Stopped {
+                        return Some(session);
+                    }
+                }
+            }
+            continue;
+        }
+
         if let Ok(app_id) = session.SourceAppUserModelId() {
             let app_id_str = app_id.to_string().to_lowercase();
             

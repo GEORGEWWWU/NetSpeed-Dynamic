@@ -29,6 +29,8 @@ struct AnchorState {
     origin_y: i32,
     left_x: i32,
     bottom_y: i32,
+    right_x: i32,
+    center_y: i32,
     active_id: u32,
 }
 static ANIMATION_ANCHOR: Mutex<Option<AnchorState>> = Mutex::new(None);
@@ -147,6 +149,7 @@ async fn start_island_animation(
     target_width: f64,
     target_height: f64,
     is_pinned: bool,
+    dock_side: String,
 ) -> Result<(), String> {
     let id = ANIMATION_ID.fetch_add(1, Ordering::SeqCst) + 1;
     let scale_factor = window.scale_factor().unwrap_or(1.0);
@@ -161,28 +164,32 @@ async fn start_island_animation(
             unsafe { GetWindowRect(hwnd.0 as _, &mut rect); }
 
             // 核心修复 1：在主线程安全地获取并克隆锚点值，避免进入子线程后再 unwrap
-            let (anchor_cx, anchor_cy, anchor_lx, anchor_by) = {
+            let (anchor_cx, anchor_cy, anchor_lx, anchor_by, anchor_rx, anchor_cy2) = {
                 // 使用 unwrap_or_else 防止之前的 Panic 导致锁中毒
                 let mut anchor_guard = ANIMATION_ANCHOR.lock().unwrap_or_else(|e| e.into_inner());
-                
+
                 if let Some(anchor) = anchor_guard.as_mut() {
                     // 已经有动画锚点，说明正在连续打断动画，继承坐标并刷新所有权 ID
                     anchor.active_id = id;
-                    (anchor.center_x, anchor.origin_y, anchor.left_x, anchor.bottom_y)
+                    (anchor.center_x, anchor.origin_y, anchor.left_x, anchor.bottom_y, anchor.right_x, anchor.center_y)
                 } else {
                     // 首次触发，设定新的物理锚点
                     let cx = rect.left + (rect.right - rect.left) / 2;
                     let cy = rect.top;
                     let lx = rect.left;
                     let by = rect.bottom;
+                    let rx = rect.right;
+                    let ceny = rect.top + (rect.bottom - rect.top) / 2;
                     *anchor_guard = Some(AnchorState {
                         center_x: cx,
                         origin_y: cy,
                         left_x: lx,
                         bottom_y: by,
+                        right_x: rx,
+                        center_y: ceny,
                         active_id: id,
                     });
-                    (cx, cy, lx, by)
+                    (cx, cy, lx, by, rx, ceny)
                 }
             };
 
@@ -213,11 +220,12 @@ async fn start_island_animation(
                     let phys_window_w = (current_w * scale_factor).round() as i32;
                     let phys_window_h = (current_h * scale_factor).round() as i32;
 
-                    // 核心修复 2：直接使用预先拷贝进来的局部变量，完全告别 unwrap
-                    let (final_x, final_y) = if is_pinned {
-                        (anchor_lx, anchor_by - phys_window_h)
-                    } else {
-                        (anchor_cx - phys_window_w / 2, anchor_cy)
+                    // 根据停靠方向计算窗口位置
+                    let (final_x, final_y) = match dock_side.as_str() {
+                        "left" => (anchor_lx, anchor_cy2 - phys_window_h / 2),
+                        "right" => (anchor_rx - phys_window_w, anchor_cy2 - phys_window_h / 2),
+                        "bottom" => (anchor_lx, anchor_by - phys_window_h),
+                        _ => (anchor_cx - phys_window_w / 2, anchor_cy), // top
                     };
 
                     unsafe {
@@ -229,10 +237,11 @@ async fn start_island_animation(
                     let phys_target_w = (target_width * scale_factor).round() as i32;
                     let phys_target_h = (target_height * scale_factor).round() as i32;
 
-                    let (final_x, final_y) = if is_pinned {
-                        (anchor_lx, anchor_by - phys_target_h)
-                    } else {
-                        (anchor_cx - phys_target_w / 2, anchor_cy)
+                    let (final_x, final_y) = match dock_side.as_str() {
+                        "left" => (anchor_lx, anchor_cy2 - phys_target_h / 2),
+                        "right" => (anchor_rx - phys_target_w, anchor_cy2 - phys_target_h / 2),
+                        "bottom" => (anchor_lx, anchor_by - phys_target_h),
+                        _ => (anchor_cx - phys_target_w / 2, anchor_cy), // top
                     };
 
                     unsafe {

@@ -1,6 +1,6 @@
 <template>
     <transition @enter="onEnter" @leave="onLeave" :css="false">
-        <div v-show="isIslandVisible" :class="['island-container', { 'has-music-border': isGlowBorderEnabled }]"
+        <div v-show="isIslandVisible" :class="['island-container', { 'has-music-border': isGlowBorderEnabled, 'island-vertical': isDockVertical, 'is-transitioning': isTransitioning }]"
             @mousedown="handleMouseDown" @mousemove="handleMouseMove" @mouseup="handleMouseUp"
             @mouseleave="handleMouseLeave" @mouseenter="handleMouseEnter" :style="islandStyle"
             @contextmenu="handleRightClick">
@@ -135,6 +135,7 @@ import { listen, emit } from '@tauri-apps/api/event';
 
 const isIslandVisible = ref(false);
 const isMenuOpen = ref(false);
+let unlistenMove: (() => void) | null = null;
 
 // 控制 DOM 真正的高宽变量与消息数据
 const currentWidth = ref(260);
@@ -285,6 +286,66 @@ const coverCache = new Map<string, string>();
 const isPinnedToTaskbar = ref(localStorage.getItem('nsd_pin_taskbar') === 'true');
 // 记录是否锁定了位置，并存到本地
 const isPositionLocked = ref(localStorage.getItem('nsd_position_locked') === 'true');
+
+// 灵动岛停靠方向：自动根据在屏幕上的位置切换
+type DockSide = 'top' | 'bottom' | 'left' | 'right'
+const dockSide = ref<DockSide>('top')
+const isDockVertical = computed(() => dockSide.value === 'left' || dockSide.value === 'right')
+const isTransitioning = ref(false)
+let moveDebounceTimer: number | null = null
+
+// 检测窗口位置决定停靠方向
+async function updateOrientation() {
+    if (isPinnedToTaskbar.value || isPositionLocked.value) return
+
+    const appWindow = getCurrentWindow()
+    const pos = await appWindow.innerPosition()
+    const monitor = await currentMonitor()
+    if (!monitor) return
+
+    const scale = window.devicePixelRatio
+    const winW = currentWidth.value * scale
+    const winH = currentHeight.value * scale
+    const winCenterX = pos.x + winW / 2
+    const winCenterY = pos.y + winH / 2
+
+    const mL = monitor.position.x
+    const mT = monitor.position.y
+    const mR = mL + monitor.size.width
+    const mB = mT + monitor.size.height
+
+    const marginX = monitor.size.width * 0.18
+    const marginY = monitor.size.height * 0.18
+
+    let newSide: DockSide = 'top'
+    if (winCenterX < mL + marginX) newSide = 'left'
+    else if (winCenterX > mR - marginX) newSide = 'right'
+    else if (winCenterY < mT + marginY) newSide = 'top'
+    else if (winCenterY > mB - marginY) newSide = 'bottom'
+
+    if (newSide === dockSide.value) return
+
+    const wasVertical = isDockVertical.value
+    dockSide.value = newSide
+    const nowVertical = isDockVertical.value
+
+    // 横竖切换 → 播放过渡动画
+    if (wasVertical !== nowVertical) {
+        isTransitioning.value = true
+        await new Promise(r => setTimeout(r, 150))
+
+        if (isMsgActive.value) {
+            await animateIslandSize(360, 65)
+        } else if (isMusicExpanded.value) {
+            await animateIslandSize(320, 115)
+        } else {
+            await animateIslandSize(260, 42)
+        }
+
+        await new Promise(r => setTimeout(r, 300))
+        isTransitioning.value = false
+    }
+}
 // 记录消息模式开关状态
 const isMsgModeEnabled = ref(localStorage.getItem('nsd_msg_mode') === 'true');
 // 轮换功能核心逻辑
@@ -343,6 +404,9 @@ const snapToBottomLeft = async () => {
 
             // 移动完成后，瞬间现身，生米煮成熟饭，Windows 也拦不住了！
             await appWindow.show();
+
+            // 停靠方向设为底部
+            dockSide.value = 'bottom';
         }
     } catch (error) {
         console.error('停靠左下角失败:', error);
@@ -427,7 +491,7 @@ const showInfo = ref(false);
 // 默认显示内容动态从本地缓存读取
 const getPlayerName = () => {
     const key = localStorage.getItem('nsd_target_player') || 'netease';
-    const map: Record<string, string> = { 'netease': '网易云音乐', 'spotify': 'Spotify', 'apple': 'Apple Music', 'qqmusic': 'QQ音乐', 'kugou': '酷狗音乐', 'echo': 'Echo Music' };
+    const map: Record<string, string> = { 'netease': '网易云音乐', 'spotify': 'Spotify', 'apple': 'Apple Music', 'qqmusic': 'QQ音乐', 'kugou': '酷狗音乐', 'echo': 'Echo Music', 'smtc': '系统媒体 (SMTC)' };
     return map[key] || '未知平台';
 };
 
@@ -609,6 +673,9 @@ const adjustWindowPosition = async () => {
             const y = monitorTopPhysical + (12 * scaleFactor);
 
             await appWindow.setPosition(new PhysicalPosition(Math.round(x), Math.round(y)));
+
+            // 停靠方向设为顶部
+            dockSide.value = 'top';
         }
     } catch (error) {
         console.error('调整窗口位置失败:', error);
@@ -872,11 +939,17 @@ const handleMsgClick = async () => {
 // 灵动岛核心代码！（完美防漂移+防裁切+防打断抖动）
 const animateIslandSize = async (targetWidth: number, targetHeight: number) => {
     try {
-        // 不使用响应式的 currentWidth，而是向系统请求当前最真实的物理像素
-        // 这样无论前一个动画进行到哪一帧，新动画都会完美“接管”当前状态，实现丝滑中断
         const appWindow = getCurrentWindow();
         const realSize = await appWindow.innerSize();
         const scaleFactor = window.devicePixelRatio;
+
+        // 根据停靠方向决定是否交换宽高
+        let finalW = targetWidth
+        let finalH = targetHeight
+        if (isDockVertical.value) {
+            finalW = targetHeight
+            finalH = targetWidth
+        }
 
         const realStartW = realSize.width / scaleFactor;
         const realStartH = realSize.height / scaleFactor;
@@ -884,9 +957,10 @@ const animateIslandSize = async (targetWidth: number, targetHeight: number) => {
         await invoke('start_island_animation', {
             startWidth: realStartW,
             startHeight: realStartH,
-            targetWidth: targetWidth,
-            targetHeight: targetHeight,
-            isPinned: isPinnedToTaskbar.value
+            targetWidth: finalW,
+            targetHeight: finalH,
+            isPinned: isPinnedToTaskbar.value,
+            dockSide: dockSide.value
         });
     } catch (err) {
         console.error('呼叫 Rust 动画失败:', err);
@@ -1086,6 +1160,15 @@ onMounted(async () => {
         await adjustWindowPosition();
     }
 
+    // 监听窗口移动事件，自动切换停靠方向
+    unlistenMove = await appWindow.onMoved(async () => {
+        if (isPinnedToTaskbar.value || isPositionLocked.value) return
+        if (moveDebounceTimer) clearTimeout(moveDebounceTimer)
+        moveDebounceTimer = window.setTimeout(() => {
+            updateOrientation()
+        }, 200)
+    })
+
     // 先显示透明的 Tauri 窗口，再触发 Vue 的灵动岛入场弹簧动画
     // 如果没开消息模式，才在启动时直接显示灵动岛
     if (!isMsgModeEnabled.value) {
@@ -1231,6 +1314,8 @@ onUnmounted(() => {
     clearInterval(musicTimer);
     clearInterval(notifyTimer);
     clearInterval(spectrumTimer);
+    if (moveDebounceTimer) clearTimeout(moveDebounceTimer);
+    if (unlistenMove) unlistenMove();
 });
 </script>
 
@@ -1972,5 +2057,240 @@ onUnmounted(() => {
     opacity: 0.95;
     /* 配合图标微调间距 */
     transform: translateX(-2px) translateY(-1px);
+}
+
+/* =========================================
+   灵动岛竖停靠模式 - 垂直布局样式
+   ========================================= */
+
+.island-vertical {
+    flex-direction: column !important;
+    padding: 2px !important;
+}
+
+/* 切换过渡：淡入淡出保护 */
+.island-vertical.is-transitioning .island-core-content {
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.island-core-content {
+    transition: opacity 0.2s ease;
+}
+
+/* 内置包装器：垂直模式下也跟随转成纵排 */
+.island-vertical .inner-wrapper {
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    height: auto !important;
+}
+
+/* 网速盒子竖排 */
+.island-vertical .speed-box {
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0px !important;
+    top: auto !important;
+    left: auto !important;
+    position: static !important;
+    transform: none !important;
+}
+
+.island-vertical .speed-item {
+    transform: none !important;
+    gap: 2px !important;
+}
+
+.island-vertical .value {
+    min-width: 44px !important;
+    font-size: 10px !important;
+}
+
+.island-vertical .label {
+    font-size: 8px !important;
+    padding: 0 3px !important;
+}
+
+/* 系统硬件竖排 */
+.island-vertical .systemstate-box {
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 1px !important;
+    top: auto !important;
+    left: auto !important;
+    width: auto !important;
+    height: auto !important;
+    position: static !important;
+}
+
+.island-vertical .hw-item {
+    margin-left: 0 !important;
+    transform: none !important;
+    gap: 3px !important;
+}
+
+.island-vertical .hw-value {
+    font-size: 10px !important;
+    min-width: 28px !important;
+}
+
+/* 音乐控制竖排 */
+.island-vertical .music-ctl-box {
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    top: auto !important;
+    left: auto !important;
+    position: static !important;
+    height: auto !important;
+}
+
+.island-vertical .album-cover {
+    width: 18px !important;
+    height: 18px !important;
+    transform: none !important;
+}
+
+.island-vertical .album-cover.is-playing {
+    transform: scale(1.08) !important;
+}
+
+.island-vertical .music-info-mask-box {
+    left: 0 !important;
+    right: 0 !important;
+    position: relative !important;
+    height: auto !important;
+    padding: 0 4px !important;
+    transform: none !important;
+    margin-top: 2px !important;
+}
+
+.island-vertical .music-info-text {
+    position: relative !important;
+    top: auto !important;
+    transform: none !important;
+    font-size: 9px !important;
+    text-align: center !important;
+}
+
+/* 竖停靠时展开音乐控制器特殊处理 */
+.island-vertical .music-ctl-box.expanded {
+    flex-direction: column !important;
+    align-items: center !important;
+    padding: 0 !important;
+}
+
+.island-vertical .music-ctl-box.expanded .music-top-row {
+    flex-direction: column !important;
+    align-items: center !important;
+    height: auto !important;
+    margin-top: 8px !important;
+    margin-left: 0 !important;
+}
+
+.island-vertical .music-ctl-box.expanded .album-cover {
+    width: 36px !important;
+    height: 36px !important;
+    transform: none !important;
+}
+
+.island-vertical .music-ctl-box.expanded .music-info-mask-box {
+    left: 0 !important;
+    right: 0 !important;
+    padding: 0 8px !important;
+}
+
+.island-vertical .music-ctl-box.expanded .music-controls {
+    position: relative !important;
+    left: auto !important;
+    transform: none !important;
+    gap: 16px !important;
+    margin-top: 6px !important;
+}
+
+/* 消息通知竖排 */
+.island-vertical .msg-box {
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 8px !important;
+    gap: 4px !important;
+}
+
+.island-vertical .msg-avatar {
+    width: 24px !important;
+    height: 24px !important;
+}
+
+.island-vertical .msg-avatar-img {
+    width: 20px !important;
+    height: 20px !important;
+}
+
+.island-vertical .msg-text-wrapper {
+    align-items: center !important;
+}
+
+.island-vertical .msg-title {
+    font-size: 10px !important;
+    text-align: center !important;
+}
+
+.island-vertical .msg-body {
+    font-size: 9px !important;
+    text-align: center !important;
+}
+
+/* 系统通知竖排 */
+.island-vertical .system-toast-box {
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 2px !important;
+}
+
+.island-vertical .toast-icon {
+    transform: none !important;
+    width: 20px !important;
+    height: 20px !important;
+}
+
+.island-vertical .toast-text {
+    transform: none !important;
+    font-size: 10px !important;
+    text-align: center !important;
+}
+
+/* 频谱竖排 */
+.island-vertical .audio-spectrum {
+    position: absolute !important;
+    bottom: 4px !important;
+    right: auto !important;
+    transform: none !important;
+}
+
+.island-vertical .audio-spectrum.expanded {
+    right: auto !important;
+    top: auto !important;
+    bottom: 4px !important;
+    transform: none !important;
+}
+
+/* 状态圆点竖排 */
+.island-vertical .status-dot {
+    position: absolute !important;
+    bottom: 4px !important;
+}
+
+/* 双行文字竖停靠适配 */
+.island-vertical .song-title {
+    font-size: 11px !important;
+}
+
+.island-vertical .song-artist {
+    font-size: 9px !important;
 }
 </style>
