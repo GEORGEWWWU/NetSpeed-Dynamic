@@ -5,18 +5,23 @@
             <p>选择一个模块并激活你的沉浸式体验</p>
         </div>
 
-        <button v-show="canScrollLeft" class="scroll-btn scroll-btn-left" @click="scrollToLeft">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                stroke-linejoin="round">
-                <polyline points="15 18 9 12 15 6"></polyline>
-            </svg>
-        </button>
-        <button v-show="canScrollRight" class="scroll-btn scroll-btn-right" @click="scrollToRight">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                stroke-linejoin="round">
-                <polyline points="9 18 15 12 9 6"></polyline>
-            </svg>
-        </button>
+        <transition name="fade">
+            <button v-show="canScrollLeft" class="scroll-btn scroll-btn-left" @click="scrollToLeft">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+            </button>
+        </transition>
+
+        <transition name="fade">
+            <button v-show="canScrollRight" class="scroll-btn scroll-btn-right" @click="scrollToRight">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+            </button>
+        </transition>
 
         <div class="gallery-track" ref="trackRef" @scroll="checkScroll">
 
@@ -725,5 +730,16 @@ onUnmounted(() => {
     color: var(--item-desc-color);
     margin: 0;
     letter-spacing: 0.5px;
+}
+
+/* 边缘按钮显隐过渡动画 */
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
 }
 </style>
