@@ -186,8 +186,14 @@
                 <transition name="pop">
                     <div class="right-circle" :style="coreContentStyle" v-if="isSplitMode"
                         @click.stop="isPomodoroExpanded = true" style="cursor: pointer;">
+
+                        <svg class="progress-ring" viewBox="0 0 38 38" v-show="isPomodoroActive">
+                            <circle class="progress-ring-circle" stroke="#ff4757" stroke-width="2" fill="transparent"
+                                r="18" cx="19" cy="19" :style="{ strokeDashoffset: pomoProgressOffset }" />
+                        </svg>
+
                         <svg viewBox="0 0 24 24" class="pomodoro-svg" fill="none" stroke="currentColor" stroke-width="2"
-                            stroke-linecap="round" stroke-linejoin="round">
+                            stroke-linecap="round" stroke-linejoin="round" style="position: relative; z-index: 2;">
                             <circle cx="12" cy="12" r="10"></circle>
                             <polyline points="12 6 12 12 16 14"></polyline>
                         </svg>
@@ -208,8 +214,19 @@ const isIslandVisible = ref(false);
 const isPomodoroActive = ref(localStorage.getItem('nsd_pomodoro_active') === 'true');
 const isPomodoroVisible = ref(localStorage.getItem('nsd_pomodoro_visible') === 'true');
 const islandPomoTime = ref(Number(localStorage.getItem('nsd_pomodoro_time')) || 1500);
+const islandPomoTotalTime = ref(Number(localStorage.getItem('nsd_pomodoro_time')) || 1500);
 let pomoCountdownTimer: number | null = null;
 const isMenuOpen = ref(false);
+
+// 计算环形进度条的 stroke 偏移量
+// 半半径 r=18，周长 C ≈ 113.1
+const pomoProgressOffset = computed(() => {
+    const C = 113.1;
+    if (islandPomoTotalTime.value <= 0) return 0; // 进度走完时完全消失（偏移量为 0）
+    const ratio = islandPomoTime.value / islandPomoTotalTime.value;
+    // 顺时针减少消失：当时间变少时，offset 逐渐变大，使得实线部分顺时针缩回
+    return C * (1 - ratio);
+});
 
 // 将秒数转化为 XX:XX 格式的计算属性
 const formattedIslandPomoTime = computed(() => {
@@ -245,6 +262,7 @@ const cleanUpPomoExit = () => {
     // 重置时间为预设时长
     const defaultTime = Number(localStorage.getItem('nsd_pomodoro_time')) || 1500;
     islandPomoTime.value = defaultTime;
+    islandPomoTotalTime.value = defaultTime;
 
     // 清空本地标记
     localStorage.setItem('nsd_pomodoro_visible', 'false');
@@ -1299,6 +1317,7 @@ onMounted(async () => {
             isPomodoroActive.value = event.payload.enabled;
             if (event.payload.time !== undefined) {
                 islandPomoTime.value = event.payload.time;
+                islandPomoTotalTime.value = event.payload.time;
             }
             if (event.payload.enabled) {
                 // 启动/继续：确立可见性，并跑秒
@@ -1315,8 +1334,9 @@ onMounted(async () => {
                     localStorage.setItem('nsd_pomodoro_visible', 'false');
                 } else {
                     // 如果仅仅是普通的“暂停”，则保持可见性，只在未启动时归位时间
-                    if (localStorage.getItem('nsd_pomodoro_started') === 'false') {
+                    if (!event.payload.isReset && localStorage.getItem('nsd_pomodoro_started') === 'false') {
                         islandPomoTime.value = Number(localStorage.getItem('nsd_pomodoro_time')) || 1500;
+                        islandPomoTotalTime.value = islandPomoTime.value; // 👈 新增：同步恢复时的总时长
                     }
                 }
             }
@@ -2308,5 +2328,23 @@ onUnmounted(() => {
 .island-close-btn svg {
     width: 20px;
     height: 20px;
+}
+
+/* 番茄钟进度条样式 */
+.progress-ring {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 38px;
+    height: 38px;
+    /* 核心修复：-90deg 让起点保持在正上方，scaleX(-1) 实现水平镜像，使其由逆时针变为顺时针流动 */
+    transform: rotate(-90deg) scaleY(-1);
+    z-index: 1;
+}
+
+.progress-ring-circle {
+    stroke-dasharray: 113.1;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1s linear;
 }
 </style>
