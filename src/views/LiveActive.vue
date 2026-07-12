@@ -253,7 +253,6 @@ onUnmounted(() => {
     width: 100%;
     flex: 1;
     min-height: 0;
-    /* 👈 修改：去掉固定的400px，让它自适应剩余空间 */
     overflow: hidden;
     position: relative;
 }
@@ -336,9 +335,7 @@ onUnmounted(() => {
     display: none;
 }
 
-/* ==============================================
-   1. 注册原生的 CSS 属性，赋予它们可过渡的能力
-   ============================================== */
+/* 注册原生的 CSS 属性，赋予它们可过渡的能力 */
 @property --mask-left-size {
     syntax: '<length>';
     initial-value: 0px;
@@ -351,9 +348,7 @@ onUnmounted(() => {
     inherits: false;
 }
 
-/* ==============================================
-   2. 优化后的容器边缘平滑渐罩
-   ============================================== */
+/* 容器边缘平滑渐罩 */
 .gallery-track {
     /* 显式声明基础变量 */
     --mask-left-size: 0px;
@@ -392,6 +387,9 @@ onUnmounted(() => {
 }
 
 /* 专业工业化 Bento 卡片设计 */
+/* ==============================================
+   根本解决：彻底拔除滤镜，纯透明度控制（绝不闪烁）
+   ============================================== */
 .gallery-card {
     flex-shrink: 0;
     width: 200px;
@@ -404,22 +402,25 @@ onUnmounted(() => {
     overflow: hidden;
     position: relative;
     transform: scale(0.96);
-    opacity: 0.55;
-    filter: grayscale(100%);
+    opacity: 0.45;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);
-    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+        transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+        opacity 0.3s ease,
+        box-shadow 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+        border-color 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .gallery-card:hover {
-    opacity: 0.8;
-    filter: grayscale(50%);
+    /* hover 时平滑提亮，且不再有滤镜切换的生硬感 */
+    opacity: 0.85;
 }
 
 .gallery-card.is-active {
     width: 320px;
     transform: scale(1);
     opacity: 1;
-    filter: grayscale(0%);
+    /* 激活时完全恢复不透明 */
     cursor: default;
     border-color: var(--accent-color);
     box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.1),
@@ -701,9 +702,7 @@ onUnmounted(() => {
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
-    /* 👈 核心修复：允许内部元素换行 */
     gap: 12px;
-    /* 👈 增加元素间的安全间距 */
     padding: 14px 0;
     border-bottom: 1px dashed var(--control-border);
 }
@@ -717,7 +716,6 @@ onUnmounted(() => {
     flex-direction: column;
     gap: 4px;
     flex-shrink: 0;
-    /* 👈 绝对禁止文本容器被弹性压缩 */
     max-width: 100%;
 }
 
