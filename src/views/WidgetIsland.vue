@@ -1,163 +1,184 @@
 <template>
     <transition @enter="onEnter" @leave="onLeave" :css="false">
-        <div v-show="isIslandVisible" :class="['island-container', { 'has-music-border': isGlowBorderEnabled }]"
-            @mousedown="handleMouseDown" @mousemove="handleMouseMove" @mouseup="handleMouseUp"
-            @mouseleave="handleMouseLeave" @mouseenter="handleMouseEnter" :style="islandStyle"
+        <div v-show="isIslandVisible" class="island-container" @mousedown="handleMouseDown" @mousemove="handleMouseMove"
+            @mouseup="handleMouseUp" @mouseleave="handleMouseLeave" @mouseenter="handleMouseEnter" :style="islandStyle"
             @contextmenu="handleRightClick">
 
-            <div class="rainbow-border-glow" v-if="isGlowBorderEnabled" :style="{ opacity: glowOpacity }"></div>
-
-            <div class="island-core-content" :style="coreContentStyle">
-                <div class="inner-wrapper">
-                    <transition mode="out-in" @enter="onInnerEnter" @leave="onInnerLeave" :css="false">
-                        <div v-if="isMsgActive" class="msg-box" key="msg">
-                            <div class="msg-avatar">
-                                <img :src="currentMsgIcon" alt="消息图标" class="msg-avatar-img">
-                            </div>
-                            <div class="msg-text-wrapper">
-                                <div class="msg-title">
-                                    <span class="sender-name">{{ msgTitle }}</span>
-                                    <span class="app-name">{{ msgAppName }}</span>
+            <div class="island-core-content" :class="{ 'is-split-layout': isSplitMode }"
+                :style="{ borderRadius: isExpandedSize ? '22px' : '98px' }">
+                <div class="left-capsule" :style="coreContentStyle" :class="{ 'is-split': isSplitMode }">
+                    <div class="inner-wrapper">
+                        <transition mode="out-in" @enter="onInnerEnter" @leave="onInnerLeave" :css="false">
+                            <div v-if="isMsgActive" class="msg-box" key="msg">
+                                <div class="msg-avatar">
+                                    <img :src="currentMsgIcon" alt="消息图标" class="msg-avatar-img">
                                 </div>
-                                <div class="msg-body">{{ msgBody }}</div>
-                            </div>
-                        </div>
-
-                        <div v-else-if="displaySysToast" class="system-toast-box" key="systoast">
-                            <div v-if="sysToastType === 'app'" class="toast-icon app-icon">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                    <circle cx="12" cy="12" r="10" stroke-width="2" stroke-linecap="round"
-                                        stroke-linejoin="round" opacity="0.3" />
-                                    <path d="M8 12.5l3 3 5-6" stroke-width="2.5" stroke-linecap="round"
-                                        stroke-linejoin="round" />
-                                </svg>
+                                <div class="msg-text-wrapper">
+                                    <div class="msg-title">
+                                        <span class="sender-name">{{ msgTitle }}</span>
+                                        <span class="app-name">{{ msgAppName }}</span>
+                                    </div>
+                                    <div class="msg-body">{{ msgBody }}</div>
+                                </div>
                             </div>
 
-                            <div v-else-if="sysToastType === 'lock'" class="toast-icon sys-icon">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                    <rect x="4" y="12" width="16" height="8" rx="2" ry="2" stroke-width="2"
-                                        stroke-linecap="round" stroke-linejoin="round" />
-                                    <path d="M8 12V9a4 4 0 0 1 8 0v3" stroke-width="2" stroke-linecap="round"
-                                        stroke-linejoin="round" />
-                                </svg>
-                            </div>
-
-                            <div v-else-if="sysToastType === 'unlock'" class="toast-icon sys-icon">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                    <rect x="4" y="12" width="16" height="8" rx="2" ry="2" stroke-width="2"
-                                        stroke-linecap="round" stroke-linejoin="round" />
-                                    <path d="M8 12V9a4 4 0 0 1 8 0" stroke-width="2" stroke-linecap="round"
-                                        stroke-linejoin="round" />
-                                </svg>
-                            </div>
-
-                            <div v-else-if="sysToastType === 'battery-charge'" class="toast-icon battery-charge-icon">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                    <rect x="2" y="7" width="16" height="10" rx="2" ry="2" stroke-width="2"
-                                        stroke-linecap="round" stroke-linejoin="round" />
-                                    <line x1="22" y1="11" x2="22" y2="13" stroke-width="2" stroke-linecap="round"
-                                        stroke-linejoin="round" />
-                                    <polygon points="11 7 8 12 12 12 11 17 14 12 10 12 11 7" stroke-width="1.5"
-                                        stroke-linejoin="round" />
-                                </svg>
-                            </div>
-
-                            <div v-else-if="sysToastType === 'battery-low'" class="toast-icon battery-low-icon">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                    <rect x="2" y="7" width="16" height="10" rx="2" ry="2" stroke-width="2"
-                                        stroke-linecap="round" stroke-linejoin="round" />
-                                    <line x1="22" y1="11" x2="22" y2="13" stroke-width="2" stroke-linecap="round"
-                                        stroke-linejoin="round" />
-                                    <line x1="6" y1="12" x2="9" y2="12" stroke-width="4" stroke-linecap="round"
-                                        stroke-linejoin="round" />
-                                </svg>
-                            </div>
-
-                            <div v-else class="toast-icon sys-icon">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                    <circle cx="12" cy="12" r="10" stroke-width="2" stroke-linecap="round"
-                                        stroke-linejoin="round" opacity="0.3" />
-                                    <g transform="translate(6, 5.5) scale(0.5)">
-                                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke-width="4"
-                                            stroke-linecap="round" stroke-linejoin="round" />
-                                        <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke-width="4" stroke-linecap="round"
+                            <div v-else-if="displaySysToast" class="system-toast-box" key="systoast">
+                                <div v-if="sysToastType === 'app'" class="toast-icon app-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                        <circle cx="12" cy="12" r="10" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round" opacity="0.3" />
+                                        <path d="M8 12.5l3 3 5-6" stroke-width="2.5" stroke-linecap="round"
                                             stroke-linejoin="round" />
-                                    </g>
-                                </svg>
+                                    </svg>
+                                </div>
+
+                                <div v-else-if="sysToastType === 'lock'" class="toast-icon sys-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                        <rect x="4" y="12" width="16" height="8" rx="2" ry="2" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round" />
+                                        <path d="M8 12V9a4 4 0 0 1 8 0v3" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round" />
+                                    </svg>
+                                </div>
+
+                                <div v-else-if="sysToastType === 'unlock'" class="toast-icon sys-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                        <rect x="4" y="12" width="16" height="8" rx="2" ry="2" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round" />
+                                        <path d="M8 12V9a4 4 0 0 1 8 0" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round" />
+                                    </svg>
+                                </div>
+
+                                <div v-else-if="sysToastType === 'battery-charge'"
+                                    class="toast-icon battery-charge-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                        <rect x="2" y="7" width="16" height="10" rx="2" ry="2" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round" />
+                                        <line x1="22" y1="11" x2="22" y2="13" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round" />
+                                        <polygon points="11 7 8 12 12 12 11 17 14 12 10 12 11 7" stroke-width="1.5"
+                                            stroke-linejoin="round" />
+                                    </svg>
+                                </div>
+
+                                <div v-else-if="sysToastType === 'battery-low'" class="toast-icon battery-low-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                        <rect x="2" y="7" width="16" height="10" rx="2" ry="2" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round" />
+                                        <line x1="22" y1="11" x2="22" y2="13" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round" />
+                                        <line x1="6" y1="12" x2="9" y2="12" stroke-width="4" stroke-linecap="round"
+                                            stroke-linejoin="round" />
+                                    </svg>
+                                </div>
+
+                                <div v-else class="toast-icon sys-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                        <circle cx="12" cy="12" r="10" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round" opacity="0.3" />
+                                        <g transform="translate(6, 5.5) scale(0.5)">
+                                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke-width="4"
+                                                stroke-linecap="round" stroke-linejoin="round" />
+                                            <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke-width="4" stroke-linecap="round"
+                                                stroke-linejoin="round" />
+                                        </g>
+                                    </svg>
+                                </div>
+                                <div class="toast-text">{{ sysToastText }}</div>
                             </div>
-                            <div class="toast-text">{{ sysToastText }}</div>
+
+                            <div v-else-if="displayMusic" class="music-ctl-box" :class="{ 'expanded': isMusicExpanded }"
+                                :key="'music_' + musicBoxKey" @click="expandMusic" style="cursor: pointer;">
+                                <div class="music-top-row">
+                                    <div class="album-cover" :class="{ 'is-playing': isPlaying }">
+                                        <div class="cover-inner"
+                                            :style="coverUrl ? { backgroundImage: `url(${coverUrl})`, backgroundSize: 'cover' } : {}">
+                                        </div>
+                                    </div>
+                                    <div class="music-info-mask-box" ref="maskBoxRef">
+                                        <div class="music-info-text single-line"
+                                            :class="{ 'fade-out': isMusicExpanded }">
+                                            <span class="scroll-inner" ref="textInnerRef"
+                                                :class="{ 'is-scrolling': scrollDist > 0 }"
+                                                :style="scrollDist > 0 ? { '--scroll-dist': scrollDist + 'px', '--scroll-duration': scrollDuration } : {}">
+                                                {{ currentTrackInfo }}
+                                            </span>
+                                        </div>
+                                        <div class="music-info-text double-line"
+                                            :class="{ 'fade-in': isMusicExpanded }">
+                                            <div class="song-title">{{ currentSongName }}</div>
+                                            <div class="song-artist">{{ currentArtistName }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <transition name="fade">
+                                    <div class="music-controls" v-show="isMusicExpanded">
+                                        <button class="ctl-btn" @click.stop="prevTrack">
+                                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+                                            </svg>
+                                        </button>
+                                        <button class="ctl-btn play-btn" @click.stop="togglePlay">
+                                            <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                                            </svg>
+                                            <svg v-else viewBox="0 0 24 24" fill="currentColor"
+                                                style="transform: translateX(1px);">
+                                                <path d="M8 5v14l11-7z" />
+                                            </svg>
+                                        </button>
+                                        <button class="ctl-btn" @click.stop="nextTrack">
+                                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </transition>
+                            </div>
+
+                            <div v-else-if="isPomodoroActive" class="pomodoro-text-box" key="pomodoro">
+                                <span class="pomo-icon">🍅</span>
+                                <div class="pomodoro-info">
+                                    <span class="pomodoro-title">专注番茄钟</span>
+                                    <span class="pomodoro-time">24:59</span>
+                                </div>
+                            </div>
+
+                            <div v-else-if="displaySpeed" class="speed-box" key="speed">
+                                <transition name="speed-fade" mode="out-in">
+                                    <div v-if="isShowingUpload" class="speed-item" key="upload">
+                                        <span :class="['label', { 'high-traffic': isHighUpload }]">⬆</span>
+                                        <span class="value">{{ uploadSpeed }}</span>
+                                    </div>
+                                    <div v-else class="speed-item" key="download">
+                                        <span :class="['label', { 'high-traffic': isHighDownload }]">⬇</span>
+                                        <span class="value">{{ downloadSpeed }}</span>
+                                    </div>
+                                </transition>
+                            </div>
+                        </transition>
+                    </div>
+
+                    <transition mode="out-in" @enter="onInnerEnter" @leave="onInnerLeave" :css="false">
+                        <div v-if="showSpectrumIndicator" class="audio-spectrum"
+                            :class="{ 'is-playing': isPlaying, 'expanded': isMusicExpanded }" key="spectrum">
+                            <span class="bar" v-for="(val, index) in spectrumData" :key="index"
+                                :style="{ transform: `scaleY(${val})` }"></span>
                         </div>
 
-                        <div v-else-if="displayMusic" class="music-ctl-box" :class="{ 'expanded': isMusicExpanded }"
-                            :key="'music_' + musicBoxKey" @click="expandMusic" style="cursor: pointer;">
-                            <div class="music-top-row">
-                                <div class="album-cover" :class="{ 'is-playing': isPlaying }">
-                                    <div class="cover-inner"
-                                        :style="coverUrl ? { backgroundImage: `url(${coverUrl})`, backgroundSize: 'cover' } : {}">
-                                    </div>
-                                </div>
-                                <div class="music-info-mask-box" ref="maskBoxRef">
-                                    <div class="music-info-text single-line" :class="{ 'fade-out': isMusicExpanded }">
-                                        <span class="scroll-inner" ref="textInnerRef"
-                                            :class="{ 'is-scrolling': scrollDist > 0 }"
-                                            :style="scrollDist > 0 ? { '--scroll-dist': scrollDist + 'px', '--scroll-duration': scrollDuration } : {}">
-                                            {{ currentTrackInfo }}
-                                        </span>
-                                    </div>
-                                    <div class="music-info-text double-line" :class="{ 'fade-in': isMusicExpanded }">
-                                        <div class="song-title">{{ currentSongName }}</div>
-                                        <div class="song-artist">{{ currentArtistName }}</div>
-                                    </div>
-                                </div>
-                            </div>
-                            <transition name="fade">
-                                <div class="music-controls" v-show="isMusicExpanded">
-                                    <button class="ctl-btn" @click.stop="prevTrack">
-                                        <svg viewBox="0 0 24 24" fill="currentColor">
-                                            <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
-                                        </svg>
-                                    </button>
-                                    <button class="ctl-btn play-btn" @click.stop="togglePlay">
-                                        <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor">
-                                            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-                                        </svg>
-                                        <svg v-else viewBox="0 0 24 24" fill="currentColor"
-                                            style="transform: translateX(1px);">
-                                            <path d="M8 5v14l11-7z" />
-                                        </svg>
-                                    </button>
-                                    <button class="ctl-btn" @click.stop="nextTrack">
-                                        <svg viewBox="0 0 24 24" fill="currentColor">
-                                            <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
-                                        </svg>
-                                    </button>
-                                </div>
-                            </transition>
-                        </div>
-
-                        <div v-else-if="displaySpeed" class="speed-box" key="speed">
-                            <transition name="speed-fade" mode="out-in">
-                                <div v-if="isShowingUpload" class="speed-item" key="upload">
-                                    <span :class="['label', { 'high-traffic': isHighUpload }]">⬆</span>
-                                    <span class="value">{{ uploadSpeed }}</span>
-                                </div>
-                                <div v-else class="speed-item" key="download">
-                                    <span :class="['label', { 'high-traffic': isHighDownload }]">⬇</span>
-                                    <span class="value">{{ downloadSpeed }}</span>
-                                </div>
-                            </transition>
-                        </div>
+                        <div v-else :class="['status-dot', networkStatus]" key="dot"></div>
                     </transition>
                 </div>
 
-                <transition mode="out-in" @enter="onInnerEnter" @leave="onInnerLeave" :css="false">
-                    <div v-if="showSpectrumIndicator" class="audio-spectrum"
-                        :class="{ 'is-playing': isPlaying, 'expanded': isMusicExpanded }" key="spectrum">
-                        <span class="bar" v-for="(val, index) in spectrumData" :key="index"
-                            :style="{ transform: `scaleY(${val})` }"></span>
+                <transition name="pop">
+                    <div class="right-circle" :style="coreContentStyle" v-if="isSplitMode">
+                        <svg viewBox="0 0 24 24" class="pomodoro-svg" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
                     </div>
-
-                    <div v-else :class="['status-dot', networkStatus]" key="dot"></div>
                 </transition>
             </div>
         </div>
@@ -171,7 +192,13 @@ import { getCurrentWindow, currentMonitor, PhysicalPosition, LogicalPosition, Ph
 import { listen, emit } from '@tauri-apps/api/event';
 
 const isIslandVisible = ref(false);
+const isPomodoroActive = ref(localStorage.getItem('nsd_pomodoro_active') === 'true');
 const isMenuOpen = ref(false);
+
+// 当有实时活动，且当前不是大弹窗状态(没收到消息/没展开音乐)时，启动分割模式
+const isSplitMode = computed(() => {
+    return isPomodoroActive.value && !isMsgActive.value && !displaySysToast.value && !isMusicExpanded.value && !isMusicExpanding.value;
+});
 
 // 记录全屏自动隐藏开关状态
 const isAutoHideEnabled = ref(localStorage.getItem('nsd_autohide_fs') === 'true');
@@ -272,12 +299,14 @@ const isExpandedSize = computed(() => isMusicExpanded.value || isMsgActive.value
 const islandStyle = computed<CSSProperties>(() => {
     const linear = islandOpacity.value / 100;
     const alpha = Math.pow(linear, 1 / 2.2);
-    const baseStyle = islandTheme.value === 'white' ? {
-        backgroundColor: `rgba(255, 255, 255, ${alpha})`,
-        color: '#000000'
-    } : {
-        backgroundColor: `rgba(0, 0, 0, ${alpha})`,
-        color: '#ffffff'
+
+    const currentBgColor = isSplitMode.value
+        ? 'transparent'
+        : (islandTheme.value === 'white' ? `rgba(255, 255, 255, ${alpha})` : `rgba(0, 0, 0, ${alpha})`);
+
+    const baseStyle = {
+        backgroundColor: currentBgColor,
+        color: islandTheme.value === 'white' ? '#000000' : '#ffffff'
     };
 
     return {
@@ -310,11 +339,6 @@ const coreContentStyle = computed(() => {
     };
 });
 
-const glowOpacity = computed(() => {
-    const linear = islandOpacity.value / 100;
-    return Math.pow(linear, 1 / 2.2);
-});
-
 const uploadSpeed = ref('0 KB/s');
 const downloadSpeed = ref('0 KB/s');
 
@@ -328,8 +352,6 @@ const networkStatus = ref<'good' | 'warning' | 'error'>('good');
 // 音乐控制功能开关
 const isMusicCtlEnabled = ref(localStorage.getItem('nsd_music_ctrl') === 'true');
 const isPlaying = ref(false);
-// 流光边框默认状态完全镜像音乐控制器（只要音乐控制器开着它就开，关了就一起关）
-const isGlowBorderEnabled = ref(localStorage.getItem('nsd_glow_border') === 'true');
 
 // 律动频谱
 const spectrumData = ref([0.35, 0.35, 0.35, 0.35, 0.35]);
@@ -347,14 +369,14 @@ const isPositionLocked = ref(localStorage.getItem('nsd_position_locked') === 'tr
 const isMsgModeEnabled = ref(localStorage.getItem('nsd_msg_mode') === 'true');
 
 // 使用计算属性智能判断当前该显示谁
-const displaySpeed = computed(() => !isMsgActive.value && !displaySysToast.value && !isMusicCtlEnabled.value);
+const displaySpeed = computed(() => !isMsgActive.value && !displaySysToast.value && !isMusicCtlEnabled.value && !isPomodoroActive.value);
 const displayMusic = computed(() => !isMsgActive.value && !displaySysToast.value && isMusicCtlEnabled.value);
 
 // 辅助函数：获取当前状态应该拥有的默认大小
 const getBaseSize = () => {
-    // 网速岛尺寸统一缩小为 150x34
+    // 只要开启了番茄钟，不管有没有媒体，都强制拉大到 260 的中尺寸来装载胶囊+小球
+    if (isPomodoroActive.value) return { w: 260, h: 42 };
     if (displaySpeed.value) return { w: 150, h: 34 };
-    // 音乐（未展开）等其他状态恢复默认的 260x42
     return { w: 260, h: 42 };
 };
 
@@ -525,12 +547,12 @@ const calculateScroll = () => {
         return;
     }
 
-    // 核心修复 1：使用 getBoundingClientRect() 获取无视父级限制的真实渲染宽度
+    // 使用 getBoundingClientRect() 获取无视父级限制的真实渲染宽度
     const textWidth = textInnerRef.value.getBoundingClientRect().width;
     const containerWidth = maskBoxRef.value.clientWidth;
 
     if (textWidth > containerWidth) {
-        // 核心修复 1：使用 Math.ceil() 强制取整，绝对不允许出现小数像素！
+        // 使用 Math.ceil() 强制取整，绝对不允许出现小数像素！
         scrollDist.value = Math.ceil(textWidth - containerWidth + 20);
 
         // 按照 30px/s 的速度阅读，计算纯移动时间
@@ -545,14 +567,13 @@ const calculateScroll = () => {
     }
 };
 
-// 核心修复 2：监听数组必须带上 displayMusic，并在 nextTick 后加上微小延迟，防止 v-else-if 导致宽度拿到 0
-watch([currentTrackInfo, displayMusic, isMusicExpanded], async () => {
+// 监听数组必须带上 displayMusic，并在 nextTick 后加上微小延迟，防止 v-else-if 导致宽度拿到 0
+watch([currentTrackInfo, displayMusic, isMusicExpanded, isSplitMode], async () => {
     await nextTick();
     setTimeout(() => {
         if (displayMusic.value) {
             calculateScroll();
         } else {
-            // 切到其他界面（比如网速）时，归零重置
             scrollDist.value = 0;
         }
     }, 100);
@@ -814,18 +835,6 @@ const handleRightClick = async (event: MouseEvent) => {
         }
     });
 
-    // 切换流光边框
-    const toggleGlowBorderItem = await MenuItem.new({
-        text: isGlowBorderEnabled.value ? '关闭流光边框' : '开启流光边框',
-        id: 'toggle_glow_border',
-        enabled: true,
-        action: () => {
-            isGlowBorderEnabled.value = !isGlowBorderEnabled.value;
-            localStorage.setItem('nsd_glow_border', String(isGlowBorderEnabled.value));
-            showToast(isGlowBorderEnabled.value ? '已开启流光边框' : '已关闭流光边框');
-        }
-    });
-
     // 重置位置
     const resetPositionItem = await MenuItem.new({
         text: isPinnedToTaskbar.value ? '重置位置 (已锁定)' : '重置位置',
@@ -875,7 +884,6 @@ const handleRightClick = async (event: MouseEvent) => {
     // 3. 创建菜单并按顺序追加进去
     const menu = await Menu.new();
     await menu.append(openSettingsItem);
-    await menu.append(toggleGlowBorderItem);
     await menu.append(resetPositionItem);
     await menu.append(toggleLockItem);
     await menu.append(closeItem);
@@ -1090,12 +1098,6 @@ onMounted(async () => {
         isMusicCtlEnabled.value = isEnabled;
 
         if (isEnabled) {
-            // 判断是不是“首次”（本地有没有存过流光边框的数据）
-            if (localStorage.getItem('nsd_glow_border') === null) {
-                isGlowBorderEnabled.value = true; // 自动开启流光边框
-                localStorage.setItem('nsd_glow_border', 'true'); // 存入记忆，以后就不算“首次”了
-            }
-
             showInfo.value = false;
             musicBoxKey.value++;
         }
@@ -1184,6 +1186,25 @@ onMounted(async () => {
 
                 wasVisibleBeforeFullscreen = false; // 销案
             }
+        }
+    });
+
+    // 监听实时活动控制台指令
+    await listen<{ id: string, enabled: boolean }>('live-activity-toggle', async (event) => {
+        if (event.payload.id === 'pomodoro') {
+            isPomodoroActive.value = event.payload.enabled;
+        }
+
+        // 收到开启指令，如果岛是关的，强制显示出来
+        if (event.payload.enabled && !isIslandVisible.value) {
+            await getCurrentWindow().show();
+            isIslandVisible.value = true;
+        }
+
+        // 触发丝滑的形变与分割动画
+        if (!isMsgActive.value && !displaySysToast.value && !isMusicExpanded.value && !isMusicExpanding.value) {
+            const { w, h } = getBaseSize();
+            animateIslandSize(w, h);
         }
     });
 
@@ -1374,14 +1395,12 @@ onUnmounted(() => {
 
 /* 外层包裹层：负责裁切多余的流光 */
 .island-container {
-    /* 移除 position: absolute; top: 0; */
     margin: 0 auto;
-    /* 让它在窗口内水平居中 */
     border-radius: 100px;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 2px;
+    padding: 0px;
     user-select: none;
     -webkit-user-select: none;
     overflow: hidden;
@@ -1391,27 +1410,6 @@ onUnmounted(() => {
     transform: translateZ(0);
     will-change: width, height, border-radius;
     contain: strict;
-}
-
-/* 隐藏在底层的巨大旋转渐变层 */
-.rainbow-border-glow {
-    position: absolute;
-    width: 500px;
-    height: 500px;
-
-    /* 修正旋转中心偏移问题 */
-    top: calc(50% - 250px);
-    left: calc(50% - 250px);
-
-    z-index: 1;
-
-    /* 重新绘制的完美对称环形渐变，清透不发脏 */
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='500' height='500'%3E%3Cdefs%3E%3Cfilter id='b' x='-50%25' y='-50%25' width='200%25' height='200%25'%3E%3CfeGaussianBlur in='SourceGraphic' stdDeviation='60'/%3E%3C/filter%3E%3C/defs%3E%3Cg filter='url(%23b)'%3E%3Ccircle cx='250' cy='90' r='150' fill='%23ff3b30'/%3E%3Ccircle cx='390' cy='170' r='150' fill='%23ff9500'/%3E%3Ccircle cx='390' cy='330' r='150' fill='%234cd964'/%3E%3Ccircle cx='250' cy='410' r='150' fill='%23007aff'/%3E%3Ccircle cx='110' cy='330' r='150' fill='%235856d6'/%3E%3Ccircle cx='110' cy='170' r='150' fill='%23ff2d55'/%3E%3C/g%3E%3C/svg%3E");
-    background-size: cover;
-
-    /* 10秒一圈刚刚好，柔和且不怎么吃 GPU */
-    animation: rainbow-rotate 10s linear infinite;
-    will-change: transform;
 }
 
 /* 核心遮罩内容块：挡在旋转渐变层的上方 */
@@ -1427,17 +1425,6 @@ onUnmounted(() => {
     justify-content: space-between;
     padding: 0 14px;
     overflow: hidden;
-}
-
-/* 顺时针匀速旋转 */
-@keyframes rainbow-rotate {
-    from {
-        transform: rotate(0deg);
-    }
-
-    to {
-        transform: rotate(360deg);
-    }
 }
 
 [data-tauri-drag-region] {
@@ -1569,8 +1556,8 @@ onUnmounted(() => {
 }
 
 .album-cover {
-    width: 24px;
-    height: 24px;
+    width: 26px;
+    height: 26px;
     border-radius: 50%;
     box-sizing: unset !important;
     border: 2px solid rgba(255, 255, 255, 0.5) !important;
@@ -2085,5 +2072,114 @@ onUnmounted(() => {
     white-space: nowrap;
     opacity: 0.95;
     transform: translateX(-2px) translateY(-1px);
+}
+
+/* 实时活动：分离式灵动岛布局 */
+.island-core-content {
+    /* 剥夺外层容器的背景，转变为完全透明的弹性容器 */
+    padding: 0 !important;
+    background: transparent !important;
+}
+
+/* 左侧主胶囊：继承了原本 CoreContent 的一切表现 */
+.left-capsule {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    height: 100%;
+    padding: 0 14px;
+    position: relative;
+    overflow: hidden;
+    /* 防止音乐文字溢出切口 */
+    transition: width 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* 分离模式下，左侧胶囊让出 46px（38px小球 + 8px间距） */
+.left-capsule.is-split {
+    width: calc(100% - 50px);
+}
+
+/* 右侧独立实时小球 */
+.right-circle {
+    position: absolute;
+    right: 0;
+    width: 42px;
+    height: 42px;
+    border-radius: 50% !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+/* 小球弹出动画 */
+.pop-enter-active,
+.pop-leave-active {
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.pop-enter-from,
+.pop-leave-to {
+    opacity: 0;
+    transform: scale(0.4) translateX(-30px);
+    /* 从左侧胶囊内部挤出来 */
+}
+
+/* 番茄钟文本排版 */
+.pomodoro-text-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 100%;
+    padding-left: 2px;
+}
+
+.pomodoro-text-box .pomo-icon {
+    font-size: 16px;
+    transform: translateY(-1px);
+}
+
+.pomodoro-info {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+}
+
+.pomodoro-title {
+    font-size: 11.5px;
+    color: currentColor;
+    opacity: 0.6;
+    font-weight: 600;
+}
+
+.pomodoro-time {
+    font-size: 15px;
+    font-weight: 800;
+    color: #ff4757;
+    font-variant-numeric: tabular-nums;
+    transform: translateY(-2px);
+}
+
+/* 右侧呼吸状态的 SVG Icon */
+.pomodoro-svg {
+    width: 20px;
+    height: 20px;
+    color: #ff4757;
+    animation: breathe 2s infinite alternate ease-in-out;
+}
+
+@keyframes breathe {
+    0% {
+        transform: scale(0.95);
+        opacity: 0.7;
+    }
+
+    100% {
+        transform: scale(1.05);
+        opacity: 1;
+    }
 }
 </style>

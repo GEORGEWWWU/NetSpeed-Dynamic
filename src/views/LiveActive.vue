@@ -34,7 +34,8 @@
                     <div class="hero-top-row">
                         <div class="pro-icon" v-html="item.icon"></div>
                         <label class="custom-switch" @click.stop>
-                            <input type="checkbox" :checked="item.enabled" :disabled="item.disable">
+                            <input type="checkbox" v-model="item.enabled" :disabled="item.disable"
+                                @change="handleToggle(item)">
                             <span class="slider"></span>
                         </label>
                     </div>
@@ -114,6 +115,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick } from 'vue';
+import { emit } from '@tauri-apps/api/event';
 
 const activities = ref([
     {
@@ -122,7 +124,7 @@ const activities = ref([
         title: '专注番茄钟',
         desc: '沉浸工作时间管理',
         accent: '#ff4757',
-        enabled: false,
+        enabled: localStorage.getItem('nsd_pomodoro_active') === 'true',
         disable: false
     },
     {
@@ -162,6 +164,15 @@ const activities = ref([
         disable: true
     },
 ]);
+
+// 向全局发送 Live Active 状态变更信号
+// 开启番茄钟
+const handleToggle = async (item: any) => {
+    if (item.id === 'pomodoro') {
+        localStorage.setItem('nsd_pomodoro_active', String(item.enabled));
+    }
+    await emit('live-activity-toggle', { id: item.id, enabled: item.enabled });
+};
 
 const activeId = ref('pomodoro');
 const trackRef = ref<HTMLElement | null>(null);
@@ -387,9 +398,6 @@ onUnmounted(() => {
 }
 
 /* 专业工业化 Bento 卡片设计 */
-/* ==============================================
-   根本解决：彻底拔除滤镜，纯透明度控制（绝不闪烁）
-   ============================================== */
 .gallery-card {
     flex-shrink: 0;
     width: 200px;
@@ -412,7 +420,6 @@ onUnmounted(() => {
 }
 
 .gallery-card:hover {
-    /* hover 时平滑提亮，且不再有滤镜切换的生硬感 */
     opacity: 0.85;
 }
 
@@ -420,7 +427,6 @@ onUnmounted(() => {
     width: 320px;
     transform: scale(1);
     opacity: 1;
-    /* 激活时完全恢复不透明 */
     cursor: default;
     border-color: var(--accent-color);
     box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.1),
