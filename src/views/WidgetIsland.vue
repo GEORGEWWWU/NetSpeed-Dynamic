@@ -406,8 +406,8 @@ const isExpandedSize = computed(() => isMusicExpanded.value || isMsgActive.value
 
 // 2. 外层容器：状态一变，立马切成目标圆角
 const islandStyle = computed<CSSProperties>(() => {
-    const linear = islandOpacity.value / 100;
-    const alpha = Math.pow(linear, 1 / 2.2);
+    // 直接进行百分比换算，去除多余的 Math.pow 曲线
+    const alpha = islandOpacity.value / 100;
 
     const currentBgColor = isSplitMode.value
         ? 'transparent'
@@ -430,8 +430,8 @@ const islandStyle = computed<CSSProperties>(() => {
 
 // 3. 内层核心：永远比外层小 2px
 const coreContentStyle = computed(() => {
-    const linear = islandOpacity.value / 100;
-    const alpha = Math.pow(linear, 1 / 2.2);
+    // 直接进行百分比换算，去除多余的 Math.pow 曲线
+    const alpha = islandOpacity.value / 100;
 
     // 展开 22px，收起 98px
     const innerRadius = isExpandedSize.value ? '22px' : '98px';
