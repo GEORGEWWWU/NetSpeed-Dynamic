@@ -88,6 +88,17 @@
                                 <div class="toast-text">{{ sysToastText }}</div>
                             </div>
 
+                            <div v-else-if="showPomodoroText" class="pomodoro-text-box" key="pomodoro">
+                                <svg viewBox="0 0 24 24" class="pomodoro-svg" fill="none" stroke="currentColor"
+                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <polyline points="12 6 12 12 16 14"></polyline>
+                                </svg>
+                                <div class="pomodoro-info">
+                                    <span class="pomodoro-time">24:59</span>
+                                </div>
+                            </div>
+
                             <div v-else-if="displayMusic" class="music-ctl-box" :class="{ 'expanded': isMusicExpanded }"
                                 :key="'music_' + musicBoxKey" @click="expandMusic" style="cursor: pointer;">
                                 <div class="music-top-row">
@@ -137,14 +148,6 @@
                                 </transition>
                             </div>
 
-                            <div v-else-if="isPomodoroActive" class="pomodoro-text-box" key="pomodoro">
-                                <span class="pomo-icon">🍅</span>
-                                <div class="pomodoro-info">
-                                    <span class="pomodoro-title">专注番茄钟</span>
-                                    <span class="pomodoro-time">24:59</span>
-                                </div>
-                            </div>
-
                             <div v-else-if="displaySpeed" class="speed-box" key="speed">
                                 <transition name="speed-fade" mode="out-in">
                                     <div v-if="isShowingUpload" class="speed-item" key="upload">
@@ -172,7 +175,8 @@
                 </div>
 
                 <transition name="pop">
-                    <div class="right-circle" :style="coreContentStyle" v-if="isSplitMode">
+                    <div class="right-circle" :style="coreContentStyle" v-if="isSplitMode"
+                        @click.stop="isPomodoroExpanded = true" style="cursor: pointer;">
                         <svg viewBox="0 0 24 24" class="pomodoro-svg" fill="none" stroke="currentColor" stroke-width="2"
                             stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="12" cy="12" r="10"></circle>
@@ -195,9 +199,33 @@ const isIslandVisible = ref(false);
 const isPomodoroActive = ref(localStorage.getItem('nsd_pomodoro_active') === 'true');
 const isMenuOpen = ref(false);
 
+// 记录番茄钟小球是否被用户临时点击展开
+const isPomodoroExpanded = ref(false);
 // 当有实时活动，且当前不是大弹窗状态(没收到消息/没展开音乐)时，启动分割模式
 const isSplitMode = computed(() => {
-    return isPomodoroActive.value && !isMsgActive.value && !displaySysToast.value && !isMusicExpanded.value && !isMusicExpanding.value;
+    // 如果正在大弹窗或音乐展开，不分离
+    if (isMsgActive.value || displaySysToast.value || isMusicExpanded.value || isMusicExpanding.value) {
+        return false;
+    }
+    // 当番茄钟开启，且有其他主活动（例如音乐开启时），并且用户没有临时展开它，才进入分离模式
+    return isPomodoroActive.value && isMusicCtlEnabled.value && !isPomodoroExpanded.value;
+});
+// 用于判断左侧主区域是否显示番茄钟文本
+const showPomodoroText = computed(() => {
+    // 1. 最高优先级：如果正在消息弹窗，或者音乐正在/已经展开，番茄钟绝对不准显示
+    if (isMsgActive.value || displaySysToast.value || isMusicExpanded.value || isMusicExpanding.value) {
+        return false;
+    }
+    // 2. 如果只有番茄钟活跃（没有开媒体控制器），自然显示番茄钟文本
+    if (isPomodoroActive.value && !isMusicCtlEnabled.value) {
+        return true;
+    }
+    // 3. 如果番茄钟和媒体控制器同时开启，仅当用户临时点击右侧小球时，才显示番茄钟文本
+    if (isPomodoroActive.value && isMusicCtlEnabled.value && isPomodoroExpanded.value) {
+        return true;
+    }
+
+    return false;
 });
 
 // 记录全屏自动隐藏开关状态
@@ -257,7 +285,7 @@ const processToastQueue = async () => {
 watch(displaySysToast, (newVal) => {
     if (newVal) {
         // 当有系统操作通知出现时，强制展开到默认标准尺寸
-        animateIslandSize(260, 42);
+        animateIslandSize(250, 38);
     } else {
         // 通知消失时，恢复到当前状态该有的尺寸
         // （前提是没有被应用消息或音乐面板霸占）
@@ -370,19 +398,17 @@ const isMsgModeEnabled = ref(localStorage.getItem('nsd_msg_mode') === 'true');
 
 // 使用计算属性智能判断当前该显示谁
 const displaySpeed = computed(() => !isMsgActive.value && !displaySysToast.value && !isMusicCtlEnabled.value && !isPomodoroActive.value);
-const displayMusic = computed(() => !isMsgActive.value && !displaySysToast.value && isMusicCtlEnabled.value);
+const displayMusic = computed(() => !isMsgActive.value && !displaySysToast.value && isMusicCtlEnabled.value && !showPomodoroText.value);
 
 // 辅助函数：获取当前状态应该拥有的默认大小
 const getBaseSize = () => {
-    // 只要开启了番茄钟，不管有没有媒体，都强制拉大到 260 的中尺寸来装载胶囊+小球
-    if (isPomodoroActive.value) return { w: 260, h: 42 };
+    if (isPomodoroActive.value) return { w: 250, h: 38 };
     if (displaySpeed.value) return { w: 150, h: 34 };
-    return { w: 260, h: 42 };
+    return { w: 250, h: 38 };
 };
 
 // 监听内容切换，触发丝滑动画过渡
-watch([displaySpeed, displayMusic], () => {
-    // 只有在没有被临时弹窗（消息、音乐展开）霸占时，才执行基础大小切换
+watch([displaySpeed, displayMusic, showPomodoroText], () => {
     if (!isMsgActive.value && !displaySysToast.value && !isMusicExpanded.value && !isMusicExpanding.value) {
         const { w, h } = getBaseSize();
         animateIslandSize(w, h);
@@ -682,8 +708,8 @@ const adjustWindowPosition = async () => {
         if (monitor) {
             const scaleFactor = window.devicePixelRatio;
 
-            const WINDOW_INIT_WIDTH = currentWidth.value;   // 默认 260
-            const WINDOW_INIT_HEIGHT = currentHeight.value; // 默认 42
+            const WINDOW_INIT_WIDTH = currentWidth.value;
+            const WINDOW_INIT_HEIGHT = currentHeight.value;
             await appWindow.setSize(new PhysicalSize(Math.ceil(WINDOW_INIT_WIDTH * scaleFactor), Math.ceil(WINDOW_INIT_HEIGHT * scaleFactor)));
 
             const monitorWidthPhysical = monitor.size.width;
@@ -1019,7 +1045,7 @@ const expandMusic = (e: MouseEvent) => {
     isAnimationLocked = true;   // ⚡ 上锁！宣布进入神圣不可侵犯的展开周期
 
     // 1. 弹性按压动画 (先微微变小)
-    animateIslandSize(245, 38);
+    animateIslandSize(245, 34);
 
     // 2. 延迟 120 毫秒后，打断缩小，直接猛烈展开
     musicExpandAnimTimer = window.setTimeout(() => {
@@ -1040,8 +1066,13 @@ const expandMusic = (e: MouseEvent) => {
     }, 120);
 };
 
-// 鼠标离开灵动岛时：立刻收缩！
+// 鼠标离开灵动岛时
 const handleMouseLeave = () => {
+    // 如果番茄钟处于临时合并展开状态，鼠标移出时恢复分离
+    if (isPomodoroExpanded.value) {
+        isPomodoroExpanded.value = false;
+    }
+
     if (!isMusicExpanded.value && !isMusicExpanding.value) return;
 
     // 直接呼叫收缩。如果锁着，collapseMusic 会自动把它记到账上稍后执行
@@ -2095,17 +2126,17 @@ onUnmounted(() => {
     transition: width 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-/* 分离模式下，左侧胶囊让出 46px（38px小球 + 8px间距） */
+/* 分离模式下，左侧胶囊让出 */
 .left-capsule.is-split {
-    width: calc(100% - 50px);
+    width: calc(100% - 44px);
 }
 
 /* 右侧独立实时小球 */
 .right-circle {
     position: absolute;
     right: 0;
-    width: 42px;
-    height: 42px;
+    width: 38px;
+    height: 38px;
     border-radius: 50% !important;
     display: flex;
     align-items: center;
@@ -2130,56 +2161,31 @@ onUnmounted(() => {
 .pomodoro-text-box {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     width: 100%;
     height: 100%;
-    padding-left: 2px;
-}
-
-.pomodoro-text-box .pomo-icon {
-    font-size: 16px;
-    transform: translateY(-1px);
+    transform: translateX(-5px);
 }
 
 .pomodoro-info {
     display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: flex-start;
-}
-
-.pomodoro-title {
-    font-size: 11.5px;
-    color: currentColor;
-    opacity: 0.6;
-    font-weight: 600;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
 }
 
 .pomodoro-time {
-    font-size: 15px;
-    font-weight: 800;
+    font-size: 18px;
+    font-weight: bold;
     color: #ff4757;
     font-variant-numeric: tabular-nums;
-    transform: translateY(-2px);
+    letter-spacing: 0.5px;
+    transform: translateY(-1px);
 }
 
-/* 右侧呼吸状态的 SVG Icon */
 .pomodoro-svg {
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
     color: #ff4757;
-    animation: breathe 2s infinite alternate ease-in-out;
-}
-
-@keyframes breathe {
-    0% {
-        transform: scale(0.95);
-        opacity: 0.7;
-    }
-
-    100% {
-        transform: scale(1.05);
-        opacity: 1;
-    }
 }
 </style>
