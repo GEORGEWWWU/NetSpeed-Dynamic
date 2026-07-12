@@ -1,8 +1,14 @@
 <template>
     <div class="gallery-layout-wrapper">
         <div class="gallery-header">
-            <h2>实时活动控制枢纽</h2>
-            <p>选择一个模块并激活你的沉浸式体验</p>
+            <div class="title-wrapper">
+                <h1 class="art-title">Live<span class="art-accent">Active</span><span class="art-dot">.</span></h1>
+                <div class="title-sub-row">
+                    <span class="title-badge">实时活动枢纽</span>
+                    <span class="subtitle-divider">/</span>
+                    <span class="subtitle-text">选择模块 · 激活体验</span>
+                </div>
+            </div>
         </div>
 
         <transition name="fade">
@@ -80,7 +86,7 @@
                                         </div>
 
                                         <button v-if="!isEditingPomodoro" class="time-edit-btn"
-                                            style="padding: 4px 12px;" :disabled="activities[0].enabled"
+                                            style="padding: 4px 12px;" :disabled="isStarted"
                                             @click="startEditTime">设置</button>
                                         <button v-else class="time-edit-btn" style="padding: 4px 12px;"
                                             @click="saveTime">保存</button>
@@ -165,7 +171,7 @@ const activities = ref([
         icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21.5 4c0 0-2 .5-3.5 2L14.5 9.5 6 7.5l-2 2 6 3-3.5 3.5-2.5-.5-2 2 3.5 1.5 1.5 3.5 2-2-.5-2.5L14 14l3.8 5.2z"></path></svg>',
         title: '航班实时追踪',
         desc: '延误与登机动态',
-        accent: '#1e90ff',
+        accent: '#ff4757',
         enabled: false,
         disable: true
     },
@@ -174,7 +180,7 @@ const activities = ref([
         icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20"></path><path d="M2 12h20"></path></svg>',
         title: '赛事比分看板',
         desc: '桌面实时球赛比分',
-        accent: '#2ed573',
+        accent: '#ff4757',
         enabled: false,
         disable: true
     },
@@ -183,7 +189,7 @@ const activities = ref([
         icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>',
         title: '直播录屏监控',
         desc: 'OBS 状态与防闭麦',
-        accent: '#9b59b6',
+        accent: '#ff4757',
         enabled: false,
         disable: true
     },
@@ -192,7 +198,7 @@ const activities = ref([
         icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>',
         title: '打印机队列',
         desc: '批量打印进度状态',
-        accent: '#57606f',
+        accent: '#ff4757',
         enabled: false,
         disable: true
     },
@@ -421,20 +427,71 @@ onUnmounted(() => {
     margin-bottom: 24px;
 }
 
-.gallery-header h2 {
-    font-size: 22px;
-    font-weight: 800;
-    color: var(--h1-color);
-    margin: 0 0 6px 0;
-    letter-spacing: -0.5px;
+/* 标题区域 — 艺术字排版 */
+.title-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-left: 4px;
 }
 
-.gallery-header p {
-    font-size: 13px;
-    color: var(--subtitle-color);
-    font-weight: 500;
-    letter-spacing: 0.2px;
+/* 艺术主标题 */
+.art-title {
+    font-size: 60px;
+    font-weight: 900;
+    letter-spacing: -3px;
+    line-height: 1;
     margin: 0;
+    color: var(--h1-color, #1a1a1a);
+    display: flex;
+    align-items: baseline;
+    user-select: none;
+}
+
+.art-accent {
+    -webkit-text-fill-color: transparent;
+    -webkit-text-stroke: 1.5px var(--h1-color, #1a1a1a);
+    background: none;
+}
+
+.art-dot {
+    color: #ef4444;
+    font-size: 64px;
+    line-height: 0.8;
+    margin-left: 1px;
+}
+
+/* 副标题行 */
+.title-sub-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 2px;
+    flex-wrap: wrap;
+}
+
+.title-badge {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    color: var(--h1-color, #333);
+    background: var(--control-bg, rgba(0, 0, 0, 0.04));
+    padding: 4px 14px;
+    border-radius: 100px;
+    border: 1px solid var(--control-border, rgba(0, 0, 0, 0.06));
+}
+
+.subtitle-divider {
+    font-size: 11px;
+    color: var(--control-border, #ddd);
+    font-weight: 300;
+}
+
+.subtitle-text {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--subtitle-color, #888);
+    letter-spacing: 0.3px;
 }
 
 /* 横向控制按钮 */
