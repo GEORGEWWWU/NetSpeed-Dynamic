@@ -95,7 +95,7 @@
                                     <polyline points="12 6 12 12 16 14"></polyline>
                                 </svg>
                                 <div class="pomodoro-info">
-                                    <span class="pomodoro-time">24:59</span>
+                                    <span class="pomodoro-time">25:00</span>
                                 </div>
                             </div>
 
@@ -164,7 +164,16 @@
                     </div>
 
                     <transition mode="out-in" @enter="onInnerEnter" @leave="onInnerLeave" :css="false">
-                        <div v-if="showSpectrumIndicator" class="audio-spectrum"
+                        <div v-if="isPomodoroExpanded" class="island-close-btn" @click.stop="isPomodoroExpanded = false"
+                            key="close-btn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </div>
+
+                        <div v-else-if="showSpectrumIndicator" class="audio-spectrum"
                             :class="{ 'is-playing': isPlaying, 'expanded': isMusicExpanded }" key="spectrum">
                             <span class="bar" v-for="(val, index) in spectrumData" :key="index"
                                 :style="{ transform: `scaleY(${val})` }"></span>
@@ -1068,13 +1077,7 @@ const expandMusic = (e: MouseEvent) => {
 
 // 鼠标离开灵动岛时
 const handleMouseLeave = () => {
-    // 如果番茄钟处于临时合并展开状态，鼠标移出时恢复分离
-    if (isPomodoroExpanded.value) {
-        isPomodoroExpanded.value = false;
-    }
-
     if (!isMusicExpanded.value && !isMusicExpanding.value) return;
-
     // 直接呼叫收缩。如果锁着，collapseMusic 会自动把它记到账上稍后执行
     collapseMusic();
 };
@@ -2161,17 +2164,16 @@ onUnmounted(() => {
 .pomodoro-text-box {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     width: 100%;
     height: 100%;
-    transform: translateX(-5px);
+    transform: translateX(-5px) !important;
 }
 
 .pomodoro-info {
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 6px;
 }
 
 .pomodoro-time {
@@ -2180,12 +2182,38 @@ onUnmounted(() => {
     color: #ff4757;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.5px;
-    transform: translateY(-1px);
+    transform: translateY(-0.5px);
 }
 
 .pomodoro-svg {
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     color: #ff4757;
+}
+
+/* 实时活动全岛关闭按钮 */
+.island-close-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    color: #888;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-radius: 50%;
+    z-index: 10;
+    transform: translateX(8px) !important;
+}
+
+.island-close-btn:hover {
+    color: #ff4757;
+    background-color: rgba(255, 71, 87, 0.15);
+    transform: scale(1.15);
+}
+
+.island-close-btn svg {
+    width: 20px;
+    height: 20px;
 }
 </style>
