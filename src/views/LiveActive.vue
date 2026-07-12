@@ -27,7 +27,7 @@
 
             <div v-for="item in activities" :key="item.id" class="gallery-card"
                 :class="{ 'is-active': activeId === item.id }" :style="{ '--accent-color': item.accent }"
-                @click="handleCardClick(item.id, $event)">
+                @click="handleCardClick(item.id)">
 
                 <div class="card-hero">
                     <div class="hero-top-row">
@@ -190,44 +190,44 @@ const checkScroll = () => {
     }
 };
 
-// 滚动到最左侧并自动激活第一个
+// 滚动到最左侧：直接激活第一个卡片并居中
 const scrollToLeft = () => {
-    if (trackRef.value) {
-        trackRef.value.scrollTo({ left: 0, behavior: 'smooth' });
-
-        // 选中第一个数据项
-        if (activities.value.length > 0) {
-            activeId.value = activities.value[0].id;
-        }
+    if (activities.value.length > 0) {
+        activateAndCenter(activities.value[0].id);
     }
 };
 
-// 滚动到最右侧并自动激活最后一个
+// 滚动到最右侧：直接激活最后一个卡片并居中
 const scrollToRight = () => {
-    if (trackRef.value) {
-        const cards = trackRef.value.querySelectorAll('.gallery-card');
-        if (cards.length > 0) {
-            const lastCard = cards[cards.length - 1] as HTMLElement;
-            // 计算目标滚动值
-            const targetLeft = lastCard.offsetLeft + lastCard.offsetWidth - trackRef.value.clientWidth + 24;
-            trackRef.value.scrollTo({ left: targetLeft, behavior: 'smooth' });
-
-            // 选中最后一个数据项
-            activeId.value = activities.value[activities.value.length - 1].id;
-        }
+    if (activities.value.length > 0) {
+        activateAndCenter(activities.value[activities.value.length - 1].id);
     }
 };
 
-const handleCardClick = (id: string, event: MouseEvent) => {
+// 提取出一个共用的居中激活方法，使用纯数学预判
+const activateAndCenter = (id: string) => {
     activeId.value = id;
 
-    // 平滑滚动居中
-    const card = (event.currentTarget as HTMLElement);
     const container = trackRef.value;
-    if (container && card) {
-        const scrollLeft = card.offsetLeft - (container.clientWidth / 2) + (card.clientWidth / 2);
-        container.scrollTo({ left: scrollLeft, behavior: 'smooth' });
-    }
+    if (!container) return;
+
+    const index = activities.value.findIndex(item => item.id === id);
+    if (index === -1) return;
+
+    // 预判计算
+    const finalOffsetLeft = 4 + (index * 220);
+    const finalActiveWidth = 320;
+
+    // 计算居中偏移量，并确保最左侧安全边界不落空
+    let targetScrollLeft = finalOffsetLeft - (container.clientWidth / 2) + (finalActiveWidth / 2);
+    targetScrollLeft = Math.max(0, targetScrollLeft);
+
+    container.scrollTo({ left: targetScrollLeft, behavior: 'smooth' });
+};
+
+// 点击任意卡片：激活并居中
+const handleCardClick = (id: string) => {
+    activateAndCenter(id);
 };
 
 onMounted(() => {
