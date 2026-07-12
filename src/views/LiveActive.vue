@@ -27,7 +27,7 @@
                 <div class="card-hero">
                     <div class="hero-top-row">
                         <div class="pro-icon" v-html="item.icon"></div>
-                        <label class="switch modern-switch" @click.stop>
+                        <label class="custom-switch" @click.stop>
                             <input type="checkbox" :checked="item.enabled">
                             <span class="slider"></span>
                         </label>
@@ -47,49 +47,51 @@
                                         <span class="pro-title">专注时长 (25 分钟)</span>
                                         <span class="pro-desc">拖动设置倒计时长度</span>
                                     </div>
-                                    <input type="range" min="5" max="60" value="25" class="pro-range" />
+                                    <input type="range" min="5" max="60" value="25" class="custom-range" />
                                 </div>
                                 <div class="pro-setting-item">
                                     <div class="pro-meta">
                                         <span class="pro-title">系统级免打扰</span>
                                     </div>
-                                    <label class="switch mini-switch"><input type="checkbox" checked><span
+                                    <label class="custom-switch mini"><input type="checkbox"><span
                                             class="slider"></span></label>
                                 </div>
                             </template>
 
                             <template v-else-if="item.id === 'flight'">
                                 <div class="pro-input-group mt-10">
-                                    <input type="text" class="pro-input" placeholder="输入航班号 (如 MU5137)" />
+                                    <input type="text" class="custom-input" placeholder="输入航班号 (如 MU5137)" />
                                 </div>
                                 <div class="pro-input-group">
-                                    <input type="date" class="pro-input" />
+                                    <input type="date" class="custom-input" />
                                 </div>
                                 <div class="pro-setting-item mt-10">
                                     <div class="pro-meta"><span class="pro-title">落地强提醒</span></div>
-                                    <label class="switch mini-switch"><input type="checkbox" checked><span
+                                    <label class="custom-switch mini"><input type="checkbox"><span
                                             class="slider"></span></label>
                                 </div>
                             </template>
 
                             <template v-else-if="item.id === 'sports'">
                                 <div class="pro-input-group mt-10">
-                                    <select class="pro-input">
-                                        <option>英格兰足球超级联赛 (EPL)</option>
-                                        <option>NBA 篮球职业联赛</option>
-                                    </select>
+                                    <div class="custom-select-wrapper">
+                                        <select class="custom-input custom-select">
+                                            <option>英格兰足球超级联赛 (EPL)</option>
+                                            <option>NBA 篮球职业联赛</option>
+                                        </select>
+                                    </div>
                                 </div>
                                 <div class="pro-input-group">
-                                    <input type="text" class="pro-input" placeholder="关注队伍 / Match ID" />
+                                    <input type="text" class="custom-input" placeholder="关注队伍 / Match ID" />
                                 </div>
                             </template>
 
                             <template v-else-if="item.id === 'obs'">
                                 <div class="pro-input-group mt-10">
-                                    <input type="text" class="pro-input" placeholder="WebSocket 端口 (缺省 4455)" />
+                                    <input type="text" class="custom-input" placeholder="WebSocket 端口 (缺省 4455)" />
                                 </div>
                                 <div class="pro-input-group">
-                                    <input type="password" class="pro-input" placeholder="连接密码鉴权" />
+                                    <input type="password" class="custom-input" placeholder="连接密码鉴权" />
                                 </div>
                             </template>
 
@@ -119,7 +121,7 @@ const activities = ref([
         title: '专注番茄钟',
         desc: '沉浸工作时间管理',
         accent: '#ff4757',
-        enabled: true
+        enabled: false
     },
     {
         id: 'flight',
@@ -274,8 +276,7 @@ onUnmounted(() => {
 /* 横向控制按钮 */
 .scroll-btn {
     position: absolute;
-    top: 55%;
-    /* 结合header高度做一点偏移，使其在卡片垂直居中 */
+    top: 280px;
     transform: translateY(-50%);
     z-index: 10;
     width: 44px;
@@ -299,7 +300,6 @@ onUnmounted(() => {
 
 .scroll-btn:hover {
     transform: translateY(-50%) scale(1.1);
-    color: var(--accent-color, #333);
     border-color: var(--accent-color, #ccc);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
 }
@@ -449,40 +449,199 @@ onUnmounted(() => {
 }
 
 /* ==============================================
-   现代硬核工业风 Input & UI 控件
+   完全自定义 UI 控件 (消除所有原生外观)
    ============================================== */
+
+/* 1. 自定义 Switch 开关 */
+.custom-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
+.custom-switch.mini {
+    width: 36px;
+    height: 20px;
+}
+
+.custom-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.custom-switch .slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--control-border, #e2e8f0);
+    border-radius: 24px;
+    transition: background-color 0.3s ease;
+}
+
+.custom-switch .slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: #ffffff;
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.custom-switch.mini .slider:before {
+    height: 14px;
+    width: 14px;
+    left: 3px;
+    bottom: 3px;
+}
+
+.custom-switch input:checked+.slider {
+    background-color: var(--accent-color, #10b981);
+}
+
+.custom-switch input:checked+.slider:before {
+    transform: translateX(20px);
+}
+
+.custom-switch.mini input:checked+.slider:before {
+    transform: translateX(16px);
+}
+
+/* 2. 通用 Input 基础样式 */
 .pro-input-group {
-    margin-bottom: 12px;
+    margin-bottom: 16px;
 }
 
-.pro-input {
+.custom-input {
+    -webkit-appearance: none;
+    appearance: none;
     width: 100%;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid var(--control-border);
-    padding: 12px 0;
-    font-size: 14px;
+    background: rgba(0, 0, 0, 0.03);
+    border: 1px solid var(--control-border, #e2e8f0);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 13px;
     font-weight: 600;
-    color: var(--text-body);
+    color: var(--h1-color, #333);
     outline: none;
-    transition: border-color 0.3s;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+    /* ⬇️ 新增：防止内容溢出 */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.pro-input::placeholder {
-    color: var(--item-desc-color);
+:global(.dark-theme) .custom-input {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.custom-input::placeholder {
+    color: var(--item-desc-color, #999);
     font-weight: 500;
 }
 
-.pro-input:focus {
-    border-bottom-color: var(--accent-color);
+.custom-input:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
+    background: transparent;
 }
 
+/* 3. 自定义 Select (利用 Wrapper 伪造下拉箭头) */
+.custom-select-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.custom-select {
+    padding-right: 36px;
+    /* 给箭头留出空间 */
+    cursor: pointer;
+}
+
+/* 自定义 SVG 箭头 */
+.custom-select-wrapper::after {
+    content: "";
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 12px;
+    height: 12px;
+    pointer-events: none;
+    background-image: url('data:image/svg+xml;utf8,<svg viewBox="0 0 24 24" fill="none" stroke="%23666666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>');
+    background-size: contain;
+    background-repeat: no-repeat;
+    opacity: 0.6;
+}
+
+/* 4. 自定义 Range Slider (滑块) */
+.custom-range {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    background: var(--control-border, #e2e8f0);
+    border-radius: 4px;
+    outline: none;
+    margin-top: 4px;
+    margin-bottom: 8px;
+}
+
+/* Chrome/Safari 轨道和滑块 */
+.custom-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent-color, #333);
+    cursor: pointer;
+    border: 3px solid #fff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.custom-range::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+}
+
+/* Firefox 轨道和滑块 */
+.custom-range::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-color, #333);
+    cursor: pointer;
+    border: 3px solid #fff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.custom-range::-moz-range-track {
+    background: var(--control-border, #e2e8f0);
+    border-radius: 4px;
+}
+
+/* 排版辅助类 */
 .pro-setting-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    /* 👈 核心修复：允许内部元素换行 */
+    gap: 12px;
+    /* 👈 增加元素间的安全间距 */
     padding: 14px 0;
-    border-bottom: 1px solid var(--control-border);
+    border-bottom: 1px dashed var(--control-border);
 }
 
 .pro-setting-item:last-child {
@@ -493,54 +652,31 @@ onUnmounted(() => {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    flex-shrink: 0;
+    /* 👈 绝对禁止文本容器被弹性压缩 */
+    max-width: 100%;
 }
 
 .pro-title {
     font-size: 13px;
     font-weight: 700;
     color: var(--item-title-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .pro-desc {
     font-size: 11px;
     color: var(--item-desc-color);
     font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .mt-10 {
     margin-top: 10px;
-}
-
-.pro-range {
-    width: 100%;
-    -webkit-appearance: none;
-    appearance: none;
-    height: 4px;
-    background: var(--control-border);
-    border-radius: 2px;
-    outline: none;
-    margin-top: 16px;
-    margin-bottom: 8px;
-}
-
-.pro-range::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 16px;
-    height: 16px;
-    border-radius: 4px;
-    background: var(--text-body);
-    cursor: pointer;
-    transition: transform 0.2s;
-}
-
-.pro-range::-webkit-slider-thumb:hover {
-    transform: scale(1.2);
-    background: var(--accent-color);
-}
-
-.modern-switch {
-    transform: scale(0.85);
-    transform-origin: right top;
 }
 
 .pro-coming-soon {
