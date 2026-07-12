@@ -33,9 +33,15 @@
                 <div class="card-hero">
                     <div class="hero-top-row">
                         <div class="pro-icon" v-html="item.icon"></div>
-                        <label class="custom-switch" @click.stop>
-                            <input type="checkbox" v-model="item.enabled" :disabled="item.disable"
-                                @change="handleToggle(item)">
+                        <div v-if="item.id === 'pomodoro'" class="pomodoro-controls" @click.stop>
+                            <button class="pomo-btn reset-btn" @click="handleResetBtn">重置</button>
+                            <button class="pomo-btn toggle-btn" :class="{ 'is-running': item.enabled }"
+                                @click="handleToggleBtn(item)">
+                                {{ item.enabled ? '暂停' : (isStarted ? '继续' : '启动') }}
+                            </button>
+                        </div>
+                        <label v-else class="custom-switch" @click.stop>
+                            <input type="checkbox" v-model="item.enabled" :disabled="item.disable">
                             <span class="slider"></span>
                         </label>
                     </div>
@@ -49,16 +55,43 @@
                     <transition name="fade-up" appear>
                         <div class="body-content">
                             <template v-if="item.id === 'pomodoro'">
-                                <div class="pro-setting-item mt-10">
+                                <div class="pro-setting-item mt-10"
+                                    style="flex-direction: column; align-items: flex-start; gap: 12px; border-bottom: none; padding-bottom: 0;">
                                     <div class="pro-meta">
-                                        <span class="pro-title">专注时长 (25 分钟)</span>
-                                        <span class="pro-desc">拖动设置倒计时长度</span>
+                                        <span class="pro-title">专注时长</span>
                                     </div>
-                                    <input type="range" min="5" max="60" value="25" class="custom-range" />
+
+                                    <div
+                                        style="width: 100%; display: flex; justify-content: space-between; align-items: center;">
+                                        <div v-if="!isEditingPomodoro" class="time-display"
+                                            style="font-size: 28px; font-weight: 800; color: var(--accent-color); padding: 0; text-align: left;">
+                                            {{ formattedPomodoroTime }}
+                                        </div>
+
+                                        <div v-else class="time-input-group" style="padding: 0; gap: 6px;">
+                                            <input type="text" v-model="inputH" class="time-input"
+                                                style="width: 48px; font-size: 16px; padding: 4px;" placeholder="时" />
+                                            <span class="time-separator" style="font-size: 18px;">:</span>
+                                            <input type="text" v-model="inputM" class="time-input"
+                                                style="width: 48px; font-size: 16px; padding: 4px;" placeholder="分" />
+                                            <span class="time-separator" style="font-size: 18px;">:</span>
+                                            <input type="text" v-model="inputS" class="time-input"
+                                                style="width: 48px; font-size: 16px; padding: 4px;" placeholder="秒" />
+                                        </div>
+
+                                        <button v-if="!isEditingPomodoro" class="time-edit-btn"
+                                            style="padding: 4px 12px;" :disabled="activities[0].enabled"
+                                            @click="startEditTime">设置</button>
+                                        <button v-else class="time-edit-btn" style="padding: 4px 12px;"
+                                            @click="saveTime">保存</button>
+                                    </div>
                                 </div>
-                                <div class="pro-setting-item">
+
+                                <div style="border-bottom: 1px dashed var(--control-border); margin: 6px 0;"></div>
+
+                                <div class="pro-setting-item" style="padding-top: 6px;">
                                     <div class="pro-meta">
-                                        <span class="pro-title">系统级免打扰</span>
+                                        <span class="pro-title">免打扰模式</span>
                                     </div>
                                     <label class="custom-switch mini"><input type="checkbox"><span
                                             class="slider"></span></label>
@@ -114,8 +147,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue';
-import { emit } from '@tauri-apps/api/event';
+import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue';
+import { emit, listen } from '@tauri-apps/api/event';
 
 const activities = ref([
     {
@@ -165,13 +198,114 @@ const activities = ref([
     },
 ]);
 
-// 向全局发送 Live Active 状态变更信号
-// 开启番茄钟
-const handleToggle = async (item: any) => {
+// 启动或暂停番茄钟
+const handleToggleBtn = async (item: any) => {
     if (item.id === 'pomodoro') {
-        localStorage.setItem('nsd_pomodoro_active', String(item.enabled));
+        if (isEditingPomodoro.value) {
+            saveTime();
+        }
+
+        // 核心修正：显式切换状态
+        const nextState = !item.enabled;
+        item.enabled = nextState;
+
+        if (nextState) {
+            isStarted.value = true;
+            localStorage.setItem('nsd_pomodoro_started', 'true');
+            localStorage.setItem('nsd_pomodoro_active', 'true');
+            localStorage.setItem('nsd_pomodoro_visible', 'true'); // 确保岛端可见
+        } else {
+            // 仅仅是暂停，不重置生命周期
+            localStorage.setItem('nsd_pomodoro_active', 'false');
+        }
+
+        // 发送给灵动岛
+        await emit('live-activity-toggle', {
+            id: item.id,
+            enabled: nextState
+        });
+    } else {
+        item.enabled = !item.enabled;
+        await emit('live-activity-toggle', {
+            id: item.id,
+            enabled: item.enabled
+        });
     }
-    await emit('live-activity-toggle', { id: item.id, enabled: item.enabled });
+};
+
+// 重置番茄钟 (彻底清空上下文，防止二次卡死)
+const handleResetBtn = async () => {
+    const pomoItem = activities.value.find(a => a.id === 'pomodoro');
+    if (pomoItem) {
+        pomoItem.enabled = false;
+        isStarted.value = false;
+
+        // 斩草除根式清空本地存储
+        localStorage.setItem('nsd_pomodoro_active', 'false');
+        localStorage.setItem('nsd_pomodoro_started', 'false');
+        localStorage.setItem('nsd_pomodoro_visible', 'false');
+
+        const savedTime = Number(localStorage.getItem('nsd_pomodoro_time')) || 1500;
+        pomodoroTime.value = savedTime;
+
+        await emit('live-activity-toggle', {
+            id: 'pomodoro',
+            enabled: false,
+            time: savedTime,
+            isReset: true
+        });
+    }
+};
+// 番茄钟时间设置逻辑
+// 永久记忆化：后台依然存总秒数，默认 25 分钟（1500秒）
+const pomodoroTime = ref(Number(localStorage.getItem('nsd_pomodoro_time')) || 1500);
+const isEditingPomodoro = ref(false);
+const isStarted = ref(localStorage.getItem('nsd_pomodoro_started') === 'true');
+
+const inputH = ref('00');
+const inputM = ref('25');
+const inputS = ref('00');
+
+// 展示态：把后台的总秒数，换算成 XX:XX:XX 展示
+const formattedPomodoroTime = computed(() => {
+    const h = Math.floor(pomodoroTime.value / 3600).toString().padStart(2, '0');
+    const m = Math.floor((pomodoroTime.value % 3600) / 60).toString().padStart(2, '0');
+    const s = (pomodoroTime.value % 60).toString().padStart(2, '0');
+    return `${h}:${m}:${s}`;
+});
+
+// 纯正的 Vue 实时过滤函数：只留数字，且最多3位
+const filterTimeInput = (val: string) => {
+    const onlyNum = val.replace(/[^\d]/g, ''); // 擦除所有非数字（包括负号、e等）
+    return onlyNum.slice(0, 3); // 死死锁死 3 位数
+};
+
+// 用 Vue 的 watch 替代原生 oninput，彻底解决失去焦点变成 9999 的 Bug
+watch(inputH, (newVal) => { inputH.value = filterTimeInput(newVal); });
+watch(inputM, (newVal) => { inputM.value = filterTimeInput(newVal); });
+watch(inputS, (newVal) => { inputS.value = filterTimeInput(newVal); });
+
+// 点击设置：把总秒数拆分给三个输入框
+const startEditTime = () => {
+    inputH.value = Math.floor(pomodoroTime.value / 3600).toString();
+    inputM.value = Math.floor((pomodoroTime.value % 3600) / 60).toString();
+    inputS.value = (pomodoroTime.value % 60).toString();
+    isEditingPomodoro.value = true;
+};
+
+// 点击保存：把输入的 999:999:999 换算成总秒数存起来
+const saveTime = () => {
+    const h = Number(inputH.value) || 0;
+    const m = Number(inputM.value) || 0;
+    const s = Number(inputS.value) || 0;
+    const totalSeconds = h * 3600 + m * 60 + s;
+    pomodoroTime.value = totalSeconds;
+    localStorage.setItem('nsd_pomodoro_time', totalSeconds.toString());
+    isEditingPomodoro.value = false;
+    // 如果是用户修改了时间设置，打断它先前的状态，并把新时间推给灵动岛
+    isStarted.value = false;
+    localStorage.setItem('nsd_pomodoro_started', 'false');
+    emit('live-activity-toggle', { id: 'pomodoro', enabled: false, time: totalSeconds });
 };
 
 const activeId = ref('pomodoro');
@@ -242,12 +376,26 @@ const handleCardClick = (id: string) => {
     activateAndCenter(id);
 };
 
-onMounted(() => {
-    // 首次渲染完毕后检查一次按钮可见性
-    nextTick(() => {
-        checkScroll();
+onMounted(async () => {
+    // 监听灵动岛倒计时跑完后发来的退场广播
+    await listen<{ id: string, enabled: boolean, isReset?: boolean }>('live-activity-toggle', (event) => {
+        if (event.payload.id === 'pomodoro' && event.payload.isReset) {
+            const pomoItem = activities.value.find(a => a.id === 'pomodoro');
+            if (pomoItem) {
+                pomoItem.enabled = false; // 修正：强制确保 Vue 列表状态为 false
+            }
+
+            isStarted.value = false;
+            // 彻底同步清除本地脏数据，防止 Ctrl+R 刷新后变“暂停”
+            localStorage.setItem('nsd_pomodoro_active', 'false');
+            localStorage.setItem('nsd_pomodoro_started', 'false');
+            localStorage.setItem('nsd_pomodoro_visible', 'false');
+
+            pomodoroTime.value = Number(localStorage.getItem('nsd_pomodoro_time')) || 1500;
+        }
     });
-    // 监听窗口大小变化以重算滚动状态
+
+    nextTick(() => { checkScroll(); });
     window.addEventListener('resize', checkScroll);
 });
 
@@ -804,5 +952,132 @@ onUnmounted(() => {
 .fade-enter-from,
 .fade-leave-to {
     opacity: 0;
+}
+
+/* 番茄钟时间设置相关样式 */
+.time-edit-btn {
+    background: transparent;
+    border: 1px solid var(--control-border);
+    color: var(--item-title-color);
+    border-radius: 6px;
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    outline: none;
+}
+
+.time-edit-btn:hover {
+    background: var(--control-border);
+}
+
+/* 当番茄钟运行时，禁用设置按钮的样式 */
+.time-edit-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+    background: transparent;
+    border-color: var(--control-border);
+    color: var(--item-desc-color);
+}
+
+.time-display {
+    font-size: 22px;
+    font-weight: 700;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    color: var(--item-title-color);
+    text-align: center;
+    letter-spacing: 2px;
+    padding: 4px 0;
+}
+
+.time-input-group {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 4px 0;
+}
+
+.time-input {
+    width: 44px;
+    background: rgba(0, 0, 0, 0.03);
+    border: 1px solid var(--control-border);
+    border-radius: 8px;
+    padding: 6px 4px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: bold;
+    color: var(--h1-color);
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.time-input:focus {
+    border-color: var(--accent-color);
+    background: transparent;
+}
+
+:global(.dark-theme) .time-input {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.time-separator {
+    font-weight: bold;
+    color: var(--item-title-color);
+}
+
+/* 隐藏输入框自带的上下箭头 */
+.time-input::-webkit-outer-spin-button,
+.time-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.time-input[type=number] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+/* 番茄钟右上角新按钮样式 */
+.pomodoro-controls {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.pomo-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid var(--control-border);
+    background: var(--card-bg);
+    color: var(--item-title-color);
+    transition: all 0.2s ease;
+    outline: none;
+}
+
+.pomo-btn:hover {
+    background: var(--control-border);
+}
+
+/* 核心修正：当处于“启动”状态（未运行，没有 .is-running 类）时高亮为大红色 */
+.toggle-btn:not(.is-running) {
+    background: var(--accent-color, #ff4757);
+    border-color: var(--accent-color, #ff4757);
+    color: #fff;
+}
+
+.toggle-btn:not(.is-running):hover {
+    opacity: 0.9;
+}
+
+/* 当点击变成“暂停”状态（正在运行，带有 .is-running 类）时，变回普通浅色按钮 */
+.toggle-btn.is-running {
+    background: var(--card-bg);
+    border-color: var(--control-border);
+    color: var(--item-title-color);
 }
 </style>

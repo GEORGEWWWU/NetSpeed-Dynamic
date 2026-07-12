@@ -95,7 +95,7 @@
                                     <polyline points="12 6 12 12 16 14"></polyline>
                                 </svg>
                                 <div class="pomodoro-info">
-                                    <span class="pomodoro-time">25:00</span>
+                                    <span class="pomodoro-time">{{ formattedIslandPomoTime }}</span>
                                 </div>
                             </div>
 
@@ -164,7 +164,7 @@
                     </div>
 
                     <transition mode="out-in" @enter="onInnerEnter" @leave="onInnerLeave" :css="false">
-                        <div v-if="isPomodoroExpanded" class="island-close-btn" @click.stop="isPomodoroExpanded = false"
+                        <div v-if="isPomodoroExpanded" class="island-close-btn" @click.stop="closeIslandPomodoro"
                             key="close-btn">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                 stroke-linecap="round" stroke-linejoin="round">
@@ -206,34 +206,104 @@ import { listen, emit } from '@tauri-apps/api/event';
 
 const isIslandVisible = ref(false);
 const isPomodoroActive = ref(localStorage.getItem('nsd_pomodoro_active') === 'true');
+const isPomodoroVisible = ref(localStorage.getItem('nsd_pomodoro_visible') === 'true');
+const islandPomoTime = ref(Number(localStorage.getItem('nsd_pomodoro_time')) || 1500);
+let pomoCountdownTimer: number | null = null;
 const isMenuOpen = ref(false);
+
+// 将秒数转化为 XX:XX 格式的计算属性
+const formattedIslandPomoTime = computed(() => {
+    const m = Math.floor(islandPomoTime.value / 60).toString().padStart(2, '0');
+    const s = (islandPomoTime.value % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+});
+// 核心倒计时定时器管理逻辑
+const startPomoCountdown = () => {
+    if (pomoCountdownTimer) clearInterval(pomoCountdownTimer);
+
+    if (islandPomoTime.value <= 0) {
+        cleanUpPomoExit();
+        return;
+    }
+
+    pomoCountdownTimer = window.setInterval(() => {
+        islandPomoTime.value--;
+
+        if (islandPomoTime.value <= 0) {
+            clearInterval(pomoCountdownTimer!);
+            pomoCountdownTimer = null;
+            cleanUpPomoExit();
+        }
+    }, 1000);
+};
+// 提取出干净的退出清理函数，确保多端强同步
+const cleanUpPomoExit = () => {
+    isPomodoroActive.value = false;
+    isPomodoroVisible.value = false;
+    isPomodoroExpanded.value = false;
+
+    // 重置时间为预设时长
+    const defaultTime = Number(localStorage.getItem('nsd_pomodoro_time')) || 1500;
+    islandPomoTime.value = defaultTime;
+
+    // 清空本地标记
+    localStorage.setItem('nsd_pomodoro_visible', 'false');
+    localStorage.setItem('nsd_pomodoro_active', 'false');
+    localStorage.setItem('nsd_pomodoro_started', 'false');
+
+    showToast('专注结束，休息一下吧！', 'app');
+
+    // 关键核心：向全应用广播重置信号（LiveActive.vue 会接住这个信号并把按钮洗白）
+    emit('live-activity-toggle', { id: 'pomodoro', enabled: false, isReset: true });
+
+    if (!isMsgActive.value && !displaySysToast.value && !isMusicExpanded.value && !isMusicExpanding.value) {
+        const { w, h } = getBaseSize();
+        animateIslandSize(w, h);
+    }
+};
+const stopPomoCountdown = () => {
+    if (pomoCountdownTimer) {
+        clearInterval(pomoCountdownTimer);
+        pomoCountdownTimer = null;
+    }
+};
+// 这是唯一能真正关闭实时活动全岛模式的杀手锏
+const closeIslandPomodoro = () => {
+    // 仅仅退出全岛展开模式，恢复到分离模式
+    isPomodoroExpanded.value = false;
+    // 触发尺寸动画恢复
+    if (!isMsgActive.value && !displaySysToast.value && !isMusicExpanded.value && !isMusicExpanding.value) {
+        const { w, h } = getBaseSize();
+        animateIslandSize(w, h);
+    }
+};
 
 // 记录番茄钟小球是否被用户临时点击展开
 const isPomodoroExpanded = ref(false);
 // 当有实时活动，且当前不是大弹窗状态(没收到消息/没展开音乐)时，启动分割模式
 const isSplitMode = computed(() => {
-    // 如果正在大弹窗或音乐展开，不分离
     if (isMsgActive.value || displaySysToast.value || isMusicExpanded.value || isMusicExpanding.value) {
         return false;
     }
-    // 当番茄钟开启，且有其他主活动（例如音乐开启时），并且用户没有临时展开它，才进入分离模式
-    return isPomodoroActive.value && isMusicCtlEnabled.value && !isPomodoroExpanded.value;
+    // 替换为 isPomodoroVisible
+    return isPomodoroVisible.value && isMusicCtlEnabled.value && !isPomodoroExpanded.value;
 });
 // 用于判断左侧主区域是否显示番茄钟文本
 const showPomodoroText = computed(() => {
-    // 1. 最高优先级：如果正在消息弹窗，或者音乐正在/已经展开，番茄钟绝对不准显示
     if (isMsgActive.value || displaySysToast.value || isMusicExpanded.value || isMusicExpanding.value) {
         return false;
     }
-    // 2. 如果只有番茄钟活跃（没有开媒体控制器），自然显示番茄钟文本
-    if (isPomodoroActive.value && !isMusicCtlEnabled.value) {
+    // 替换为 isPomodoroVisible
+    if (isPomodoroVisible.value && !isMusicCtlEnabled.value) {
         return true;
     }
-    // 3. 如果番茄钟和媒体控制器同时开启，仅当用户临时点击右侧小球时，才显示番茄钟文本
-    if (isPomodoroActive.value && isMusicCtlEnabled.value && isPomodoroExpanded.value) {
+    // 替换为 isPomodoroVisible
+    if (isPomodoroVisible.value && isMusicCtlEnabled.value && isPomodoroExpanded.value) {
         return true;
     }
-
+    if (isExpandedSize.value) {
+        return true;
+    }
     return false;
 });
 
@@ -406,12 +476,12 @@ const isPositionLocked = ref(localStorage.getItem('nsd_position_locked') === 'tr
 const isMsgModeEnabled = ref(localStorage.getItem('nsd_msg_mode') === 'true');
 
 // 使用计算属性智能判断当前该显示谁
-const displaySpeed = computed(() => !isMsgActive.value && !displaySysToast.value && !isMusicCtlEnabled.value && !isPomodoroActive.value);
+const displaySpeed = computed(() => !isMsgActive.value && !displaySysToast.value && !isMusicCtlEnabled.value && !isPomodoroVisible.value);
 const displayMusic = computed(() => !isMsgActive.value && !displaySysToast.value && isMusicCtlEnabled.value && !showPomodoroText.value);
 
 // 辅助函数：获取当前状态应该拥有的默认大小
 const getBaseSize = () => {
-    if (isPomodoroActive.value) return { w: 250, h: 38 };
+    if (isPomodoroVisible.value) return { w: 250, h: 38 };
     if (displaySpeed.value) return { w: 150, h: 34 };
     return { w: 250, h: 38 };
 };
@@ -1223,19 +1293,36 @@ onMounted(async () => {
         }
     });
 
-    // 监听实时活动控制台指令
-    await listen<{ id: string, enabled: boolean }>('live-activity-toggle', async (event) => {
+    // 监听实时活动控制台指令 (优化版)
+    await listen<{ id: string, enabled: boolean, time?: number, isReset?: boolean }>('live-activity-toggle', async (event) => {
         if (event.payload.id === 'pomodoro') {
             isPomodoroActive.value = event.payload.enabled;
+            if (event.payload.time !== undefined) {
+                islandPomoTime.value = event.payload.time;
+            }
+            if (event.payload.enabled) {
+                // 启动/继续：确立可见性，并跑秒
+                isPomodoroVisible.value = true;
+                localStorage.setItem('nsd_pomodoro_visible', 'true');
+                startPomoCountdown();
+            } else {
+                // 无论是暂停还是重置，都先停表
+                stopPomoCountdown();
+                // 果是控制台传过来的“重置”信号，果断执行彻底退场
+                if (event.payload.isReset) {
+                    isPomodoroVisible.value = false;      // 剥夺可见性
+                    isPomodoroExpanded.value = false;     // 退出全岛展开模式
+                    localStorage.setItem('nsd_pomodoro_visible', 'false');
+                } else {
+                    // 如果仅仅是普通的“暂停”，则保持可见性，只在未启动时归位时间
+                    if (localStorage.getItem('nsd_pomodoro_started') === 'false') {
+                        islandPomoTime.value = Number(localStorage.getItem('nsd_pomodoro_time')) || 1500;
+                    }
+                }
+            }
         }
-
-        // 收到开启指令，如果岛是关的，强制显示出来
-        if (event.payload.enabled && !isIslandVisible.value) {
-            await getCurrentWindow().show();
-            isIslandVisible.value = true;
-        }
-
-        // 触发丝滑的形变与分割动画
+        // 刷新尺寸：如果是重置，此时 getBaseSize() 内部的 isPomodoroVisible 已经是 false 了，
+        // 它会自动判断并计算出你启动番茄钟之前的岛屿尺寸（如网速模式或音乐模式），并执行丝滑缩回动画。
         if (!isMsgActive.value && !displaySysToast.value && !isMusicExpanded.value && !isMusicExpanding.value) {
             const { w, h } = getBaseSize();
             animateIslandSize(w, h);
@@ -1391,6 +1478,11 @@ onMounted(async () => {
     setTimeout(() => {
         calculateScroll();
     }, 700);
+
+    // 初始化检测：如果是开机或重新挂载，且原本就是运行状态，岛端直接开跑倒计时
+    if (isPomodoroActive.value) {
+        startPomoCountdown();
+    }
 });
 
 onUnmounted(() => {
@@ -1401,6 +1493,7 @@ onUnmounted(() => {
     clearInterval(notifyTimer);
     clearInterval(spectrumTimer);
     if (speedCycleTimer) clearInterval(speedCycleTimer);
+    if (pomoCountdownTimer) clearInterval(pomoCountdownTimer);
 });
 </script>
 
