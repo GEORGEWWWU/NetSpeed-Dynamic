@@ -23,7 +23,8 @@
             </button>
         </transition>
 
-        <div class="gallery-track" ref="trackRef" @scroll="checkScroll">
+        <div class="gallery-track" ref="trackRef" @scroll="checkScroll"
+            :class="{ 'mask-left': canScrollLeft, 'mask-right': canScrollRight }">
 
             <div v-for="item in activities" :key="item.id" class="gallery-card"
                 :class="{ 'is-active': activeId === item.id }" :style="{ '--accent-color': item.accent }"
@@ -33,7 +34,7 @@
                     <div class="hero-top-row">
                         <div class="pro-icon" v-html="item.icon"></div>
                         <label class="custom-switch" @click.stop>
-                            <input type="checkbox" :checked="item.enabled">
+                            <input type="checkbox" :checked="item.enabled" :disabled="item.disable">
                             <span class="slider"></span>
                         </label>
                     </div>
@@ -69,11 +70,6 @@
                                 </div>
                                 <div class="pro-input-group">
                                     <input type="date" class="custom-input" />
-                                </div>
-                                <div class="pro-setting-item mt-10">
-                                    <div class="pro-meta"><span class="pro-title">落地强提醒</span></div>
-                                    <label class="custom-switch mini"><input type="checkbox"><span
-                                            class="slider"></span></label>
                                 </div>
                             </template>
 
@@ -126,7 +122,8 @@ const activities = ref([
         title: '专注番茄钟',
         desc: '沉浸工作时间管理',
         accent: '#ff4757',
-        enabled: false
+        enabled: false,
+        disable: false
     },
     {
         id: 'flight',
@@ -134,7 +131,8 @@ const activities = ref([
         title: '航班实时追踪',
         desc: '延误与登机动态',
         accent: '#1e90ff',
-        enabled: false
+        enabled: false,
+        disable: true
     },
     {
         id: 'sports',
@@ -142,7 +140,8 @@ const activities = ref([
         title: '赛事比分看板',
         desc: '桌面实时球赛比分',
         accent: '#2ed573',
-        enabled: false
+        enabled: false,
+        disable: true
     },
     {
         id: 'obs',
@@ -150,7 +149,8 @@ const activities = ref([
         title: '直播录屏监控',
         desc: 'OBS 状态与防闭麦',
         accent: '#9b59b6',
-        enabled: false
+        enabled: false,
+        disable: true
     },
     {
         id: 'printer',
@@ -158,7 +158,8 @@ const activities = ref([
         title: '打印机队列',
         desc: '批量打印进度状态',
         accent: '#57606f',
-        enabled: false
+        enabled: false,
+        disable: true
     },
 ]);
 
@@ -335,6 +336,56 @@ onUnmounted(() => {
     display: none;
 }
 
+/* ==============================================
+   1. 注册原生的 CSS 属性，赋予它们可过渡的能力
+   ============================================== */
+@property --mask-left-size {
+    syntax: '<length>';
+    initial-value: 0px;
+    inherits: false;
+}
+
+@property --mask-right-size {
+    syntax: '<length>';
+    initial-value: 0px;
+    inherits: false;
+}
+
+/* ==============================================
+   2. 优化后的容器边缘平滑渐罩
+   ============================================== */
+.gallery-track {
+    /* 显式声明基础变量 */
+    --mask-left-size: 0px;
+    --mask-right-size: 0px;
+
+    /* 统一使用单条渐变公式，完全由变量控制左右两侧的淡出区域 */
+    -webkit-mask-image: linear-gradient(to right,
+            transparent 0%,
+            #000 var(--mask-left-size),
+            #000 calc(100% - var(--mask-right-size)),
+            transparent 100%);
+    mask-image: linear-gradient(to right,
+            transparent 0%,
+            #000 var(--mask-left-size),
+            #000 calc(100% - var(--mask-right-size)),
+            transparent 100%);
+
+    /* 核心：让这两个长度变量支持平滑过渡（0.4s 可以根据喜好调整） */
+    transition: --mask-left-size 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+        --mask-right-size 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 当需要显示左遮罩时，左边缘淡出宽度从 0px 平滑变大到 60px */
+.gallery-track.mask-left {
+    --mask-left-size: 60px;
+}
+
+/* 当需要显示右遮罩时，右边缘淡出宽度从 0px 平滑变大到 60px */
+.gallery-track.mask-right {
+    --mask-right-size: 60px;
+}
+
 .spacer {
     width: 50vw;
     flex-shrink: 0;
@@ -453,9 +504,7 @@ onUnmounted(() => {
     transform: translateY(15px);
 }
 
-/* ==============================================
-   完全自定义 UI 控件 (消除所有原生外观)
-   ============================================== */
+/* 完全自定义 UI 控件 */
 
 /* 1. 自定义 Switch 开关 */
 .custom-switch {
@@ -519,6 +568,16 @@ onUnmounted(() => {
 
 .custom-switch.mini input:checked+.slider:before {
     transform: translateX(16px);
+}
+
+/* 处理 Switch 禁用状态下的指针效果 */
+.custom-switch input:disabled+.slider {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.custom-switch input:disabled {
+    cursor: not-allowed;
 }
 
 /* 2. 通用 Input 基础样式 */
