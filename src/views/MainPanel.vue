@@ -1273,6 +1273,8 @@ const closeWindow = async () => {
     gap: 16px;
     flex-grow: 1;
     transition: all 0.3s ease;
+    padding-bottom: 35px;
+    box-sizing: border-box;
 }
 
 /* 游戏模式自适应列宽 */
@@ -1496,7 +1498,13 @@ input:checked+.slider:before {
 }
 
 .panel-footer {
-    margin-top: 25px;
+    position: fixed;
+    bottom: 16px;
+    z-index: 999;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: calc(900px - 64px);
     display: flex;
     flex-direction: row;
     justify-content: space-between;

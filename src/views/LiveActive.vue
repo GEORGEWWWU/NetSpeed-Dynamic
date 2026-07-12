@@ -1,32 +1,593 @@
 <template>
-    <div class="blank-dynamic-page">
-        <h3 class="page-title">实时活动设置已预留</h3>
-        <p class="page-desc">未来可以在这里添加实时活动相关配置...</p>
+    <div class="gallery-layout-wrapper">
+        <div class="gallery-header">
+            <h2>实时活动控制枢纽</h2>
+            <p>选择一个模块并激活你的沉浸式体验</p>
+        </div>
+
+        <button v-show="canScrollLeft" class="scroll-btn scroll-btn-left" @click="scrollToLeft">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+        </button>
+        <button v-show="canScrollRight" class="scroll-btn scroll-btn-right" @click="scrollToRight">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+        </button>
+
+        <div class="gallery-track" ref="trackRef" @scroll="checkScroll">
+
+            <div v-for="item in activities" :key="item.id" class="gallery-card"
+                :class="{ 'is-active': activeId === item.id }" :style="{ '--accent-color': item.accent }"
+                @click="handleCardClick(item.id, $event)">
+
+                <div class="card-hero">
+                    <div class="hero-top-row">
+                        <div class="pro-icon" v-html="item.icon"></div>
+                        <label class="switch modern-switch" @click.stop>
+                            <input type="checkbox" :checked="item.enabled">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="hero-text">
+                        <h3>{{ item.title }}</h3>
+                        <p>{{ item.desc }}</p>
+                    </div>
+                </div>
+
+                <div class="card-body" v-if="activeId === item.id">
+                    <transition name="fade-up" appear>
+                        <div class="body-content">
+                            <template v-if="item.id === 'pomodoro'">
+                                <div class="pro-setting-item mt-10">
+                                    <div class="pro-meta">
+                                        <span class="pro-title">专注时长 (25 分钟)</span>
+                                        <span class="pro-desc">拖动设置倒计时长度</span>
+                                    </div>
+                                    <input type="range" min="5" max="60" value="25" class="pro-range" />
+                                </div>
+                                <div class="pro-setting-item">
+                                    <div class="pro-meta">
+                                        <span class="pro-title">系统级免打扰</span>
+                                    </div>
+                                    <label class="switch mini-switch"><input type="checkbox" checked><span
+                                            class="slider"></span></label>
+                                </div>
+                            </template>
+
+                            <template v-else-if="item.id === 'flight'">
+                                <div class="pro-input-group mt-10">
+                                    <input type="text" class="pro-input" placeholder="输入航班号 (如 MU5137)" />
+                                </div>
+                                <div class="pro-input-group">
+                                    <input type="date" class="pro-input" />
+                                </div>
+                                <div class="pro-setting-item mt-10">
+                                    <div class="pro-meta"><span class="pro-title">落地强提醒</span></div>
+                                    <label class="switch mini-switch"><input type="checkbox" checked><span
+                                            class="slider"></span></label>
+                                </div>
+                            </template>
+
+                            <template v-else-if="item.id === 'sports'">
+                                <div class="pro-input-group mt-10">
+                                    <select class="pro-input">
+                                        <option>英格兰足球超级联赛 (EPL)</option>
+                                        <option>NBA 篮球职业联赛</option>
+                                    </select>
+                                </div>
+                                <div class="pro-input-group">
+                                    <input type="text" class="pro-input" placeholder="关注队伍 / Match ID" />
+                                </div>
+                            </template>
+
+                            <template v-else-if="item.id === 'obs'">
+                                <div class="pro-input-group mt-10">
+                                    <input type="text" class="pro-input" placeholder="WebSocket 端口 (缺省 4455)" />
+                                </div>
+                                <div class="pro-input-group">
+                                    <input type="password" class="pro-input" placeholder="连接密码鉴权" />
+                                </div>
+                            </template>
+
+                            <template v-else>
+                                <div class="pro-coming-soon">
+                                    <div class="loader-line"></div>
+                                    <p>模块部署中 SYSTEM_PENDING</p>
+                                </div>
+                            </template>
+                        </div>
+                    </transition>
+                </div>
+            </div>
+
+            <div class="spacer"></div>
+        </div>
     </div>
 </template>
 
 <script setup lang="ts">
-// 实时活动相关的逻辑/API引用可以在此处扩展
+import { ref, onMounted, onUnmounted, nextTick } from 'vue';
+
+const activities = ref([
+    {
+        id: 'pomodoro',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>',
+        title: '专注番茄钟',
+        desc: '沉浸工作时间管理',
+        accent: '#ff4757',
+        enabled: true
+    },
+    {
+        id: 'flight',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21.5 4c0 0-2 .5-3.5 2L14.5 9.5 6 7.5l-2 2 6 3-3.5 3.5-2.5-.5-2 2 3.5 1.5 1.5 3.5 2-2-.5-2.5L14 14l3.8 5.2z"></path></svg>',
+        title: '航班实时追踪',
+        desc: '延误与登机动态',
+        accent: '#1e90ff',
+        enabled: false
+    },
+    {
+        id: 'sports',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20"></path><path d="M2 12h20"></path></svg>',
+        title: '赛事比分看板',
+        desc: '桌面实时球赛比分',
+        accent: '#2ed573',
+        enabled: false
+    },
+    {
+        id: 'obs',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>',
+        title: '直播录屏监控',
+        desc: 'OBS 状态与防闭麦',
+        accent: '#9b59b6',
+        enabled: false
+    },
+    {
+        id: 'printer',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>',
+        title: '打印机队列',
+        desc: '批量打印进度状态',
+        accent: '#57606f',
+        enabled: false
+    },
+]);
+
+const activeId = ref('pomodoro');
+const trackRef = ref<HTMLElement | null>(null);
+
+// 滚动按钮可见性状态
+const canScrollLeft = ref(false);
+const canScrollRight = ref(true);
+
+// 检查当前滚动位置并更新按钮状态
+const checkScroll = () => {
+    if (!trackRef.value) return;
+    const { scrollLeft, clientWidth } = trackRef.value;
+
+    canScrollLeft.value = scrollLeft > 1;
+
+    // 获取所有卡片，按最后一张卡片的位置来判断
+    const cards = trackRef.value.querySelectorAll('.gallery-card');
+    if (cards.length > 0) {
+        const lastCard = cards[cards.length - 1] as HTMLElement;
+        // 最后一个卡片的右边缘物理位置（加上一点 padding 缓冲）
+        const lastCardRightEdge = lastCard.offsetLeft + lastCard.offsetWidth + 24;
+
+        // 如果当前视口的右侧边界还没碰到最后一张卡片的右边缘，才显示右滑按钮
+        canScrollRight.value = Math.ceil(scrollLeft + clientWidth) < lastCardRightEdge;
+    } else {
+        canScrollRight.value = false;
+    }
+};
+
+// 滚动到最左侧并自动激活第一个
+const scrollToLeft = () => {
+    if (trackRef.value) {
+        trackRef.value.scrollTo({ left: 0, behavior: 'smooth' });
+
+        // 选中第一个数据项
+        if (activities.value.length > 0) {
+            activeId.value = activities.value[0].id;
+        }
+    }
+};
+
+// 滚动到最右侧并自动激活最后一个
+const scrollToRight = () => {
+    if (trackRef.value) {
+        const cards = trackRef.value.querySelectorAll('.gallery-card');
+        if (cards.length > 0) {
+            const lastCard = cards[cards.length - 1] as HTMLElement;
+            // 计算目标滚动值
+            const targetLeft = lastCard.offsetLeft + lastCard.offsetWidth - trackRef.value.clientWidth + 24;
+            trackRef.value.scrollTo({ left: targetLeft, behavior: 'smooth' });
+
+            // 选中最后一个数据项
+            activeId.value = activities.value[activities.value.length - 1].id;
+        }
+    }
+};
+
+const handleCardClick = (id: string, event: MouseEvent) => {
+    activeId.value = id;
+
+    // 平滑滚动居中
+    const card = (event.currentTarget as HTMLElement);
+    const container = trackRef.value;
+    if (container && card) {
+        const scrollLeft = card.offsetLeft - (container.clientWidth / 2) + (card.clientWidth / 2);
+        container.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+    }
+};
+
+onMounted(() => {
+    // 首次渲染完毕后检查一次按钮可见性
+    nextTick(() => {
+        checkScroll();
+    });
+    // 监听窗口大小变化以重算滚动状态
+    window.addEventListener('resize', checkScroll);
+});
+
+onUnmounted(() => {
+    window.removeEventListener('resize', checkScroll);
+});
 </script>
 
 <style scoped>
-.blank-dynamic-page {
-    grid-column: 1 / -1;
+/* 框架布局*/
+.gallery-layout-wrapper {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 300px;
-    color: var(--item-desc-color);
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+    /* 👈 修改：去掉固定的400px，让它自适应剩余空间 */
+    overflow: hidden;
+    position: relative;
 }
 
-.page-title {
-    margin: 0 0 8px 0;
+.gallery-header {
+    flex-shrink: 0;
+    margin-bottom: 24px;
+}
+
+.gallery-header h2 {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--h1-color);
+    margin: 0 0 6px 0;
+    letter-spacing: -0.5px;
+}
+
+.gallery-header p {
+    font-size: 13px;
+    color: var(--subtitle-color);
+    font-weight: 500;
+    letter-spacing: 0.2px;
+    margin: 0;
+}
+
+/* 横向控制按钮 */
+.scroll-btn {
+    position: absolute;
+    top: 55%;
+    /* 结合header高度做一点偏移，使其在卡片垂直居中 */
+    transform: translateY(-50%);
+    z-index: 10;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--card-bg, #ffffff);
+    border: 1px solid var(--control-border);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--item-title-color);
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.scroll-btn svg {
+    width: 20px;
+    height: 20px;
+}
+
+.scroll-btn:hover {
+    transform: translateY(-50%) scale(1.1);
+    color: var(--accent-color, #333);
+    border-color: var(--accent-color, #ccc);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+
+.scroll-btn-left {
+    left: 4px;
+}
+
+.scroll-btn-right {
+    right: 4px;
+}
+
+/* 横向容器 */
+.gallery-track {
+    display: flex;
+    gap: 20px;
+    overflow-x: auto;
+    padding: 10px 50vw 30px 4px;
+    align-items: stretch;
+    flex-grow: 1;
+    min-height: 0;
+    scroll-behavior: smooth;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.gallery-track::-webkit-scrollbar {
+    display: none;
+}
+
+.spacer {
+    width: 50vw;
+    flex-shrink: 0;
+}
+
+/* 专业工业化 Bento 卡片设计 */
+.gallery-card {
+    flex-shrink: 0;
+    width: 200px;
+    background: var(--card-bg);
+    border: 1px solid var(--control-border);
+    border-radius: 20px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    transform: scale(0.96);
+    opacity: 0.55;
+    filter: grayscale(100%);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);
+    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.gallery-card:hover {
+    opacity: 0.8;
+    filter: grayscale(50%);
+}
+
+.gallery-card.is-active {
+    width: 320px;
+    transform: scale(1);
+    opacity: 1;
+    filter: grayscale(0%);
+    cursor: default;
+    border-color: var(--accent-color);
+    box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.1),
+        0 0 0 1px var(--accent-color) inset;
+}
+
+:global(.dark-theme) .gallery-card.is-active {
+    box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.5),
+        0 0 20px -5px var(--accent-color);
+    background: linear-gradient(180deg, var(--control-bg) 0%, var(--card-bg) 100%);
+}
+
+/* 卡片头部 */
+.card-hero {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    height: 140px;
+    flex-shrink: 0;
+    position: relative;
+}
+
+.hero-top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: auto;
+}
+
+.pro-icon {
+    width: 36px;
+    height: 36px;
+    color: var(--item-title-color);
+    transition: all 0.4s ease;
+}
+
+.is-active .pro-icon {
+    color: var(--accent-color);
+    transform: scale(1.1);
+}
+
+.hero-text h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--h1-color);
+    letter-spacing: -0.5px;
+    transition: color 0.3s;
+}
+
+.hero-text p {
+    margin: 6px 0 0 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--subtitle-color);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* 卡片控制域 (展开区域) */
+.card-body {
+    padding: 0 24px 24px 24px;
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+.body-content {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.fade-up-enter-active {
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    transition-delay: 0.1s;
+}
+
+.fade-up-enter-from {
+    opacity: 0;
+    transform: translateY(15px);
+}
+
+/* ==============================================
+   现代硬核工业风 Input & UI 控件
+   ============================================== */
+.pro-input-group {
+    margin-bottom: 12px;
+}
+
+.pro-input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid var(--control-border);
+    padding: 12px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-body);
+    outline: none;
+    transition: border-color 0.3s;
+}
+
+.pro-input::placeholder {
+    color: var(--item-desc-color);
+    font-weight: 500;
+}
+
+.pro-input:focus {
+    border-bottom-color: var(--accent-color);
+}
+
+.pro-setting-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--control-border);
+}
+
+.pro-setting-item:last-child {
+    border-bottom: none;
+}
+
+.pro-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.pro-title {
+    font-size: 13px;
+    font-weight: 700;
     color: var(--item-title-color);
 }
 
-.page-desc {
+.pro-desc {
+    font-size: 11px;
+    color: var(--item-desc-color);
+    font-weight: 500;
+}
+
+.mt-10 {
+    margin-top: 10px;
+}
+
+.pro-range {
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: var(--control-border);
+    border-radius: 2px;
+    outline: none;
+    margin-top: 16px;
+    margin-bottom: 8px;
+}
+
+.pro-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    background: var(--text-body);
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.pro-range::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    background: var(--accent-color);
+}
+
+.modern-switch {
+    transform: scale(0.85);
+    transform-origin: right top;
+}
+
+.pro-coming-soon {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    height: 100%;
+    padding: 20px 0;
+}
+
+.loader-line {
+    width: 40px;
+    height: 3px;
+    background: var(--control-border);
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+.loader-line::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 15px;
+    background: var(--item-title-color);
+    animation: loader-slide 1.5s infinite ease-in-out;
+}
+
+@keyframes loader-slide {
+    0% {
+        transform: translateX(-15px);
+    }
+
+    100% {
+        transform: translateX(40px);
+    }
+}
+
+.pro-coming-soon p {
+    font-size: 11px;
+    font-weight: 700;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    color: var(--item-desc-color);
     margin: 0;
-    font-size: 13px;
+    letter-spacing: 0.5px;
 }
 </style>
