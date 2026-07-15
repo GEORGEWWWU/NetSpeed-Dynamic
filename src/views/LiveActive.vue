@@ -104,38 +104,6 @@
                                 </div>
                             </template>
 
-                            <template v-else-if="item.id === 'flight'">
-                                <div class="pro-input-group mt-10">
-                                    <input type="text" class="custom-input" placeholder="输入航班号 (如 MU5137)" />
-                                </div>
-                                <div class="pro-input-group">
-                                    <input type="date" class="custom-input" />
-                                </div>
-                            </template>
-
-                            <template v-else-if="item.id === 'sports'">
-                                <div class="pro-input-group mt-10">
-                                    <div class="custom-select-wrapper">
-                                        <select class="custom-input custom-select">
-                                            <option>英格兰足球超级联赛 (EPL)</option>
-                                            <option>NBA 篮球职业联赛</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="pro-input-group">
-                                    <input type="text" class="custom-input" placeholder="关注队伍 / Match ID" />
-                                </div>
-                            </template>
-
-                            <template v-else-if="item.id === 'obs'">
-                                <div class="pro-input-group mt-10">
-                                    <input type="text" class="custom-input" placeholder="WebSocket 端口 (缺省 4455)" />
-                                </div>
-                                <div class="pro-input-group">
-                                    <input type="password" class="custom-input" placeholder="连接密码鉴权" />
-                                </div>
-                            </template>
-
                             <template v-else>
                                 <div class="pro-coming-soon">
                                     <div class="loader-line"></div>
@@ -167,28 +135,10 @@ const activities = ref([
         disable: false
     },
     {
-        id: 'flight',
-        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21.5 4c0 0-2 .5-3.5 2L14.5 9.5 6 7.5l-2 2 6 3-3.5 3.5-2.5-.5-2 2 3.5 1.5 1.5 3.5 2-2-.5-2.5L14 14l3.8 5.2z"></path></svg>',
-        title: '航班实时追踪',
-        desc: '延误与登机动态',
-        accent: '#ff4757',
-        enabled: false,
-        disable: true
-    },
-    {
-        id: 'sports',
-        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20"></path><path d="M2 12h20"></path></svg>',
-        title: '赛事比分看板',
-        desc: '桌面实时球赛比分',
-        accent: '#ff4757',
-        enabled: false,
-        disable: true
-    },
-    {
-        id: 'obs',
+        id: 'sysmsg',
         icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>',
-        title: '直播录屏监控',
-        desc: 'OBS 状态与防闭麦',
+        title: '系统动态感知',
+        desc: '实时捕捉软硬件生态变化',
         accent: '#ff4757',
         enabled: false,
         disable: true
