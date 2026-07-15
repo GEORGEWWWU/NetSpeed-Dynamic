@@ -313,6 +313,7 @@ const showPomodoroText = computed(() => {
 const isAutoHideEnabled = ref(localStorage.getItem('nsd_autohide_fs') === 'true');
 // 记录进入全屏前的灵动岛显隐状态，用来决定退回桌面时要不要恢复
 let wasVisibleBeforeFullscreen = false;
+let isHidingForFullscreen = false; // 记录当前是否是为了避让全屏而临时隐藏
 
 // 记录当前是否显示上行网速（用于轮换）
 const isShowingUpload = ref(false);
@@ -854,15 +855,11 @@ const onLeave = (el: Element, done: () => void) => {
     const HTMLElement = el as HTMLElement;
     HTMLElement.style.transformOrigin = 'center top';
     let start = performance.now();
-
-    const duration = 300; // 收起动画通常更干脆、更快
+    const duration = 300;
 
     const animate = (time: number) => {
         let progress = (time - start) / duration;
-
-        // 离开动画：快速平滑回缩
-        // 使用 easing 曲线或简化的衰减
-        let scale = 1 - Math.pow(progress, 3); // 快速内收
+        let scale = 1 - Math.pow(progress, 3);
         let opacity = 1 - progress * 1.5;
 
         HTMLElement.style.transform = `scale(${Math.max(0, scale)})`;
@@ -872,9 +869,14 @@ const onLeave = (el: Element, done: () => void) => {
             requestAnimationFrame(animate);
         } else {
             done();
-            // 等待 DOM 动画播放完成后再隐藏窗口
             getCurrentWindow().hide().catch(console.error);
-            emit('island-status-sync', { visible: false });
+
+            // 如果是为了全屏避让而隐藏，绝对不向主面板发送关闭信号
+            if (!isHidingForFullscreen) {
+                emit('island-status-sync', { visible: false });
+            } else {
+                isHidingForFullscreen = false; // 用完重置标记，不影响下次用户手动关闭
+            }
         }
     };
     requestAnimationFrame(animate);
@@ -1271,26 +1273,22 @@ onMounted(async () => {
     await listen<boolean>('fullscreen-changed', async (event) => {
         const isFullscreen = event.payload;
 
-        // 如果没开这个功能，直接无视
         if (!isAutoHideEnabled.value) return;
 
         if (isFullscreen) {
-            // 检测到全屏：如果灵动岛当前是显示的，把它收起来，并做个案底
             if (isIslandVisible.value) {
                 wasVisibleBeforeFullscreen = true;
-                isIslandVisible.value = false; // 这会自然触发你的弹簧收缩动画并隐藏窗口
+                isHidingForFullscreen = true; // 👈 标记：我是为了避让全屏才躲起来的
+                isIslandVisible.value = false;
             }
         } else {
-            // 退出全屏：如果进全屏前它是开着的，现在把它恢复出来
             if (wasVisibleBeforeFullscreen) {
                 await getCurrentWindow().show();
-
-                // 等待 40ms 让透明窗口先挂载好，再拉开幕布，防止闪烁（复用你之前的完美体验逻辑）
                 setTimeout(() => {
                     isIslandVisible.value = true;
+                    emit('island-status-sync', { visible: true }); // 👈 恢复时做一次双保险同步
                 }, 40);
-
-                wasVisibleBeforeFullscreen = false; // 销案
+                wasVisibleBeforeFullscreen = false;
             }
         }
     });

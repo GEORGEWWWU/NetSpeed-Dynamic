@@ -283,29 +283,67 @@ pub fn run() {
                         unsafe {
                             let mut is_fullscreen = false;
                             let fg_hwnd = winapi::um::winuser::GetForegroundWindow();
-                            if !fg_hwnd.is_null() {
-                                let mut rect: winapi::shared::windef::RECT = std::mem::zeroed();
-                                winapi::um::winuser::GetWindowRect(fg_hwnd, &mut rect);
+                            let shell_hwnd = winapi::um::winuser::GetShellWindow(); // 系统的根：explorer.exe
+                            
+                            // 1. 过滤掉无焦点窗口、桌面根节点
+                            if !fg_hwnd.is_null() 
+                                && fg_hwnd != winapi::um::winuser::GetDesktopWindow() 
+                                && fg_hwnd != shell_hwnd 
+                            {
+                                // 【终极杀手锏】：获取系统外壳 (explorer.exe) 的进程 ID
+                                let mut shell_pid = 0;
+                                if !shell_hwnd.is_null() {
+                                    winapi::um::winuser::GetWindowThreadProcessId(shell_hwnd, &mut shell_pid);
+                                }
 
-                                let monitor = winapi::um::winuser::MonitorFromWindow(fg_hwnd, winapi::um::winuser::MONITOR_DEFAULTTONEAREST);
-                                let mut mi: winapi::um::winuser::MONITORINFO = std::mem::zeroed();
-                                mi.cbSize = std::mem::size_of::<winapi::um::winuser::MONITORINFO>() as u32;
-                                winapi::um::winuser::GetMonitorInfoW(monitor, &mut mi);
+                                // 获取当前前景窗口的进程 ID
+                                let mut fg_pid = 0;
+                                winapi::um::winuser::GetWindowThreadProcessId(fg_hwnd, &mut fg_pid);
 
-                                // 判断焦点窗口是否填满了当前屏幕
-                                if rect.left == mi.rcMonitor.left && rect.top == mi.rcMonitor.top && rect.right == mi.rcMonitor.right && rect.bottom == mi.rcMonitor.bottom {
-                                    let mut class_name = [0u16; 256];
-                                    let len = winapi::um::winuser::GetClassNameW(fg_hwnd, class_name.as_mut_ptr(), class_name.len() as i32);
-                                    let class_str = String::from_utf16_lossy(&class_name[..len as usize]);
+                                // 核心判定：如果抢占焦点的窗口 PID 和任务栏/桌面是一家人
+                                // 说明这绝对是任务栏悬浮窗、音量面板或透明防误触层，直接忽略！
+                                if shell_pid != 0 && fg_pid == shell_pid {
+                                    // 属于系统外壳组件，当做无事发生
+                                } else {
+                                    // 2. 进一步排除子窗口 (WS_CHILD) 和 鼠标穿透层 (WS_EX_TRANSPARENT)
+                                    let style = winapi::um::winuser::GetWindowLongPtrW(fg_hwnd, winapi::um::winuser::GWL_STYLE) as u32;
+                                    let ex_style = winapi::um::winuser::GetWindowLongPtrW(fg_hwnd, winapi::um::winuser::GWL_EXSTYLE) as u32;
                                     
-                                    // 排除系统桌面壁纸层
-                                    if class_str != "Progman" && class_str != "WorkerW" {
-                                        is_fullscreen = true;
+                                    if (style & winapi::um::winuser::WS_CHILD) == 0 && (ex_style & winapi::um::winuser::WS_EX_TRANSPARENT) == 0 {
+                                        
+                                        let mut class_name = [0u16; 256];
+                                        let len = winapi::um::winuser::GetClassNameW(fg_hwnd, class_name.as_mut_ptr(), class_name.len() as i32);
+                                        let class_str = String::from_utf16_lossy(&class_name[..len as usize]);
+                                        
+                                        // 3. 保底黑名单（防一手那些不在 explorer.exe 里的新版 UWP 系统层）
+                                        let is_blacklisted = class_str.contains("Windows.UI.Core.CoreWindow") 
+                                            || class_str.contains("Xaml_WindowedPopupClass")
+                                            || class_str.contains("SearchApp")
+                                            || class_str.contains("NotifyIconOverflowWindow");
+
+                                        if !is_blacklisted {
+                                            // 4. 几何判定：真正判断它是否铺满了屏幕
+                                            let mut rect: winapi::shared::windef::RECT = std::mem::zeroed();
+                                            winapi::um::winuser::GetWindowRect(fg_hwnd, &mut rect);
+
+                                            let monitor = winapi::um::winuser::MonitorFromWindow(fg_hwnd, winapi::um::winuser::MONITOR_DEFAULTTONEAREST);
+                                            let mut mi: winapi::um::winuser::MONITORINFO = std::mem::zeroed();
+                                            mi.cbSize = std::mem::size_of::<winapi::um::winuser::MONITORINFO>() as u32;
+                                            winapi::um::winuser::GetMonitorInfoW(monitor, &mut mi);
+
+                                            if rect.left <= mi.rcMonitor.left 
+                                                && rect.top <= mi.rcMonitor.top 
+                                                && rect.right >= mi.rcMonitor.right 
+                                                && rect.bottom >= mi.rcMonitor.bottom 
+                                            {
+                                                is_fullscreen = true;
+                                            }
+                                        }
                                     }
                                 }
                             }
 
-                            // 状态发生翻转时，发送信号给前端
+                            // 状态翻转时发送信号
                             if is_fullscreen != was_fullscreen {
                                 let _ = app_handle_for_fs.emit("fullscreen-changed", is_fullscreen);
                                 was_fullscreen = is_fullscreen;
