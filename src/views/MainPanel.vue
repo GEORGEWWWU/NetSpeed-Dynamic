@@ -32,8 +32,14 @@
             </div>
 
             <div class="header-controls">
-                <button class="dynamicset-btn" :class="{ 'is-active': isDynamicSet }" @click="toggleDynamicSet">
+                <button class="dynamicset-btn" :class="{ 'is-active': !isDynamicSet && !isSmtcSetting }" @click="goHome">
+                    {{ t('homePage') }}
+                </button>
+                <button class="dynamicset-btn" :class="{ 'is-active': isDynamicSet }" @click="isDynamicSet = true; isSmtcSetting = false">
                     {{ t('personalizeCenter') }}
+                </button>
+                <button class="dynamicset-btn smtc-btn" :class="{ 'is-active': isSmtcSetting }" @click="isSmtcSetting = true; isDynamicSet = false">
+                    {{ t('smtcSettingsBtn') }}
                 </button>
                 <span class="control-separator"></span>
 
@@ -49,8 +55,8 @@
 
         <hr class="divider" />
 
-        <div class="main-content" :class="{ 'dynamicset-layout': isDynamicSet }">
-            <template v-if="!isDynamicSet">
+        <div class="main-content" :class="{ 'dynamicset-layout': isDynamicSet || isSmtcSetting }">
+            <template v-if="!isDynamicSet && !isSmtcSetting">
                 <div class="card status-card">
                     <div class="card-header-row">
                         <h3>{{ t('realtimeStatus') }}</h3>
@@ -249,95 +255,6 @@
                             </transition>
                         </div>
                     </div>
-                    <div class="set-item" :class="{ 'is-dropdown-open': isPlayerDropdownOpen }">
-                        <div class="set-item-meta">
-                            <span class="set-item-title">{{ t('targetMediaPlatform') }}</span>
-                            <span class="set-item-desc">{{ t('targetMediaPlatformDesc') }}</span>
-                        </div>
-                        <div class="custom-dropdown" tabindex="0" @blur="isPlayerDropdownOpen = false">
-                            <div class="dropdown-trigger" @click="isPlayerDropdownOpen = !isPlayerDropdownOpen">
-                                <div class="current-item">
-                                    <template v-if="targetPlayer === 'netease'"><img src="../assets/musci163.svg"
-                                            class="platform-icon"> {{ t('netease') }}</template>
-                                    <template v-else-if="targetPlayer === 'spotify'"><img src="../assets/Spotify.svg"
-                                            class="platform-icon"> Spotify</template>
-                                    <template v-else-if="targetPlayer === 'apple'"><img src="../assets/applemusic.svg"
-                                            class="platform-icon"> Apple</template>
-                                    <template v-else-if="targetPlayer === 'qqmusic'"><img src="../assets/qqmusic.svg"
-                                            class="platform-icon"> {{ t('qqMusic') }}</template>
-                                    <template v-else-if="targetPlayer === 'kugou'"><img src="../assets/kugou.svg"
-                                            class="platform-icon"> {{ t('kugouMusic') }}</template>
-                                    <template v-else-if="targetPlayer === 'echo'"><img src="../assets/echomusic.ico"
-                                            class="platform-icon"> EchoMusic</template>
-                                    <template v-else-if="targetPlayer === 'lx-music'"><img src="../assets/lxmusic.png"
-                                            class="platform-icon"> {{ t('lxMusic') }}</template>
-                                    <template v-else-if="targetPlayer === 'other'">
-                                        <svg viewBox="0 0 24 24" class="platform-icon" fill="currentColor">
-                                            <path
-                                                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z" />
-                                        </svg>
-                                        {{ t('genericMedia') }}
-                                    </template>
-                                </div>
-                                <svg viewBox="0 0 24 24" class="arrow-icon"
-                                    :class="{ 'is-open': isPlayerDropdownOpen }">
-                                    <path d="M7 10l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2"
-                                        stroke-linecap="round" />
-                                </svg>
-                            </div>
-
-                            <transition name="dropdown">
-                                <div class="dropdown-menu" v-show="isPlayerDropdownOpen">
-                                    <div class="dropdown-item" :class="{ 'is-active': targetPlayer === 'netease' }"
-                                        @click="handleSelectPlayer('netease')">
-                                        <img src="../assets/musci163.svg" class="platform-icon"> {{ t('netease') }}
-                                    </div>
-                                    <div class="dropdown-item" :class="{ 'is-active': targetPlayer === 'spotify' }"
-                                        @click="handleSelectPlayer('spotify')">
-                                        <img src="../assets/Spotify.svg" class="platform-icon"> Spotify
-                                    </div>
-                                    <div class="dropdown-item" :class="{ 'is-active': targetPlayer === 'apple' }"
-                                        @click="handleSelectPlayer('apple')">
-                                        <img src="../assets/applemusic.svg" class="platform-icon"> Apple
-                                    </div>
-                                    <div class="dropdown-item" :class="{ 'is-active': targetPlayer === 'qqmusic' }"
-                                        @click="handleSelectPlayer('qqmusic')">
-                                        <img src="../assets/qqmusic.svg" class="platform-icon"> {{ t('qqMusic') }}
-                                    </div>
-                                    <div class="dropdown-item" :class="{ 'is-active': targetPlayer === 'kugou' }"
-                                        @click="handleSelectPlayer('kugou')">
-                                        <img src="../assets/kugou.svg" class="platform-icon"> {{ t('kugouMusic') }}
-                                    </div>
-                                    <div class="dropdown-item" :class="{ 'is-active': targetPlayer === 'echo' }"
-                                        @click="handleSelectPlayer('echo')">
-                                        <img src="../assets/echomusic.ico" class="platform-icon"> EchoMusic
-                                    </div>
-                                    <div class="dropdown-item" :class="{ 'is-active': targetPlayer === 'lx-music' }"
-                                        @click="handleSelectPlayer('lx-music')">
-                                        <img src="../assets/lxmusic.png" class="platform-icon"> {{ t('lxMusic') }}
-                                    </div>
-                                    <div class="dropdown-item" :class="{ 'is-active': targetPlayer === 'other' }"
-                                        @click="handleSelectPlayer('other')">
-                                        <svg viewBox="0 0 24 24" class="platform-icon" fill="currentColor">
-                                            <path
-                                                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z" />
-                                        </svg>
-                                        {{ t('otherMediaControl') }}
-                                    </div>
-                                </div>
-                            </transition>
-                        </div>
-                    </div>
-                    <div class="set-item">
-                        <div class="set-item-meta">
-                            <span class="set-item-title">{{ t('mediaController') }}</span>
-                            <span class="set-item-desc">{{ t('mediaControllerDesc') }}</span>
-                        </div>
-                        <label class="switch">
-                            <input type="checkbox" v-model="enableMusicCtrl">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
                     <div class="set-item">
                         <div class="set-item-meta">
                             <span class="set-item-title">{{ t('messageNotifications') }}</span>
@@ -371,8 +288,88 @@
                 </div>
             </template>
 
-            <template v-else>
+            <template v-else-if="isDynamicSet">
                 <DynamicSet />
+            </template>
+            <template v-else>
+                <!-- SMTC 设置面板（内联，类似个性化中心） -->
+                <div class="smtc-panel">
+                    <div class="smtc-grid">
+                        <div class="neo-card smtc-platform-card">
+                            <div class="card-header">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="title-icon">
+                                    <path d="M9 18V5l12-2v13" />
+                                    <circle cx="6" cy="18" r="3" />
+                                    <circle cx="18" cy="16" r="3" />
+                                </svg>
+                                <span>{{ t('targetMediaPlatform') }}</span>
+                            </div>
+                            <span class="card-desc">{{ t('targetMediaPlatformDesc') }}</span>
+                            <div class="smtc-player-grid">
+                                <button class="smtc-player-btn" :class="{ active: targetPlayer === 'netease' }" @click="handleSelectPlayer('netease')">
+                                    <img src="../assets/musci163.svg" class="smtc-p-icon"><span>{{ t('netease') }}</span>
+                                </button>
+                                <button class="smtc-player-btn" :class="{ active: targetPlayer === 'spotify' }" @click="handleSelectPlayer('spotify')">
+                                    <img src="../assets/Spotify.svg" class="smtc-p-icon"><span>Spotify</span>
+                                </button>
+                                <button class="smtc-player-btn" :class="{ active: targetPlayer === 'apple' }" @click="handleSelectPlayer('apple')">
+                                    <img src="../assets/applemusic.svg" class="smtc-p-icon"><span>Apple</span>
+                                </button>
+                                <button class="smtc-player-btn" :class="{ active: targetPlayer === 'qqmusic' }" @click="handleSelectPlayer('qqmusic')">
+                                    <img src="../assets/qqmusic.svg" class="smtc-p-icon"><span>{{ t('qqMusic') }}</span>
+                                </button>
+                                <button class="smtc-player-btn" :class="{ active: targetPlayer === 'kugou' }" @click="handleSelectPlayer('kugou')">
+                                    <img src="../assets/kugou.svg" class="smtc-p-icon"><span>{{ t('kugouMusic') }}</span>
+                                </button>
+                                <button class="smtc-player-btn" :class="{ active: targetPlayer === 'echo' }" @click="handleSelectPlayer('echo')">
+                                    <img src="../assets/echomusic.ico" class="smtc-p-icon"><span>Echo</span>
+                                </button>
+                                <button class="smtc-player-btn" :class="{ active: targetPlayer === 'lx-music' }" @click="handleSelectPlayer('lx-music')">
+                                    <img src="../assets/lxmusic.png" class="smtc-p-icon"><span>{{ t('lxMusic') }}</span>
+                                </button>
+                                <button class="smtc-player-btn" :class="{ active: targetPlayer === 'other' }" @click="handleSelectPlayer('other')">
+                                    <svg viewBox="0 0 24 24" class="smtc-p-icon" fill="currentColor">
+                                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z" />
+                                    </svg>
+                                    <span>{{ t('genericMedia') }}</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="smtc-right">
+                            <div class="neo-card">
+                                <div class="card-header">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="title-icon">
+                                        <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+                                        <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+                                    </svg>
+                                    <span>{{ t('mediaController') }}</span>
+                                </div>
+                                <div class="form-item">
+                                    <span class="item-desc" style="font-size:12px;">{{ t('mediaControllerDesc') }}</span>
+                                    <label class="switch">
+                                        <input type="checkbox" v-model="enableMusicCtrl">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="neo-card" v-if="targetPlayer === 'other'">
+                                <div class="card-header">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="title-icon">
+                                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                                    </svg>
+                                    <span>{{ t('websocketPort') }}</span>
+                                </div>
+                                <div class="smtc-port-row">
+                                    <input class="smtc-port-input" type="number" v-model.number="websocketPort" min="1024" max="65535" placeholder="47290" />
+                                </div>
+                                <span class="smtc-port-desc">{{ t('websocketPortDesc') }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </template>
         </div>
 
@@ -443,6 +440,11 @@ const downloadSpeed = ref('0 B/s');
 const appVersion = ref('1.0.0');
 
 const isDynamicSet = ref(false);
+const isSmtcSetting = ref(false);
+const websocketPort = ref(Number(localStorage.getItem('nsd_ws_port')) || 47290);
+watch(websocketPort, (val) => {
+    localStorage.setItem('nsd_ws_port', String(val));
+});
 
 const isChecking = ref(false);
 const hasNewVersion = ref(false);
@@ -454,7 +456,7 @@ const setTargetPlayer = async (player: string) => {
     targetPlayer.value = player;
     localStorage.setItem('nsd_target_player', player); // 本地记忆化
     try {
-        await invoke('set_target_player', { player }); // 秒发给 Rust 立即生效
+        await invoke('set_target_player', { player });
     } catch (e) {
         console.error('切换平台失败', e);
     }
@@ -616,8 +618,9 @@ const toggleMsgNotify = () => {
 };
 
 // 切换灵动岛设置
-const toggleDynamicSet = () => {
-    isDynamicSet.value = !isDynamicSet.value;
+const goHome = () => {
+    isDynamicSet.value = false;
+    isSmtcSetting.value = false;
 };
 
 // 切换自动隐藏
@@ -2388,5 +2391,162 @@ input:disabled+.slider {
 .panel-footer {
     position: relative;
     z-index: 1;
+}
+
+/* ================================================================
+   SMTC 设置面板（内联，与个性化中心一致）
+   ================================================================ */
+.smtc-btn {
+    margin-left: 6px;
+}
+
+.smtc-panel {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.smtc-panel .neo-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.2s, border-color 0.2s;
+}
+
+.smtc-panel .card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--item-title-color);
+    margin-bottom: 8px;
+}
+
+.smtc-panel .title-icon {
+    width: 16px;
+    height: 16px;
+    color: var(--item-desc-color);
+}
+
+.smtc-panel .form-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.smtc-panel {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.smtc-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    height: 100%;
+    align-content: start;
+}
+
+.card-desc {
+    font-size: 12px;
+    color: var(--item-desc-color, #888);
+    margin-bottom: 12px;
+}
+
+.smtc-right {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.smtc-player-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+    margin-top: auto;
+}
+
+.smtc-player-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    background: var(--bg-body, rgba(255,255,255,0.03));
+    border: 1px solid var(--control-border);
+    border-radius: 10px;
+    color: var(--btn-sec-color);
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.smtc-player-btn:hover {
+    background: var(--btn-pri-bg);
+    border-color: var(--btn-pri-border);
+    color: var(--btn-pri-color);
+}
+
+.smtc-player-btn.active {
+    background: var(--btn-pri-bg);
+    border-color: var(--btn-pri-border);
+    color: var(--btn-pri-color);
+    box-shadow: 0 0 12px rgba(74, 158, 255, 0.3), inset 0 1px 0 rgba(255,255,255,0.1);
+    transform: scale(1.03);
+    font-weight: 600;
+}
+
+.smtc-p-icon {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+.smtc-port-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.smtc-port-input {
+    width: 120px;
+    padding: 8px 12px;
+    background: var(--bg-body, rgba(0,0,0,0.3));
+    border: 1px solid var(--control-border);
+    border-radius: 8px;
+    color: var(--item-title-color);
+    font-size: 14px;
+    font-family: ui-monospace, monospace;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.smtc-port-input:focus {
+    border-color: var(--btn-pri-border, #4a9eff);
+}
+
+.smtc-port-input::placeholder {
+    color: var(--item-desc-color, #666);
+    font-size: 12px;
+}
+
+.smtc-port-input::-webkit-outer-spin-button,
+.smtc-port-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.smtc-port-desc {
+    font-size: 11px;
+    color: var(--item-desc-color, #888);
+    line-height: 1.4;
+    margin-top: 6px;
 }
 </style>

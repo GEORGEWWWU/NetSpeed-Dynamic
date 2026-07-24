@@ -1,3 +1,7 @@
+// ============================================================================
+// main.rs - 应用入口，整合所有模块和状态
+// ============================================================================
+
 mod audio_spectrum;
 mod music_controller;
 mod notification;
@@ -6,18 +10,20 @@ mod system_events;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
 use tauri::{State, Manager, Emitter};
-use sysinfo::{Networks};
+use sysinfo::Networks;
 use std::net::{SocketAddr, TcpStream};
 use std::time::{Duration, Instant};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
 use winapi::shared::windef::RECT;
+use tokio::sync::Mutex as TokioMutex; // 用于异步互斥锁
 
-// 全功能灵动岛智能双模动画锁
+// ----------------------------------------------------------------------------
+// 全局动画控制
+// ----------------------------------------------------------------------------
 static ANIMATION_ID: AtomicU32 = AtomicU32::new(0);
 
-// 将分散的坐标合并为一个结构体，并附带所有权 ID 防止误删
 struct AnchorState {
     center_x: i32,
     origin_y: i32,
@@ -35,22 +41,35 @@ fn force_window_topmost(app: tauri::AppHandle) {
             let fg_hwnd = winapi::um::winuser::GetForegroundWindow();
             if !fg_hwnd.is_null() {
                 let mut class_name = [0u16; 256];
-                let len = winapi::um::winuser::GetClassNameW(fg_hwnd, class_name.as_mut_ptr(), class_name.len() as i32);
+                let len = winapi::um::winuser::GetClassNameW(
+                    fg_hwnd,
+                    class_name.as_mut_ptr(),
+                    class_name.len() as i32,
+                );
                 let class_str = String::from_utf16_lossy(&class_name[..len as usize]);
-                
-                if class_str == "#32768" { return; }
+
+                if class_str == "#32768" {
+                    return;
+                }
 
                 let mut rect: RECT = std::mem::zeroed();
                 winapi::um::winuser::GetWindowRect(fg_hwnd, &mut rect);
 
-                let monitor = winapi::um::winuser::MonitorFromWindow(fg_hwnd, winapi::um::winuser::MONITOR_DEFAULTTONEAREST);
+                let monitor = winapi::um::winuser::MonitorFromWindow(
+                    fg_hwnd,
+                    winapi::um::winuser::MONITOR_DEFAULTTONEAREST,
+                );
                 let mut mi: winapi::um::winuser::MONITORINFO = std::mem::zeroed();
                 mi.cbSize = std::mem::size_of::<winapi::um::winuser::MONITORINFO>() as u32;
                 winapi::um::winuser::GetMonitorInfoW(monitor, &mut mi);
 
-                if rect.left == mi.rcMonitor.left && rect.top == mi.rcMonitor.top && rect.right == mi.rcMonitor.right && rect.bottom == mi.rcMonitor.bottom {
+                if rect.left == mi.rcMonitor.left
+                    && rect.top == mi.rcMonitor.top
+                    && rect.right == mi.rcMonitor.right
+                    && rect.bottom == mi.rcMonitor.bottom
+                {
                     if class_str != "Progman" && class_str != "WorkerW" {
-                        return; 
+                        return;
                     }
                 }
             }
@@ -64,7 +83,6 @@ fn force_window_topmost(app: tauri::AppHandle) {
     }
 }
 
-// 新增：底层原子化窗口调整指令，彻底消除位移闪烁
 #[tauri::command]
 fn set_window_bounds(app: tauri::AppHandle, x: i32, y: i32, width: i32, height: i32) {
     #[cfg(target_os = "windows")]
@@ -72,12 +90,13 @@ fn set_window_bounds(app: tauri::AppHandle, x: i32, y: i32, width: i32, height: 
         if let Some(win) = app.get_webview_window("widget") {
             if let Ok(hwnd) = win.hwnd() {
                 unsafe {
-                    // 0x0014 = SWP_NOACTIVATE (0x0010) | SWP_NOZORDER (0x0004)
-                    // 确保同时修改坐标和尺寸时，不抢占用户焦点，不打乱窗口层级
                     winapi::um::winuser::SetWindowPos(
                         hwnd.0 as _,
                         std::ptr::null_mut(),
-                        x, y, width, height,
+                        x,
+                        y,
+                        width,
+                        height,
                         0x0014,
                     );
                 }
@@ -94,7 +113,7 @@ async fn start_island_animation(
     target_width: f64,
     target_height: f64,
     is_pinned: bool,
-    spring_style: String, // 1. 👈 新增这一行，接收前端传来的参数
+    spring_style: String,
 ) -> Result<(), String> {
     let id = ANIMATION_ID.fetch_add(1, Ordering::SeqCst) + 1;
     let scale_factor = window.scale_factor().unwrap_or(1.0);
@@ -110,7 +129,7 @@ async fn start_island_animation(
 
             let (anchor_cx, anchor_cy, anchor_lx, anchor_by) = {
                 let mut anchor_guard = ANIMATION_ANCHOR.lock().unwrap_or_else(|e| e.into_inner());
-                
+
                 if let Some(anchor) = anchor_guard.as_mut() {
                     anchor.active_id = id;
                     (anchor.center_x, anchor.origin_y, anchor.left_x, anchor.bottom_y)
@@ -135,16 +154,13 @@ async fn start_island_animation(
 
             std::thread::spawn(move || {
                 let start_time = std::time::Instant::now();
-                
-                // 2. 👈 根据参数动态匹配弹性物理常数
-                // Stiff (克制): 提高频率，大幅拉高阻尼，使其快准狠
-                // Bouncy (Q弹): 保持原本欢快的震喜感
+
                 let (freq, decay, duration_ms) = if spring_style == "stiff" {
-                    (3.8, 22.0, 250) 
+                    (3.8, 22.0, 250)
                 } else {
-                    (2.4, 12.0, 400) 
+                    (2.4, 12.0, 400)
                 };
-                
+
                 let duration = std::time::Duration::from_millis(duration_ms);
 
                 while start_time.elapsed() < duration {
@@ -156,9 +172,12 @@ async fn start_island_animation(
 
                     let elapsed = start_time.elapsed().as_secs_f64();
                     let progress = elapsed / (duration_ms as f64 / 1000.0);
-                    if progress >= 1.0 { break; }
+                    if progress >= 1.0 {
+                        break;
+                    }
 
-                    let spring = 1.0 - (freq * elapsed * 2.0 * std::f64::consts::PI).cos() * (-decay * elapsed).exp();
+                    let spring =
+                        1.0 - (freq * elapsed * 2.0 * std::f64::consts::PI).cos() * (-decay * elapsed).exp();
                     let current_w = start_width + (target_width - start_width) * spring;
                     let current_h = start_height + (target_height - start_height) * spring;
 
@@ -166,13 +185,21 @@ async fn start_island_animation(
                     let phys_window_h = (current_h * scale_factor).round() as i32;
 
                     let (final_x, final_y) = if is_pinned {
-                        (anchor_lx, anchor_by - phys_window_w) // 修正原有的高度映射
+                        (anchor_lx, anchor_by - phys_window_w)
                     } else {
                         (anchor_cx - phys_window_w / 2, anchor_cy)
                     };
 
                     unsafe {
-                        SetWindowPos(hwnd_raw as _, std::ptr::null_mut(), final_x, final_y, phys_window_w, phys_window_h, 0x0014);
+                        SetWindowPos(
+                            hwnd_raw as _,
+                            std::ptr::null_mut(),
+                            final_x,
+                            final_y,
+                            phys_window_w,
+                            phys_window_h,
+                            0x0014,
+                        );
                     }
                 }
 
@@ -187,7 +214,15 @@ async fn start_island_animation(
                     };
 
                     unsafe {
-                        SetWindowPos(hwnd_raw as _, std::ptr::null_mut(), final_x, final_y, phys_target_w, phys_target_h, 0x0014);
+                        SetWindowPos(
+                            hwnd_raw as _,
+                            std::ptr::null_mut(),
+                            final_x,
+                            final_y,
+                            phys_target_w,
+                            phys_target_h,
+                            0x0014,
+                        );
                     }
                     let _ = window_clone.emit("island-resize", vec![target_width, target_height]);
 
@@ -205,10 +240,18 @@ async fn start_island_animation(
     Ok(())
 }
 
-struct AppState {
-    networks: Mutex<Networks>,
+// ----------------------------------------------------------------------------
+// 应用状态（包含网络统计和 WebSocket 任务句柄）
+// 必须 pub 以便其他模块（如 music_controller）可以访问
+// ----------------------------------------------------------------------------
+pub struct AppState {
+    pub networks: Mutex<Networks>,
+    pub ws_task: TokioMutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
+// ----------------------------------------------------------------------------
+// 网络相关命令
+// ----------------------------------------------------------------------------
 #[tauri::command]
 fn get_network_stats(state: State<'_, AppState>) -> (u64, u64) {
     let mut networks = state.networks.lock().unwrap();
@@ -245,6 +288,9 @@ fn is_widget_visible(app: tauri::AppHandle) -> bool {
     }
 }
 
+// ----------------------------------------------------------------------------
+// 主入口
+// ----------------------------------------------------------------------------
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let networks = Networks::new_with_refreshed_list();
@@ -252,8 +298,16 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {}))
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--autostart"])))
-        .manage(AppState { networks: Mutex::new(networks) })
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec!["--autostart"]),
+        ))
+        // 初始化 AppState（注意这里补上了逗号）
+        .manage(AppState {
+            networks: Mutex::new(networks),
+            ws_task: TokioMutex::new(None),
+        })
+        // 注册所有命令（包含新加的 WebSocket 命令）
         .invoke_handler(tauri::generate_handler![
             get_network_stats,
             is_widget_visible,
@@ -268,77 +322,95 @@ pub fn run() {
             music_controller::control_system_media,
             music_controller::get_random_cover_url,
             music_controller::fetch_netease_lyrics,
+            // 👇 新增 WebSocket 歌词命令
+            music_controller::start_websocket_lyrics,
+            music_controller::stop_websocket_lyrics,
         ])
         .setup(|app| {
             audio_spectrum::start_monitor();
             system_events::start_monitor(app.handle().clone());
 
-            // 全屏应用检测线程
+            // ---- 全屏检测线程（保持不变） ----
             let app_handle_for_fs = app.handle().clone();
             std::thread::spawn(move || {
-                unsafe { let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_MULTITHREADED); }
-                
+                unsafe {
+                    let _ = windows::Win32::System::Com::CoInitializeEx(
+                        None,
+                        windows::Win32::System::Com::COINIT_MULTITHREADED,
+                    );
+                }
+
                 let mut was_fullscreen = false;
                 loop {
                     std::thread::sleep(std::time::Duration::from_millis(600));
-                    
+
                     #[cfg(target_os = "windows")]
                     {
                         unsafe {
                             let mut is_fullscreen = false;
                             let fg_hwnd = winapi::um::winuser::GetForegroundWindow();
-                            let shell_hwnd = winapi::um::winuser::GetShellWindow(); // 系统的根：explorer.exe
-                            
-                            // 1. 过滤掉无焦点窗口、桌面根节点
-                            if !fg_hwnd.is_null() 
-                                && fg_hwnd != winapi::um::winuser::GetDesktopWindow() 
-                                && fg_hwnd != shell_hwnd 
+                            let shell_hwnd = winapi::um::winuser::GetShellWindow();
+
+                            if !fg_hwnd.is_null()
+                                && fg_hwnd != winapi::um::winuser::GetDesktopWindow()
+                                && fg_hwnd != shell_hwnd
                             {
-                                // 【终极杀手锏】：获取系统外壳 (explorer.exe) 的进程 ID
                                 let mut shell_pid = 0;
                                 if !shell_hwnd.is_null() {
                                     winapi::um::winuser::GetWindowThreadProcessId(shell_hwnd, &mut shell_pid);
                                 }
 
-                                // 获取当前前景窗口的进程 ID
                                 let mut fg_pid = 0;
                                 winapi::um::winuser::GetWindowThreadProcessId(fg_hwnd, &mut fg_pid);
 
-                                // 核心判定：如果抢占焦点的窗口 PID 和任务栏/桌面是一家人
-                                // 说明这绝对是任务栏悬浮窗、音量面板或透明防误触层，直接忽略！
                                 if shell_pid != 0 && fg_pid == shell_pid {
-                                    // 属于系统外壳组件，当做无事发生
+                                    // 系统组件，忽略
                                 } else {
-                                    // 2. 进一步排除子窗口 (WS_CHILD) 和 鼠标穿透层 (WS_EX_TRANSPARENT)
-                                    let style = winapi::um::winuser::GetWindowLongPtrW(fg_hwnd, winapi::um::winuser::GWL_STYLE) as u32;
-                                    let ex_style = winapi::um::winuser::GetWindowLongPtrW(fg_hwnd, winapi::um::winuser::GWL_EXSTYLE) as u32;
-                                    
-                                    if (style & winapi::um::winuser::WS_CHILD) == 0 && (ex_style & winapi::um::winuser::WS_EX_TRANSPARENT) == 0 {
-                                        
+                                    let style = winapi::um::winuser::GetWindowLongPtrW(
+                                        fg_hwnd,
+                                        winapi::um::winuser::GWL_STYLE,
+                                    ) as u32;
+                                    let ex_style = winapi::um::winuser::GetWindowLongPtrW(
+                                        fg_hwnd,
+                                        winapi::um::winuser::GWL_EXSTYLE,
+                                    ) as u32;
+
+                                    if (style & winapi::um::winuser::WS_CHILD) == 0
+                                        && (ex_style & winapi::um::winuser::WS_EX_TRANSPARENT) == 0
+                                    {
                                         let mut class_name = [0u16; 256];
-                                        let len = winapi::um::winuser::GetClassNameW(fg_hwnd, class_name.as_mut_ptr(), class_name.len() as i32);
+                                        let len = winapi::um::winuser::GetClassNameW(
+                                            fg_hwnd,
+                                            class_name.as_mut_ptr(),
+                                            class_name.len() as i32,
+                                        );
                                         let class_str = String::from_utf16_lossy(&class_name[..len as usize]);
-                                        
-                                        // 3. 保底黑名单（防一手那些不在 explorer.exe 里的新版 UWP 系统层）
-                                        let is_blacklisted = class_str.contains("Windows.UI.Core.CoreWindow") 
+
+                                        let is_blacklisted = class_str.contains("Windows.UI.Core.CoreWindow")
                                             || class_str.contains("Xaml_WindowedPopupClass")
                                             || class_str.contains("SearchApp")
                                             || class_str.contains("NotifyIconOverflowWindow");
 
                                         if !is_blacklisted {
-                                            // 4. 几何判定：真正判断它是否铺满了屏幕
-                                            let mut rect: winapi::shared::windef::RECT = std::mem::zeroed();
+                                            let mut rect: winapi::shared::windef::RECT =
+                                                std::mem::zeroed();
                                             winapi::um::winuser::GetWindowRect(fg_hwnd, &mut rect);
 
-                                            let monitor = winapi::um::winuser::MonitorFromWindow(fg_hwnd, winapi::um::winuser::MONITOR_DEFAULTTONEAREST);
-                                            let mut mi: winapi::um::winuser::MONITORINFO = std::mem::zeroed();
-                                            mi.cbSize = std::mem::size_of::<winapi::um::winuser::MONITORINFO>() as u32;
+                                            let monitor = winapi::um::winuser::MonitorFromWindow(
+                                                fg_hwnd,
+                                                winapi::um::winuser::MONITOR_DEFAULTTONEAREST,
+                                            );
+                                            let mut mi: winapi::um::winuser::MONITORINFO =
+                                                std::mem::zeroed();
+                                            mi.cbSize = std::mem::size_of::<
+                                                winapi::um::winuser::MONITORINFO,
+                                            >() as u32;
                                             winapi::um::winuser::GetMonitorInfoW(monitor, &mut mi);
 
-                                            if rect.left <= mi.rcMonitor.left 
-                                                && rect.top <= mi.rcMonitor.top 
-                                                && rect.right >= mi.rcMonitor.right 
-                                                && rect.bottom >= mi.rcMonitor.bottom 
+                                            if rect.left <= mi.rcMonitor.left
+                                                && rect.top <= mi.rcMonitor.top
+                                                && rect.right >= mi.rcMonitor.right
+                                                && rect.bottom >= mi.rcMonitor.bottom
                                             {
                                                 is_fullscreen = true;
                                             }
@@ -347,7 +419,6 @@ pub fn run() {
                                 }
                             }
 
-                            // 状态翻转时发送信号
                             if is_fullscreen != was_fullscreen {
                                 let _ = app_handle_for_fs.emit("fullscreen-changed", is_fullscreen);
                                 was_fullscreen = is_fullscreen;
@@ -357,6 +428,7 @@ pub fn run() {
                 }
             });
 
+            // ---- 启动参数处理 ----
             let args: Vec<String> = std::env::args().collect();
             let is_autostart = args.iter().any(|arg| arg == "--autostart");
 
@@ -367,6 +439,7 @@ pub fn run() {
                 }
             }
 
+            // ---- 系统托盘 ----
             let quit_item = MenuItem::with_id(app, "quit", "强制退出", true, None::<&str>)?;
             let tray_menu = Menu::with_items(app, &[&quit_item])?;
 
@@ -375,19 +448,26 @@ pub fn run() {
                 .tooltip("NetSpeed Dynamic Pro")
                 .menu(&tray_menu)
                 .on_menu_event(move |_app_handle, event| {
-                    if event.id == "quit" { std::process::exit(0); }
+                    if event.id == "quit" {
+                        std::process::exit(0);
+                    }
                 })
                 .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click { button: MouseButton::Left, .. } = event {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        ..
+                    } = event
+                    {
                         if let Some(main_window) = tray.app_handle().get_webview_window("main") {
-                            let _ = main_window.show();     
-                            let _ = main_window.unminimize(); 
-                            let _ = main_window.set_focus();  
+                            let _ = main_window.show();
+                            let _ = main_window.unminimize();
+                            let _ = main_window.set_focus();
                         }
                     }
                 })
                 .build(app)?;
 
+            // ---- 主窗口关闭时隐藏而非退出 ----
             if let Some(main_window) = app.get_webview_window("main") {
                 let w_clone = main_window.clone();
                 main_window.on_window_event(move |event| {
@@ -398,30 +478,53 @@ pub fn run() {
                 });
             }
 
+            // ---- 悬浮窗（widget）去边框和圆角 ----
             if let Some(widget_window) = app.get_webview_window("widget") {
                 #[cfg(target_os = "windows")]
                 {
                     use windows_sys::Win32::Graphics::Dwm::{
-                        DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWA_BORDER_COLOR, DWMWCP_DONOTROUND,
+                        DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWA_BORDER_COLOR,
+                        DWMWCP_DONOTROUND,
                     };
-                    use windows_sys::Win32::UI::WindowsAndMessaging::{SetWindowLongPtrW, GWL_STYLE, WS_CAPTION};
+                    use windows_sys::Win32::UI::WindowsAndMessaging::{
+                        SetWindowLongPtrW, GWL_STYLE, WS_CAPTION,
+                    };
                     use windows_sys::Win32::Foundation::HWND;
 
                     if let Ok(hwnd) = widget_window.hwnd() {
                         let hwnd_raw = hwnd.0 as HWND;
                         unsafe {
-                            let current_style = windows_sys::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(hwnd_raw, GWL_STYLE);
-                            SetWindowLongPtrW(hwnd_raw, GWL_STYLE, current_style & !(WS_CAPTION as isize));
+                            let current_style =
+                                windows_sys::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                                    hwnd_raw,
+                                    GWL_STYLE,
+                                );
+                            SetWindowLongPtrW(
+                                hwnd_raw,
+                                GWL_STYLE,
+                                current_style & !(WS_CAPTION as isize),
+                            );
 
                             let border_color: u32 = 0xFFFFFFFE;
-                            let _ = DwmSetWindowAttribute(hwnd_raw, DWMWA_BORDER_COLOR as u32, &border_color as *const _ as *const _, 4);
+                            let _ = DwmSetWindowAttribute(
+                                hwnd_raw,
+                                DWMWA_BORDER_COLOR as u32,
+                                &border_color as *const _ as *const _,
+                                4,
+                            );
 
                             let corner_preference = DWMWCP_DONOTROUND;
-                            let _ = DwmSetWindowAttribute(hwnd_raw, DWMWA_WINDOW_CORNER_PREFERENCE as u32, &corner_preference as *const _ as *const _, 4);
+                            let _ = DwmSetWindowAttribute(
+                                hwnd_raw,
+                                DWMWA_WINDOW_CORNER_PREFERENCE as u32,
+                                &corner_preference as *const _ as *const _,
+                                4,
+                            );
                         }
                     }
                 }
             }
+
             Ok(())
         })
         .run(tauri::generate_context!())

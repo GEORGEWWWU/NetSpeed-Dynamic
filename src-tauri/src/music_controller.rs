@@ -1,5 +1,5 @@
 use std::sync::Mutex;
-use tauri::command;
+use tauri::{command, Emitter};
 
 // --- 引入 SMTC 需要的模块 ---
 use windows::Media::Control::{
@@ -7,6 +7,11 @@ use windows::Media::Control::{
     GlobalSystemMediaTransportControlsSessionPlaybackStatus,
     GlobalSystemMediaTransportControlsSession,
 };
+
+// --- WebSocket 相关 ---
+use tokio_tungstenite::connect_async;
+use futures_util::StreamExt;
+use tauri::AppHandle;
 
 // 全局记录当前选中的平台（默认空，由前端传来）
 static TARGET_PLAYER: Mutex<String> = Mutex::new(String::new());
@@ -354,4 +359,70 @@ pub async fn fetch_netease_lyrics(song_name: String, artist_name: String, durati
     }
     
     Ok("".to_string())
+}
+
+// ============================================================================
+// 7. WebSocket 实时歌词推送
+// ============================================================================
+
+/// WebSocket 后台任务：连接服务器、接收歌词并转发给前端
+/// 适配 Just Solo LyricServer 协议（单向推送：init / progress / playback）
+async fn run_websocket_lyrics(
+    url: String,
+    app: AppHandle,
+) -> Result<(), String> {
+    let (ws_stream, _) = connect_async(&url)
+        .await
+        .map_err(|e| format!("WebSocket 连接失败: {}", e))?;
+    let (_sender, mut receiver) = ws_stream.split();
+
+    // LyricServer 为单向推送，无需发送任何订阅消息
+    while let Some(Ok(msg)) = receiver.next().await {
+        if let Ok(text) = msg.to_text() {
+            if let Ok(payload) = serde_json::from_str::<serde_json::Value>(text) {
+                app.emit("websocket-lyrics", &payload)
+                    .map_err(|e| format!("发送事件失败: {}", e))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 启动 WebSocket 歌词连接（由前端调用）
+#[command]
+pub async fn start_websocket_lyrics(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, crate::AppState>,
+    url: Option<String>,
+) -> Result<(), String> {
+    let ws_url = url.unwrap_or_else(|| "ws://127.0.0.1:47290/".to_string());
+
+    let mut task_guard = state.ws_task.lock().await;
+    if let Some(handle) = task_guard.take() {
+        handle.abort();
+    }
+
+    let app_clone = app.clone();
+    let app_err = app.clone();
+    let handle = tokio::spawn(async move {
+        if let Err(e) = run_websocket_lyrics(ws_url, app_clone).await {
+            eprintln!("WebSocket 歌词任务出错: {}", e);
+            let _ = app_err.emit("websocket-error", e);
+        }
+    });
+
+    *task_guard = Some(handle);
+    Ok(())
+}
+
+/// 停止 WebSocket 歌词连接（由前端调用）
+#[command]
+pub async fn stop_websocket_lyrics(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    let mut task_guard = state.ws_task.lock().await;
+    if let Some(handle) = task_guard.take() {
+        handle.abort();
+    }
+    Ok(())
 }

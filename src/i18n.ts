@@ -136,6 +136,11 @@ const messages = {
         musicBaseWidthDesc: '音乐播放时未展开的基础宽度 (默认 260px)',
         globalScale: '全局灵动岛缩放',
         globalScaleDesc: '调整灵动岛的整体显示比例 (DPI)',
+        smtcSettings: '媒体选项',
+        smtcSettingsBtn: '媒体选项',
+        homePage: '主页',
+        websocketPort: 'WebSocket 端口',
+        websocketPortDesc: '默认尝试 47290 端口获取实时歌词，失败则使用此处端口，均失败则从网络获取',
     },
     'en-US': {
         appSubtitle: 'NSD desktop Dynamic Island widget',
@@ -266,6 +271,11 @@ const messages = {
         musicBaseWidthDesc: 'Unexpanded width when music is playing (Default 260px)',
         globalScale: 'Global Island Scale',
         globalScaleDesc: 'Adjust the overall display scale (DPI)',
+        smtcSettings: 'Media Options',
+        smtcSettingsBtn: 'Media',
+        homePage: 'Home',
+        websocketPort: 'WebSocket Port',
+        websocketPortDesc: 'Defaults to 47290 for real-time lyrics, falls back to this port, then to HTTP fetch',
     },
 };
 

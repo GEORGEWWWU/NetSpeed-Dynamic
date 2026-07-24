@@ -361,6 +361,10 @@ const lyricQueue = ref<string[]>([]);
 let lastLyricChangeTime = 0;
 let currentMatchedIndex = -1;
 
+// WebSocket 歌词连接状态
+let wsUnlisten: (() => void) | null = null;
+let wsPhase = 0; // 0=未连接, 1=尝试47290, 2=尝试自定义端口, 3=HTTP兜底
+
 // 简单的 LRC 解析器
 const parseLrc = (lrcStr: string) => {
     const lines = lrcStr.split('\n');
@@ -490,13 +494,111 @@ const nextTrack = async () => {
     await invoke('control_system_media', { action: 'next' });
 };
 
+// ============================================================================
+// WebSocket 歌词连接（降级：47290 → 自定义端口 → HTTP）
+// ============================================================================
+const fallbackHttpLyrics = async () => {
+    console.log('[WS] 降级到 HTTP 获取歌词');
+    wsPhase = 3;
+    disconnectWebSocket();
+    if (currentSongName.value) {
+        try {
+            const lrc = await invoke<string>('fetch_netease_lyrics', {
+                songName: currentSongName.value,
+                artistName: currentArtistName.value,
+                durationMs: 0
+            });
+            if (lrc) parsedLyrics.value = parseLrc(lrc);
+        } catch (_) {}
+    }
+};
+
+const connectWebSocketLyrics = async () => {
+    // 先清理旧连接
+    try { await invoke('stop_websocket_lyrics'); } catch (_) {}
+    if (wsUnlisten) { wsUnlisten(); wsUnlisten = null; }
+
+    // 监听 WebSocket 事件
+    wsUnlisten = await listen<any>('websocket-lyrics', (event) => {
+        const msg = event.payload;
+        switch (msg.type) {
+            case 'init':
+                // 服务端下发了完整歌词时间轴
+                if (msg.lyrics && msg.lyrics.length > 0) {
+                    parsedLyrics.value = msg.lyrics.map((l: any) => ({
+                        time: l.time,
+                        text: l.text
+                    }));
+                    console.log('[WS] 收到歌词:', parsedLyrics.value.length, '行');
+                } else {
+                    // 歌词为空（纯音乐等），降级 HTTP
+                    console.log('[WS] 无歌词（空数组），降级 HTTP');
+                    fallbackHttpLyrics();
+                }
+                break;
+            case 'progress':
+                // 服务端推送当前播放位置
+                localPositionMs.value = msg.position;
+                break;
+            case 'playback':
+                isPlaying.value = (msg.status === 'playing');
+                break;
+        }
+    });
+
+    // 同时监听错误事件：47290 失败 → 尝试自定义端口 → HTTP 兜底
+    const unlistenErr = await listen<string>('websocket-error', async (event) => {
+        console.warn('[WS] 错误:', event.payload);
+
+        if (wsPhase === 1) {
+            // 47290 失败了，尝试用户自定义端口
+            const customPort = localStorage.getItem('nsd_ws_port') || '47290';
+            if (customPort !== '47290') {
+                console.log('[WS] 尝试自定义端口:', customPort);
+                wsPhase = 2;
+                try {
+                    await invoke('start_websocket_lyrics', { url: `ws://127.0.0.1:${customPort}/` });
+                    console.log('[WS] 已连接自定义端口');
+                    return;
+                } catch (_) {
+                    console.warn('[WS] 自定义端口也失败');
+                }
+            }
+        }
+
+        // 都失败，降级 HTTP
+        fallbackHttpLyrics();
+    });
+
+    // 保存 error 监听器以便后续清理
+    const origUnlisten = wsUnlisten;
+    wsUnlisten = () => { origUnlisten(); unlistenErr(); };
+
+    // 默认先连 47290，失败则 websocket-error 里尝试自定义端口
+    wsPhase = 1;
+    const firstUrl = 'ws://127.0.0.1:47290/';
+    console.log('[WS] 尝试连接', firstUrl);
+    try {
+        await invoke('start_websocket_lyrics', { url: firstUrl });
+    } catch (e) {
+        console.warn('[WS] invoke 异常:', e);
+    }
+};
+
+// 断开 WebSocket
+const disconnectWebSocket = async () => {
+    try { await invoke('stop_websocket_lyrics'); } catch (_) {}
+    if (wsUnlisten) { wsUnlisten(); wsUnlisten = null; }
+    wsPhase = 0;
+};
+
 // 核心同步函数：负责获取状态并智能降级
 const syncMusicStatus = async () => {
     try {
         const res = await invoke<[string, string, boolean, number, number] | null>('fetch_netease_music_info');
 
         if (res) {
-            const [song, artist, playing, positionMs, durationMs] = res;
+            const [song, artist, playing, positionMs, _durationMs] = res;
 
             if (!isMediaActive.value) isMediaActive.value = true;
             isFirstMediaCheck = false;
@@ -537,10 +639,8 @@ const syncMusicStatus = async () => {
                         }).catch(() => { coverUrl.value = ''; });
                 }
 
-                invoke<string>('fetch_netease_lyrics', { songName: song, artistName: artist, durationMs })
-                    .then(lrc => {
-                        if (lrc) parsedLyrics.value = parseLrc(lrc);
-                    }).catch(() => { console.log('未找到歌词'); });
+                // 通过 WebSocket 获取实时歌词（失败自动降级 HTTP）
+                connectWebSocketLyrics();
             } else {
                 // 核心 2：是同一首歌，正在播放中！
                 // 缩紧容错率：只要误差超过 800ms 就立刻强制同步。
@@ -556,12 +656,16 @@ const syncMusicStatus = async () => {
                 setSafeTrackInfo(currentBaseInfo.value);
             }
         } else {
+            currentBaseInfo.value = '';
             setSafeTrackInfo(`${t('noSongPlaying')} - ${getPlayerName()}`);
             isPlaying.value = false;
-            coverUrl.value = '';
 
             if (isMediaActive.value) {
                 isMediaActive.value = false;
+                coverUrl.value = '';
+
+                // 断开 WebSocket 歌词连接
+                disconnectWebSocket();
 
                 if (isNewlyEnabled) {
                     showToast('已开启媒体控制，暂无音频播放', 'sys');
@@ -1539,7 +1643,10 @@ onMounted(async () => {
 
         if (isPlaying.value) {
             // 1. 播放状态下，本地时钟疯狂往前推算
-            localPositionMs.value += delta;
+            // WS 连接时由服务端推送进度，本地不再累加（避免双源叠加导致过快）
+            if (wsPhase < 1) {
+                localPositionMs.value += delta;
+            }
 
             // 2. 毫秒级歌词匹配与队列逻辑 (解决快节奏吞字、闪烁消失问题)
             if (parsedLyrics.value.length > 0) {
@@ -1548,7 +1655,9 @@ onMounted(async () => {
                 // 找出当前时间进度应该播放哪一句
                 for (let i = 0; i < parsedLyrics.value.length; i++) {
                     // 抢跑 550ms：完美抵消 150ms 叠化动画 + 100ms 滤镜模糊 + 听觉视觉生理时差
-                    if (parsedLyrics.value[i].time <= localPositionMs.value + 550) {
+                    // WS 模式下服务端推送精准位置，仅需 150ms 动画补偿
+                    const lead = wsPhase < 1 ? 550 : 150;
+                    if (parsedLyrics.value[i].time <= localPositionMs.value + lead) {
                         matchedIndex = i;
                     } else {
                         break;
@@ -1624,6 +1733,7 @@ onUnmounted(() => {
     clearInterval(notifyTimer);
     clearInterval(spectrumTimer);
     if (speedCycleTimer) clearInterval(speedCycleTimer);
+    disconnectWebSocket();
 });
 </script>
 
