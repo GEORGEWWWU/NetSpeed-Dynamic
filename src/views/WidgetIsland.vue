@@ -353,6 +353,7 @@ const isPlaying = ref(false);
 // 歌词显示
 const parsedLyrics = ref<{ time: number; text: string }[]>([]);
 const currentBaseInfo = ref(''); // 用于在没有歌词时兜底显示 "歌名 - 歌手"
+const isLyricsEnabled = ref(true); // 是否展示歌词
 // 歌词时间推算专用变量
 const localPositionMs = ref(0);
 let lastTickTime = performance.now();
@@ -513,8 +514,12 @@ const fallbackHttpLyrics = async () => {
     }
 };
 
-const connectWebSocketLyrics = async () => {
-    // 先清理旧连接
+const getLyrics = async () => {
+    // ============================================================================
+    // Step 1: 先尝试websocket获取歌词
+    // ============================================================================
+
+    // 清理旧连接
     try { await invoke('stop_websocket_lyrics'); } catch (_) {}
     if (wsUnlisten) { wsUnlisten(); wsUnlisten = null; }
 
@@ -546,12 +551,17 @@ const connectWebSocketLyrics = async () => {
         }
     });
 
-    // 同时监听错误事件：47290 失败 → 尝试自定义端口 → HTTP 兜底
+    // ============================================================================
+    // Step 3: 47290获取歌词失败，尝试自定义端口
+    // 47290 失败 → 尝试自定义端口 → HTTP 兜底
+    // ============================================================================
     const unlistenErr = await listen<string>('websocket-error', async (event) => {
         console.warn('[WS] 错误:', event.payload);
 
         if (wsPhase === 1) {
-            // 47290 失败了，尝试用户自定义端口
+            // ============================================================================
+            // Step 3.1: 尝试自定义端口
+            // ============================================================================
             const customPort = localStorage.getItem('nsd_ws_port') || '47290';
             if (customPort !== '47290') {
                 console.log('[WS] 尝试自定义端口:', customPort);
@@ -566,9 +576,17 @@ const connectWebSocketLyrics = async () => {
             }
         }
 
-        // 都失败，降级 HTTP
+        // ============================================================================
+        // Step 4: 都失败，降级 HTTP获取歌词
+        // ============================================================================
         fallbackHttpLyrics();
+
     });
+
+    // ============================================================================
+    // Step 2
+    // 尝试使用websocket连接47290获取歌词
+    // ============================================================================
 
     // 保存 error 监听器以便后续清理
     const origUnlisten = wsUnlisten;
@@ -595,22 +613,32 @@ const disconnectWebSocket = async () => {
 // 核心同步函数：负责获取状态并智能降级
 const syncMusicStatus = async () => {
     try {
-        const res = await invoke<[string, string, boolean, number, number] | null>('fetch_netease_music_info');
-
+        const res = await invoke<[string, string, boolean, number, number, string] | null>('fetch_netease_music_info');
         if (res) {
             const [song, artist, playing, positionMs, _durationMs] = res;
+            //=====================
+            // 检查是否禁用歌词
+            //=====================
+            const targetPlayer = res[5];  // 目标播放器
+            const disableLyricsPlayers = ["bilibili", "qqlive"];
+            const matchedKeyword = disableLyricsPlayers.find(keyword =>   // 查找匹配的禁用关键词
+                targetPlayer.toLowerCase().includes(keyword.toLowerCase())
+            );
+            const isDisabledLyrics = !!matchedKeyword; // 是否禁用歌词
 
             if (!isMediaActive.value) isMediaActive.value = true;
             isFirstMediaCheck = false;
             isNewlyEnabled = false;
 
             currentSongName.value = song;
-            currentArtistName.value = artist || t('unknownArtist');
-
+            currentArtistName.value = artist || ' ';
+            if (!isDisabledLyrics) currentArtistName.value = t('unknownArtist');
+            
             const newTrackInfo = artist ? `${song} - ${artist}` : song;
 
             // 核心 1：是否是新切的歌？
             if (currentBaseInfo.value !== newTrackInfo) {
+    
                 currentBaseInfo.value = newTrackInfo;
                 setSafeTrackInfo(newTrackInfo);
                 parsedLyrics.value = [];
@@ -623,24 +651,40 @@ const syncMusicStatus = async () => {
                 // 相当于给首发的“歌曲名称 - 歌手”加了一把 2000ms 的时间锁
                 // 搭配队列消费者 800ms 的出栈判定，确保歌曲信息至少稳定展示 2.8 秒！
                 // 这 2.8 秒内就算歌词来得再快，也只会全部塞进 lyricQueue 乖乖排队，随后顺滑播放。
+                // 确保在歌曲切换时，歌词能够及时更新，避免显示错误的歌词。
+
                 lastLyricChangeTime = performance.now() + 2000;
 
                 // 换歌时，强制同步一次底层时间（无论底层准不准，这是唯一合法的重置点）
                 localPositionMs.value = positionMs;
 
-                if (coverCache.has(newTrackInfo)) {
-                    coverUrl.value = coverCache.get(newTrackInfo)!;
-                } else {
-                    invoke<string>('get_random_cover_url', { songName: song, artistName: artist })
-                        .then(url => {
-                            coverUrl.value = url;
-                            if (coverCache.size > 50) coverCache.clear();
-                            coverCache.set(newTrackInfo, url);
-                        }).catch(() => { coverUrl.value = ''; });
+                if (!isDisabledLyrics) { // 不禁用歌词
+                    // 获取专辑封面
+                    if (coverCache.has(newTrackInfo)) {
+                        coverUrl.value = coverCache.get(newTrackInfo)!;
+                    } else {
+                        invoke<string>('get_random_cover_url', { songName: song, artistName: artist })
+                            .then(url => {
+                                coverUrl.value = url;
+                                if (coverCache.size > 50) coverCache.clear();
+                                coverCache.set(newTrackInfo, url);
+                            }).catch(() => { coverUrl.value = ''; });
+                    }
+                    getLyrics();  // 获取实时歌词
+                } else { // 禁用歌词
+                    const coverMap: Record<string, string> = {
+                    'bilibili': './bilibili-logo.png',
+                    // 'qqlive': '/qqlive_logo.png',
+                    };
+                    // 禁用歌词：确保断开可能存在的连接并清空数据（防止残留）
+                    disconnectWebSocket();
+                    parsedLyrics.value = [];
+                    // 当前 currentTrackInfo 已通过 setSafeTrackInfo 设置为标题，无需额外操作
+                    // 为防止后续歌词意外填充，再强制显示标题一次
+                    setSafeTrackInfo(currentBaseInfo.value);
+                    coverUrl.value = coverMap[matchedKeyword] || '';
                 }
 
-                // 通过 WebSocket 获取实时歌词（失败自动降级 HTTP）
-                connectWebSocketLyrics();
             } else {
                 // 核心 2：是同一首歌，正在播放中！
                 // 缩紧容错率：只要误差超过 800ms 就立刻强制同步。
@@ -719,6 +763,15 @@ const renderQueue: string[] = [];
 let isRendering = false;
 
 const setSafeTrackInfo = (text: string) => {
+    // ★ 若歌词被禁用，只允许显示标题（currentBaseInfo）
+    if (!isLyricsEnabled.value && text !== currentBaseInfo.value) {
+        // 如果当前显示的不是标题，则强制设为标题
+        if (currentTrackInfo.value !== currentBaseInfo.value) {
+            currentTrackInfo.value = currentBaseInfo.value;
+        }
+        return;
+    }
+
     // 1. 终极过滤：剔除所有空白、零宽字符
     if (!text || text.replace(/[\s\u200B-\u200D\uFEFF\u3000]/g, '').length === 0) return;
 
@@ -2104,7 +2157,6 @@ onUnmounted(() => {
     font-size: 12.5px;
     font-weight: 500;
     white-space: nowrap;
-    /* 强制单行不换行 */
     overflow: hidden;
     color: inherit;
     opacity: 0.9;
@@ -2307,28 +2359,31 @@ onUnmounted(() => {
     align-items: flex-start !important;
 }
 
-.double-line {
-    opacity: 0;
-    pointer-events: none;
-    transform: translateY(-30%);
-}
-
+/* 单行：默认显示，展开时瞬间隐藏（无动画） */
 .single-line {
     opacity: 1;
-    align-items: center;
-    text-align: center;
+    transform: none;
+    transform: translateY(-50%);
 }
-
 .single-line.fade-out {
     opacity: 0;
     pointer-events: none;
-    transform: translateY(20%);
+    transform: translateY(-50%);
 }
 
+/* 双行：默认隐藏，展开时瞬间显示（无动画） */
+.double-line {
+    opacity: 0;
+    pointer-events: none;
+    transform: none;
+    transition: none;
+    transform: translateY(-50%);
+}
 .double-line.fade-in {
     opacity: 1;
     pointer-events: auto;
-    transform: translateY(-50%) !important;
+    transform: none;
+    transform: translateY(-50%);
 }
 
 .song-title {

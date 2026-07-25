@@ -40,6 +40,7 @@ fn get_target_media_session() -> Option<GlobalSystemMediaTransportControlsSessio
     // 通用模式优先匹配 JustSolo 逻辑
     if target == "other" {
         // 第一轮遍历：优先寻找 JustSolo.JustSolo
+        // 循环变量： session 当前遍历到的媒体会话
         for session in manager.GetSessions().ok()? {
             if let Ok(app_id) = session.SourceAppUserModelId() {
                 if app_id.to_string().to_lowercase().contains("justsolo") {
@@ -72,12 +73,22 @@ fn get_target_media_session() -> Option<GlobalSystemMediaTransportControlsSessio
     None
 }
 
+// 获取当前播放的网易云音乐信息
+// 包含标题、歌手、是否正在播放、当前播放位置（毫秒）、总时长（毫秒）、目标播放器
 #[command]
-pub async fn fetch_netease_music_info() -> Result<Option<(String, String, bool, i64, i64)>, String> {
+pub async fn fetch_netease_music_info() -> Result<Option<(String, String, bool, i64, i64, String)>, String> {
     let session = match get_target_media_session() {
         Some(s) => s,
         None => return Ok(None),
     };
+
+    if session.SourceAppUserModelId()
+    .unwrap_or_default()
+    .to_string()
+    .to_lowercase()
+    .contains("douyin") {
+        return Ok(None);
+    }
 
     let is_playing = if let Ok(playback_info) = session.GetPlaybackInfo() {
         if let Ok(status) = playback_info.PlaybackStatus() {
@@ -103,6 +114,8 @@ pub async fn fetch_netease_music_info() -> Result<Option<(String, String, bool, 
 
     let mut position_ms: i64 = 0;
     let mut duration_ms: i64 = 0; // 新增：用于记录歌曲总时长
+
+    let target_player = session.SourceAppUserModelId().unwrap_or_default().to_string().to_lowercase();
 
     if let Ok(timeline) = session.GetTimelineProperties() {
         if let Ok(pos) = timeline.Position() {
@@ -131,7 +144,8 @@ pub async fn fetch_netease_music_info() -> Result<Option<(String, String, bool, 
     }
 
     // 返回值增加了一个 duration_ms 参数
-    Ok(Some((title, artist, is_playing, position_ms, duration_ms)))
+    // 返回参数：(标题, 歌手, 是否正在播放, 当前播放位置毫秒, 总时长毫秒, 目标播放器)
+    Ok(Some((title, artist, is_playing, position_ms, duration_ms, target_player)))
 }
 
 #[command]
