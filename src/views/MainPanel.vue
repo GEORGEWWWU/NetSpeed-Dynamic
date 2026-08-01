@@ -104,7 +104,7 @@
                                     <template v-if="themeMode === 'light'">{{ t('lightMode') }}</template>
                                     <template v-else-if="themeMode === 'dark'">{{ t('darkMode') }}</template>
                                     <template v-else-if="themeMode === 'coverglass'">{{ t('coverglassMode')
-                                    }}</template>
+                                        }}</template>
                                     <template v-else-if="themeMode === 'system'">{{ t('systemMode') }}</template>
                                 </div>
                                 <svg viewBox="0 0 24 24" class="arrow-icon"
@@ -435,7 +435,7 @@
                     </div>
                     <div class="modal-footer">
                         <button v-if="dialog.isConfirm" class="btn btn-secondary" @click="closeDialog">{{ t('cancel')
-                        }}</button>
+                            }}</button>
                         <button class="btn btn-primary" @click="handleDialogConfirm">{{ t('confirm') }}</button>
                     </div>
                 </div>
@@ -1873,16 +1873,14 @@ input:checked+.slider:before {
 /* 双列网格结构，自动填充 */
 .dynamicset-grid {
     display: grid;
-    align-content: center !important;
+    align-content: start !important;
     grid-template-columns: 1fr 1fr 1fr;
     row-gap: 5px;
     background: var(--card-bg);
     border: 1px solid var(--card-border);
     border-radius: 20px;
     box-shadow: 0 4px 20px -2px var(--card-shadow);
-    max-height: calc(100vh - 180px);
-    overflow-y: auto;
-    align-content: start;
+    overflow: visible;
 }
 
 .dynamicset-grid::-webkit-scrollbar {
@@ -2117,8 +2115,11 @@ input:disabled+.slider {
    ========================================= */
 
 /* 核心修复 1：当下拉菜单打开时，强行将该条目的层级提升到最顶层，击穿 transform 的层级压制 */
+.setting-item.is-dropdown-open,
 .set-item.is-dropdown-open {
-    z-index: 10;
+    position: relative;
+    z-index: 8888;
+    /* 打开下拉菜单时，将整行提升至高层级 */
 }
 
 .set-item-meta {
@@ -2201,11 +2202,11 @@ input:disabled+.slider {
     border-radius: 10px;
     padding: 4px;
     box-shadow: 0 10px 25px var(--card-shadow-hover);
-    z-index: 100;
+    z-index: 9000;
     display: flex;
     flex-direction: column;
     gap: 2px;
-    max-height: 110px;
+    max-height: 140px;
     overflow-y: auto;
 }
 
@@ -2441,15 +2442,16 @@ input:disabled+.slider {
     position: relative !important;
     padding: 0 !important;
     display: block !important;
-    overflow: hidden !important;
+    overflow: visible !important;
+    /* 允许菜单向下悬浮弹出 */
 }
 
-/* 内嵌视口 */
+/* 内嵌视口：不改变任何内外边距，仅做左右水平裁切与层级提升 */
 .pager-viewport {
     width: 100%;
-    overflow: hidden;
-    padding-bottom: 5px;
-    /* 底部预留微小空间，防止遮挡低端点击 */
+    position: relative;
+    z-index: 5;
+    clip-path: inset(0 0 -250px 0);
 }
 
 /* 快速响应的贝塞尔曲线平滑轨道 */
@@ -2459,7 +2461,7 @@ input:disabled+.slider {
     transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
 }
 
-/* 每一页保持 3 列网格布局，与原效果完全一致 */
+/* 每一页保持 3 列网格布局 */
 .pager-page {
     width: 50%;
     display: grid;
@@ -2467,6 +2469,7 @@ input:disabled+.slider {
     row-gap: 5px;
     padding: 0 4px;
     box-sizing: border-box;
+    transform: translateY(5px);
 }
 
 /* 正下方悬浮翻页小胶囊 */
@@ -2482,9 +2485,8 @@ input:disabled+.slider {
     height: 14px;
     border-radius: 10px;
     cursor: pointer;
-    z-index: 20;
+    z-index: 4;
     background: rgba(0, 0, 0, 0.08);
-    /* 配合明暗主题的透明度白/黑 */
     border: 1px solid rgba(0, 0, 0, 0.05);
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
