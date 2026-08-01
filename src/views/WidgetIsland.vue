@@ -453,31 +453,114 @@ const bakeBlurImage = (url: string): Promise<string> => {
     });
 };
 
+// 记录最后一次接收到真实 WS 歌词的时间
+let lastWsLyricTime = 0;
+
+// WebSocket 状态管理
+const isWsConnected = ref(false);
+let unlistenWsStatus: (() => void) | null = null;
+
 // WebSocket 实时歌词监听
 let unlistenWs: (() => void) | null = null;
 
 const initWebSocket = async () => {
     try {
-        await invoke('start_websocket_lyrics', { url: "ws://127.0.0.1:47290/" });
+        // 必须先挂载监听器，再去呼叫 Rust 连接！
+        // 因为本地 WS 连接是毫秒级的，如果先 invoke 再 listen，Vue 会完美错过连接成功的初始信号！
+        if (!unlistenWsStatus) {
+            unlistenWsStatus = await listen('websocket-status', (event: any) => {
+                isWsConnected.value = event.payload;
+                if (isWsConnected.value) {
+                    parsedLyrics.value = []; // 连上 WS 后，立刻清空可能残存的网络歌词，防止打架
+                }
+            });
+        }
+
         if (!unlistenWs) {
             unlistenWs = await listen('websocket-lyrics', (event: any) => {
-                const payload = event.payload;
+                let payload = event.payload;
 
-                // 解析 Just Solo 协议 (向下兼容多种字段命名)
-                let lyricText = "";
-                if (payload && payload.data) {
-                    lyricText = payload.data.currentLyric || payload.data.lyric || payload.data.text || "";
-                } else if (payload && payload.lyric) {
-                    lyricText = payload.lyric;
+                // 如果传过来的是字符串包装的 JSON，尝试解开它
+                if (typeof payload === 'string') {
+                    try { payload = JSON.parse(payload); } catch (e) { }
                 }
 
-                // 如果提取到了有效歌词，直接插队渲染！
+                // Just Solo LyricServer 专属协议
+                if (payload && payload.type) {
+                    // 1. 收到完整歌词列表 (init)
+                    if (payload.type === 'init' && Array.isArray(payload.lyrics)) {
+                        lastWsLyricTime = Date.now();
+                        isMediaActive.value = true; // 强制激活音乐卡片展示
+                        isPlaying.value = true;     // 强制启动 50ms 歌词比对定时器
+
+                        parsedLyrics.value = payload.lyrics.map((l: any) => ({
+                            time: l.time,
+                            text: l.text
+                        }));
+                        lyricQueue.value = [];
+                        currentMatchedIndex = -1;
+                        lastLyricChangeTime = 0; // 重置时间锁，允许立刻显示第一句歌词
+
+                        return;
+                    }
+
+                    // 收到实时进度 (progress)
+                    if (payload.type === 'progress') {
+                        lastWsLyricTime = Date.now();
+                        isMediaActive.value = true; // 心跳保活
+
+                        if (typeof payload.position === 'number') {
+                            // 修正：绝不能无脑覆盖，而是跟 HTTP 逻辑一样，误差大于 500ms 时才校准
+                            // 这样才能让 50ms 定时器里的 `localPositionMs.value += delta` 完美发挥顺滑推算的作用！
+                            if (Math.abs(payload.position - localPositionMs.value) > 500) {
+                                localPositionMs.value = payload.position;
+                            }
+                        }
+                        return;
+                    }
+
+                    // 收到播放状态 (playback)
+                    if (payload.type === 'playback') {
+                        lastWsLyricTime = Date.now();
+                        if (payload.status === 'playing') {
+                            isPlaying.value = true;
+                            isMediaActive.value = true;
+                        } else if (payload.status === 'paused') {
+                            isPlaying.value = false;
+                        }
+                        return;
+                    }
+                }
+
+                // 下方保留单句纯文本推送的兼容逻辑
+                let lyricText = "";
+                if (typeof payload === 'string') {
+                    lyricText = payload;
+                } else if (payload) {
+                    lyricText = payload?.data?.currentLyric
+                        || payload?.data?.lyric
+                        || payload?.data?.text
+                        || payload?.data?.content
+                        || payload?.lyric
+                        || payload?.content
+                        || payload?.text
+                        || "";
+                }
+
                 if (lyricText && lyricText.trim() !== "") {
-                    // 利用你原本写好的完美防抖/防闪烁函数，直接上屏！
+                    lastWsLyricTime = Date.now();
+                    isMediaActive.value = true;
+                    isPlaying.value = true;
+                    parsedLyrics.value = [];
+                    lyricQueue.value = [];
                     setSafeTrackInfo(lyricText.trim());
                 }
             });
         }
+
+        // 监听器就绪后，再发车连接
+        await invoke('start_websocket_lyrics', { url: "ws://127.0.0.1:47290/" });
+
     } catch (err) {
         console.error("WebSocket 启动失败:", err);
     }
@@ -490,6 +573,12 @@ const stopWebSocket = async () => {
             unlistenWs();
             unlistenWs = null;
         }
+        // 同步销毁状态监听器
+        if (unlistenWsStatus) {
+            unlistenWsStatus();
+            unlistenWsStatus = null;
+        }
+        isWsConnected.value = false;
     } catch (err) {
         console.error("WebSocket 停止失败:", err);
     }
@@ -582,36 +671,37 @@ const syncMusicStatus = async () => {
     try {
         const res = await invoke<[string, string, boolean, number, number] | null>('fetch_netease_music_info');
 
+        // 判定过去 3 秒内是否有活跃的本地 WebSocket 推送
+        const isWsActive = (Date.now() - lastWsLyricTime < 3000);
+
         if (res) {
             const [song, artist, playing, positionMs, durationMs] = res;
 
+            // 仅在 WS 不活跃时，使用 SMTC 的播放状态
+            if (!isWsActive) {
+                isPlaying.value = playing;
+            }
             if (!isMediaActive.value) isMediaActive.value = true;
             isFirstMediaCheck = false;
             isNewlyEnabled = false;
 
             currentSongName.value = song;
             currentArtistName.value = artist || t('unknownArtist');
-
             const newTrackInfo = artist ? `${song} - ${artist}` : song;
 
-            // 核心 1：是否是新切的歌？
             if (currentBaseInfo.value !== newTrackInfo) {
                 currentBaseInfo.value = newTrackInfo;
-                setSafeTrackInfo(newTrackInfo);
-                parsedLyrics.value = [];
 
-                // 重置歌词队列与匹配状态
-                lyricQueue.value = [];
-                currentMatchedIndex = -1;
+                // 切歌时，第一时间重置本地时间轴！
+                if (!isWsActive) {
+                    localPositionMs.value = positionMs; // 必须补上这行，否则新歌会继承老歌的时间！
 
-                // 将最后一次变动时间推延到“未来”
-                // 相当于给首发的“歌曲名称 - 歌手”加了一把 2000ms 的时间锁
-                // 搭配队列消费者 800ms 的出栈判定，确保歌曲信息至少稳定展示 2.8 秒！
-                // 这 2.8 秒内就算歌词来得再快，也只会全部塞进 lyricQueue 乖乖排队，随后顺滑播放。
-                lastLyricChangeTime = performance.now() + 2000;
-
-                // 换歌时，强制同步一次底层时间（无论底层准不准，这是唯一合法的重置点）
-                localPositionMs.value = positionMs;
+                    setSafeTrackInfo(newTrackInfo);
+                    parsedLyrics.value = [];
+                    lyricQueue.value = [];
+                    currentMatchedIndex = -1;
+                    lastLyricChangeTime = performance.now() + 2000;
+                }
 
                 if (coverCache.has(newTrackInfo)) {
                     coverUrl.value = coverCache.get(newTrackInfo)!;
@@ -625,8 +715,6 @@ const syncMusicStatus = async () => {
                                 blurredCoverCache.clear();
                             }
                             coverCache.set(newTrackInfo, url);
-
-                            // 异步烘焙模糊封面
                             const bakedImage = await bakeBlurImage(url);
                             blurredCoverUrl.value = bakedImage;
                             blurredCoverCache.set(newTrackInfo, bakedImage);
@@ -636,40 +724,42 @@ const syncMusicStatus = async () => {
                         });
                 }
 
-                invoke<string>('fetch_netease_lyrics', { songName: song, artistName: artist, durationMs })
-                    .then(lrc => {
-                        if (lrc) parsedLyrics.value = parseLrc(lrc);
-                    }).catch(() => { console.log('未找到歌词'); });
+                // 仅在 WS 不活跃时，发起 HTTP 网络歌词兜底
+                if (!isWsActive) {
+                    invoke<string>('fetch_netease_lyrics', { songName: song, artistName: artist, durationMs })
+                        .then(lrc => {
+                            if (Date.now() - lastWsLyricTime > 3000) {
+                                if (lrc) {
+                                    parsedLyrics.value = parseLrc(lrc);
+                                }
+                            }
+                        }).catch(() => { });
+                }
             } else {
-                // 核心 2：是同一首歌，正在播放中！
-                // 缩紧容错率：只要误差超过 800ms 就立刻强制同步。
-                // 减去 250ms 的音频缓冲偏移量，让视觉歌词稍微提前，匹配人类的反应时间
-                if (positionMs > 1000 && Math.abs(positionMs - localPositionMs.value) > 800) {
+                // 同一首歌，仅在 WS 不活跃时使用 SMTC 进度校准
+                if (!isWsActive && positionMs > 1000 && Math.abs(positionMs - localPositionMs.value) > 800) {
                     localPositionMs.value = positionMs - 250;
                 }
             }
-
-            isPlaying.value = playing;
-
-            if (parsedLyrics.value.length === 0 && currentTrackInfo.value !== currentBaseInfo.value) {
-                setSafeTrackInfo(currentBaseInfo.value);
-            }
         } else {
-            setSafeTrackInfo(`${t('noSongPlaying')} - ${getPlayerName()}`);
-            isPlaying.value = false;
-            coverUrl.value = '';
+            // SMTC 未检测到播放器
+            if (!isWsActive) {
+                setSafeTrackInfo(`${t('noSongPlaying')} - ${getPlayerName()}`);
+                isPlaying.value = false;
+                coverUrl.value = '';
 
-            if (isMediaActive.value) {
-                isMediaActive.value = false;
+                if (isMediaActive.value) {
+                    isMediaActive.value = false;
 
-                if (isNewlyEnabled) {
-                    showToast('已开启媒体控制，暂无音频播放', 'sys');
-                    isNewlyEnabled = false;
-                } else if (!isFirstMediaCheck && isMusicCtlEnabled.value) {
-                    showToast('无媒体活动，已切换为网速显示', 'sys');
+                    if (isNewlyEnabled) {
+                        showToast('已开启媒体控制，暂无音频播放', 'sys');
+                        isNewlyEnabled = false;
+                    } else if (!isFirstMediaCheck && isMusicCtlEnabled.value) {
+                        showToast('无媒体活动，已切换为网速显示', 'sys');
+                    }
                 }
+                isFirstMediaCheck = false;
             }
-            isFirstMediaCheck = false;
         }
     } catch (err) {
         console.error('音乐信息获取失败:', err);

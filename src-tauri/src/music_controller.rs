@@ -582,18 +582,24 @@ async fn run_websocket_lyrics(url: String, app: AppHandle) -> Result<(), String>
         .await
         .map_err(|e| format!("WebSocket 连接失败: {}", e))?;
 
-    // 终端高亮提示连接成功
     println!("[WebSocket 调试] 连接成功！开始实时接收歌词推送...");
+    let _ = app.emit("websocket-status", true);
 
     let (_sender, mut receiver) = ws_stream.split();
 
     while let Some(Ok(msg)) = receiver.next().await {
         if let Ok(text) = msg.to_text() {
+            // 如果解析 JSON 成功，正常发给前端；
+            // 如果解析失败（比如 JustSolo 发送的是纯文本格式），绝对不能丢弃！直接把原始文本发给前端！
             if let Ok(payload) = serde_json::from_str::<serde_json::Value>(text) {
                 let _ = app.emit("websocket-lyrics", &payload);
+            } else {
+                let _ = app.emit("websocket-lyrics", text);
             }
         }
     }
+
+    let _ = app.emit("websocket-status", false);
     Ok(())
 }
 
@@ -608,7 +614,6 @@ pub async fn start_websocket_lyrics(
     println!("[WebSocket 调试] 正在连接歌词服务器: {}", ws_url);
 
     let mut task_guard = state.ws_task.lock().await;
-    // 如果之前有任务，先停掉
     if let Some(handle) = task_guard.take() {
         handle.abort();
     }
@@ -619,6 +624,8 @@ pub async fn start_websocket_lyrics(
         if let Err(e) = run_websocket_lyrics(ws_url, app_clone).await {
             eprintln!("WebSocket 歌词任务出错: {}", e);
             let _ = app_err.emit("websocket-error", e);
+            // 连接失败时，确保前端置灰状态
+            let _ = app_err.emit("websocket-status", false);
         }
     });
 
