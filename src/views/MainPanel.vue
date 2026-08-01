@@ -210,152 +210,193 @@
                     </div>
                 </template>
 
-                <div class="dynamicset-grid bottom-grid-card">
-                    <div class="set-item" :class="{ 'is-dropdown-open': isLanguageDropdownOpen }">
-                        <div class="set-item-meta">
-                            <span class="set-item-title">{{ t('language') }}</span>
-                            <span class="set-item-desc">{{ t('languageDesc') }}</span>
-                        </div>
-                        <div class="custom-dropdown" tabindex="0" @blur="isLanguageDropdownOpen = false">
-                            <div class="dropdown-trigger" @click="isLanguageDropdownOpen = !isLanguageDropdownOpen">
-                                <div class="current-item">{{ t(currentLanguage === 'zh-CN' ? 'simplifiedChinese' :
-                                    'english') }}</div>
-                                <svg viewBox="0 0 24 24" class="arrow-icon"
-                                    :class="{ 'is-open': isLanguageDropdownOpen }">
-                                    <path d="M7 10l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2"
-                                        stroke-linecap="round" />
-                                </svg>
+                <div class="dynamicset-grid bottom-grid-card card-pager-outer">
+                    <div class="pager-viewport">
+                        <div class="pager-track"
+                            :style="{ transform: currentPage === 0 ? 'translateX(0)' : 'translateX(-50%)' }">
+
+                            <div class="pager-page">
+                                <div class="set-item" :class="{ 'is-dropdown-open': isLanguageDropdownOpen }">
+                                    <div class="set-item-meta">
+                                        <span class="set-item-title">{{ t('language') }}</span>
+                                        <span class="set-item-desc">{{ t('languageDesc') }}</span>
+                                    </div>
+                                    <div class="custom-dropdown" tabindex="0" @blur="isLanguageDropdownOpen = false">
+                                        <div class="dropdown-trigger"
+                                            @click="isLanguageDropdownOpen = !isLanguageDropdownOpen">
+                                            <div class="current-item">{{ t(currentLanguage === 'zh-CN' ?
+                                                'simplifiedChinese' :
+                                                'english') }}</div>
+                                            <svg viewBox="0 0 24 24" class="arrow-icon"
+                                                :class="{ 'is-open': isLanguageDropdownOpen }">
+                                                <path d="M7 10l5 5 5-5" fill="none" stroke="currentColor"
+                                                    stroke-width="2" stroke-linecap="round" />
+                                            </svg>
+                                        </div>
+
+                                        <transition name="dropdown">
+                                            <div class="dropdown-menu" v-show="isLanguageDropdownOpen">
+                                                <div v-for="option in languageOptions" :key="option.value"
+                                                    class="dropdown-item"
+                                                    :class="{ 'is-active': currentLanguage === option.value }"
+                                                    @click="handleSelectLanguage(option.value)">
+                                                    {{ t(option.labelKey) }}
+                                                </div>
+                                            </div>
+                                        </transition>
+                                    </div>
+                                </div>
+                                <div class="set-item" :class="{ 'is-dropdown-open': isPlayerDropdownOpen }">
+                                    <div class="set-item-meta">
+                                        <span class="set-item-title">{{ t('targetMediaPlatform') }}</span>
+                                        <span class="set-item-desc">{{ t('targetMediaPlatformDesc') }}</span>
+                                    </div>
+                                    <div class="custom-dropdown" tabindex="0" @blur="isPlayerDropdownOpen = false">
+                                        <div class="dropdown-trigger"
+                                            @click="isPlayerDropdownOpen = !isPlayerDropdownOpen">
+                                            <div class="current-item">
+                                                <template v-if="targetPlayer === 'netease'"><img
+                                                        src="../assets/musci163.svg" class="platform-icon"> {{
+                                                            t('netease') }}</template>
+                                                <template v-else-if="targetPlayer === 'spotify'"><img
+                                                        src="../assets/Spotify.svg" class="platform-icon">
+                                                    Spotify</template>
+                                                <template v-else-if="targetPlayer === 'apple'"><img
+                                                        src="../assets/applemusic.svg" class="platform-icon">
+                                                    Apple</template>
+                                                <template v-else-if="targetPlayer === 'qqmusic'"><img
+                                                        src="../assets/qqmusic.svg" class="platform-icon"> {{
+                                                            t('qqMusic') }}</template>
+                                                <template v-else-if="targetPlayer === 'kugou'"><img
+                                                        src="../assets/kugou.svg" class="platform-icon"> {{
+                                                            t('kugouMusic') }}</template>
+                                                <template v-else-if="targetPlayer === 'echo'"><img
+                                                        src="../assets/echomusic.ico" class="platform-icon">
+                                                    EchoMusic</template>
+                                                <template v-else-if="targetPlayer === 'lx-music'"><img
+                                                        src="../assets/lxmusic.png" class="platform-icon"> {{
+                                                            t('lxMusic') }}</template>
+                                                <template v-else-if="targetPlayer === 'other'">
+                                                    <svg viewBox="0 0 24 24" class="platform-icon" fill="currentColor">
+                                                        <path
+                                                            d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z" />
+                                                    </svg>
+                                                    {{ t('genericMedia') }}
+                                                </template>
+                                            </div>
+                                            <svg viewBox="0 0 24 24" class="arrow-icon"
+                                                :class="{ 'is-open': isPlayerDropdownOpen }">
+                                                <path d="M7 10l5 5 5-5" fill="none" stroke="currentColor"
+                                                    stroke-width="2" stroke-linecap="round" />
+                                            </svg>
+                                        </div>
+
+                                        <transition name="dropdown">
+                                            <div class="dropdown-menu" v-show="isPlayerDropdownOpen">
+                                                <div class="dropdown-item"
+                                                    :class="{ 'is-active': targetPlayer === 'netease' }"
+                                                    @click="handleSelectPlayer('netease')">
+                                                    <img src="../assets/musci163.svg" class="platform-icon"> {{
+                                                        t('netease') }}
+                                                </div>
+                                                <div class="dropdown-item"
+                                                    :class="{ 'is-active': targetPlayer === 'spotify' }"
+                                                    @click="handleSelectPlayer('spotify')">
+                                                    <img src="../assets/Spotify.svg" class="platform-icon"> Spotify
+                                                </div>
+                                                <div class="dropdown-item"
+                                                    :class="{ 'is-active': targetPlayer === 'apple' }"
+                                                    @click="handleSelectPlayer('apple')">
+                                                    <img src="../assets/applemusic.svg" class="platform-icon"> Apple
+                                                </div>
+                                                <div class="dropdown-item"
+                                                    :class="{ 'is-active': targetPlayer === 'qqmusic' }"
+                                                    @click="handleSelectPlayer('qqmusic')">
+                                                    <img src="../assets/qqmusic.svg" class="platform-icon"> {{
+                                                        t('qqMusic') }}
+                                                </div>
+                                                <div class="dropdown-item"
+                                                    :class="{ 'is-active': targetPlayer === 'kugou' }"
+                                                    @click="handleSelectPlayer('kugou')">
+                                                    <img src="../assets/kugou.svg" class="platform-icon"> {{
+                                                        t('kugouMusic') }}
+                                                </div>
+                                                <div class="dropdown-item"
+                                                    :class="{ 'is-active': targetPlayer === 'echo' }"
+                                                    @click="handleSelectPlayer('echo')">
+                                                    <img src="../assets/echomusic.ico" class="platform-icon"> EchoMusic
+                                                </div>
+                                                <div class="dropdown-item"
+                                                    :class="{ 'is-active': targetPlayer === 'lx-music' }"
+                                                    @click="handleSelectPlayer('lx-music')">
+                                                    <img src="../assets/lxmusic.png" class="platform-icon"> {{
+                                                        t('lxMusic') }}
+                                                </div>
+                                                <div class="dropdown-item"
+                                                    :class="{ 'is-active': targetPlayer === 'other' }"
+                                                    @click="handleSelectPlayer('other')">
+                                                    <svg viewBox="0 0 24 24" class="platform-icon" fill="currentColor">
+                                                        <path
+                                                            d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z" />
+                                                    </svg>
+                                                    {{ t('otherMediaControl') }}
+                                                </div>
+                                            </div>
+                                        </transition>
+                                    </div>
+                                </div>
+                                <div class="set-item">
+                                    <div class="set-item-meta">
+                                        <span class="set-item-title">{{ t('mediaController') }}</span>
+                                        <span class="set-item-desc">{{ t('mediaControllerDesc') }}</span>
+                                    </div>
+                                    <label class="switch">
+                                        <input type="checkbox" v-model="enableMusicCtrl">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div class="set-item">
+                                    <div class="set-item-meta">
+                                        <span class="set-item-title">{{ t('messageNotifications') }}</span>
+                                        <span class="set-item-desc">{{ t('messageNotificationsDesc') }}</span>
+                                    </div>
+                                    <label class="switch">
+                                        <input type="checkbox" v-model="enableMsgNotify" @change="toggleMsgNotify">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div class="set-item">
+                                    <div class="set-item-meta">
+                                        <span class="set-item-title">{{ t('quietMode') }}</span>
+                                        <span class="set-item-desc">{{ t('quietModeDesc') }}</span>
+                                    </div>
+                                    <label class="switch">
+                                        <input type="checkbox" v-model="msgModeEnabled" @change="toggleMsgMode">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div class="set-item">
+                                    <div class="set-item-meta">
+                                        <span class="set-item-title">{{ t('fullscreenAutoHide') }}</span>
+                                        <span class="set-item-desc">{{ t('fullscreenAutoHideDesc') }}</span>
+                                    </div>
+                                    <label class="switch">
+                                        <input type="checkbox" v-model="autoHideFullscreen" @change="toggleAutoHide">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
                             </div>
 
-                            <transition name="dropdown">
-                                <div class="dropdown-menu" v-show="isLanguageDropdownOpen">
-                                    <div v-for="option in languageOptions" :key="option.value" class="dropdown-item"
-                                        :class="{ 'is-active': currentLanguage === option.value }"
-                                        @click="handleSelectLanguage(option.value)">
-                                        {{ t(option.labelKey) }}
-                                    </div>
-                                </div>
-                            </transition>
-                        </div>
-                    </div>
-                    <div class="set-item" :class="{ 'is-dropdown-open': isPlayerDropdownOpen }">
-                        <div class="set-item-meta">
-                            <span class="set-item-title">{{ t('targetMediaPlatform') }}</span>
-                            <span class="set-item-desc">{{ t('targetMediaPlatformDesc') }}</span>
-                        </div>
-                        <div class="custom-dropdown" tabindex="0" @blur="isPlayerDropdownOpen = false">
-                            <div class="dropdown-trigger" @click="isPlayerDropdownOpen = !isPlayerDropdownOpen">
-                                <div class="current-item">
-                                    <template v-if="targetPlayer === 'netease'"><img src="../assets/musci163.svg"
-                                            class="platform-icon"> {{ t('netease') }}</template>
-                                    <template v-else-if="targetPlayer === 'spotify'"><img src="../assets/Spotify.svg"
-                                            class="platform-icon"> Spotify</template>
-                                    <template v-else-if="targetPlayer === 'apple'"><img src="../assets/applemusic.svg"
-                                            class="platform-icon"> Apple</template>
-                                    <template v-else-if="targetPlayer === 'qqmusic'"><img src="../assets/qqmusic.svg"
-                                            class="platform-icon"> {{ t('qqMusic') }}</template>
-                                    <template v-else-if="targetPlayer === 'kugou'"><img src="../assets/kugou.svg"
-                                            class="platform-icon"> {{ t('kugouMusic') }}</template>
-                                    <template v-else-if="targetPlayer === 'echo'"><img src="../assets/echomusic.ico"
-                                            class="platform-icon"> EchoMusic</template>
-                                    <template v-else-if="targetPlayer === 'lx-music'"><img src="../assets/lxmusic.png"
-                                            class="platform-icon"> {{ t('lxMusic') }}</template>
-                                    <template v-else-if="targetPlayer === 'other'">
-                                        <svg viewBox="0 0 24 24" class="platform-icon" fill="currentColor">
-                                            <path
-                                                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z" />
-                                        </svg>
-                                        {{ t('genericMedia') }}
-                                    </template>
-                                </div>
-                                <svg viewBox="0 0 24 24" class="arrow-icon"
-                                    :class="{ 'is-open': isPlayerDropdownOpen }">
-                                    <path d="M7 10l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2"
-                                        stroke-linecap="round" />
-                                </svg>
+                            <div class="pager-page">
+                                <!--第二页设置项（请在此添加新组件）-->
                             </div>
 
-                            <transition name="dropdown">
-                                <div class="dropdown-menu" v-show="isPlayerDropdownOpen">
-                                    <div class="dropdown-item" :class="{ 'is-active': targetPlayer === 'netease' }"
-                                        @click="handleSelectPlayer('netease')">
-                                        <img src="../assets/musci163.svg" class="platform-icon"> {{ t('netease') }}
-                                    </div>
-                                    <div class="dropdown-item" :class="{ 'is-active': targetPlayer === 'spotify' }"
-                                        @click="handleSelectPlayer('spotify')">
-                                        <img src="../assets/Spotify.svg" class="platform-icon"> Spotify
-                                    </div>
-                                    <div class="dropdown-item" :class="{ 'is-active': targetPlayer === 'apple' }"
-                                        @click="handleSelectPlayer('apple')">
-                                        <img src="../assets/applemusic.svg" class="platform-icon"> Apple
-                                    </div>
-                                    <div class="dropdown-item" :class="{ 'is-active': targetPlayer === 'qqmusic' }"
-                                        @click="handleSelectPlayer('qqmusic')">
-                                        <img src="../assets/qqmusic.svg" class="platform-icon"> {{ t('qqMusic') }}
-                                    </div>
-                                    <div class="dropdown-item" :class="{ 'is-active': targetPlayer === 'kugou' }"
-                                        @click="handleSelectPlayer('kugou')">
-                                        <img src="../assets/kugou.svg" class="platform-icon"> {{ t('kugouMusic') }}
-                                    </div>
-                                    <div class="dropdown-item" :class="{ 'is-active': targetPlayer === 'echo' }"
-                                        @click="handleSelectPlayer('echo')">
-                                        <img src="../assets/echomusic.ico" class="platform-icon"> EchoMusic
-                                    </div>
-                                    <div class="dropdown-item" :class="{ 'is-active': targetPlayer === 'lx-music' }"
-                                        @click="handleSelectPlayer('lx-music')">
-                                        <img src="../assets/lxmusic.png" class="platform-icon"> {{ t('lxMusic') }}
-                                    </div>
-                                    <div class="dropdown-item" :class="{ 'is-active': targetPlayer === 'other' }"
-                                        @click="handleSelectPlayer('other')">
-                                        <svg viewBox="0 0 24 24" class="platform-icon" fill="currentColor">
-                                            <path
-                                                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z" />
-                                        </svg>
-                                        {{ t('otherMediaControl') }}
-                                    </div>
-                                </div>
-                            </transition>
                         </div>
                     </div>
-                    <div class="set-item">
-                        <div class="set-item-meta">
-                            <span class="set-item-title">{{ t('mediaController') }}</span>
-                            <span class="set-item-desc">{{ t('mediaControllerDesc') }}</span>
-                        </div>
-                        <label class="switch">
-                            <input type="checkbox" v-model="enableMusicCtrl">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div class="set-item">
-                        <div class="set-item-meta">
-                            <span class="set-item-title">{{ t('messageNotifications') }}</span>
-                            <span class="set-item-desc">{{ t('messageNotificationsDesc') }}</span>
-                        </div>
-                        <label class="switch">
-                            <input type="checkbox" v-model="enableMsgNotify" @change="toggleMsgNotify">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div class="set-item">
-                        <div class="set-item-meta">
-                            <span class="set-item-title">{{ t('quietMode') }}</span>
-                            <span class="set-item-desc">{{ t('quietModeDesc') }}</span>
-                        </div>
-                        <label class="switch">
-                            <input type="checkbox" v-model="msgModeEnabled" @change="toggleMsgMode">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div class="set-item">
-                        <div class="set-item-meta">
-                            <span class="set-item-title">{{ t('fullscreenAutoHide') }}</span>
-                            <span class="set-item-desc">{{ t('fullscreenAutoHideDesc') }}</span>
-                        </div>
-                        <label class="switch">
-                            <input type="checkbox" v-model="autoHideFullscreen" @change="toggleAutoHide">
-                            <span class="slider"></span>
-                        </label>
+
+                    <div class="pagination-capsule" @click="togglePage">
+                        <div class="page-dot" :class="{ active: currentPage === 0 }"></div>
+                        <div class="page-dot" :class="{ active: currentPage === 1 }"></div>
                     </div>
                 </div>
             </template>
@@ -434,6 +475,11 @@ const downloadSpeed = ref('0 B/s');
 const appVersion = ref('1.0.0');
 
 const isDynamicSet = ref(false);
+
+const currentPage = ref(0);
+const togglePage = () => {
+    currentPage.value = currentPage.value === 0 ? 1 : 0;
+};
 
 const isChecking = ref(false);
 const hasNewVersion = ref(false);
@@ -2388,5 +2434,90 @@ input:disabled+.slider {
 .panel-footer {
     position: relative;
     z-index: 1;
+}
+
+/* 外层卡片保留原有宽高与布局，覆盖 display 使得内部 Slider 正常响应 */
+.card-pager-outer {
+    position: relative !important;
+    padding: 0 !important;
+    display: block !important;
+    overflow: hidden !important;
+}
+
+/* 内嵌视口 */
+.pager-viewport {
+    width: 100%;
+    overflow: hidden;
+    padding-bottom: 5px;
+    /* 底部预留微小空间，防止遮挡低端点击 */
+}
+
+/* 快速响应的贝塞尔曲线平滑轨道 */
+.pager-track {
+    display: flex;
+    width: 200%;
+    transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* 每一页保持 3 列网格布局，与原效果完全一致 */
+.pager-page {
+    width: 50%;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    row-gap: 5px;
+    padding: 0 4px;
+    box-sizing: border-box;
+}
+
+/* 正下方悬浮翻页小胶囊 */
+.pagination-capsule {
+    position: absolute;
+    bottom: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    height: 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    z-index: 20;
+    background: rgba(0, 0, 0, 0.08);
+    /* 配合明暗主题的透明度白/黑 */
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: all 0.2s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+:global(.dark-theme) .pagination-capsule {
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pagination-capsule:hover {
+    background: rgba(0, 0, 0, 0.15);
+    transform: translateX(-50%) scale(1.08);
+}
+
+:global(.dark-theme) .pagination-capsule:hover {
+    background: rgba(255, 255, 255, 0.22);
+}
+
+/* 胶囊内的小圆球指示器 */
+.page-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background-color: var(--text-body);
+    opacity: 0.25;
+    transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.page-dot.active {
+    opacity: 0.9;
+    width: 12px;
+    border-radius: 3px;
 }
 </style>
