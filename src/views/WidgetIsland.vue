@@ -143,6 +143,31 @@
                             </transition>
                         </div>
 
+                        <div v-else-if="displayResource" class="resource-box" key="resource">
+                            <div class="res-group">
+                                <div class="res-info-row">
+                                    <span class="res-label">CPU</span>
+                                    <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{ cpuUsage
+                                    }}%</span>
+                                </div>
+                                <div class="res-bar-track">
+                                    <div class="res-bar-fill" :style="{ width: cpuUsage + '%' }"
+                                        :class="{ 'high-usage': cpuUsage >= 85 }"></div>
+                                </div>
+                            </div>
+                            <div class="res-group">
+                                <div class="res-info-row">
+                                    <span class="res-label">RAM</span>
+                                    <span class="res-value" :class="{ 'high-usage': ramUsage >= 85 }">{{ ramUsage
+                                    }}%</span>
+                                </div>
+                                <div class="res-bar-track">
+                                    <div class="res-bar-fill" :style="{ width: ramUsage + '%' }"
+                                        :class="{ 'high-usage': ramUsage >= 85 }"></div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div v-else-if="displaySpeed" class="speed-box" key="speed">
                             <transition name="speed-fade" mode="out-in">
                                 <div v-if="isShowingUpload" class="speed-item" key="upload">
@@ -589,8 +614,14 @@ const isPositionLocked = ref(localStorage.getItem('nsd_position_locked') === 'tr
 // 记录消息模式开关状态
 const isMsgModeEnabled = ref(localStorage.getItem('nsd_msg_mode') === 'true');
 
+// 记录系统资源监控状态
+const enableSysResource = ref(localStorage.getItem('nsd_sys_resource') === 'true');
+const cpuUsage = ref(0);
+const ramUsage = ref(0);
+
 // 使用计算属性智能判断当前该显示谁
-const displaySpeed = computed(() => !isMsgActive.value && !displaySysToast.value && (!isMusicCtlEnabled.value || !isMediaActive.value));
+const displayResource = computed(() => !isMsgActive.value && !displaySysToast.value && enableSysResource.value && (!isMusicCtlEnabled.value || !isMediaActive.value));
+const displaySpeed = computed(() => !isMsgActive.value && !displaySysToast.value && !enableSysResource.value && (!isMusicCtlEnabled.value || !isMediaActive.value));
 const displayMusic = computed(() => !isMsgActive.value && !displaySysToast.value && isMusicCtlEnabled.value && isMediaActive.value);
 
 // 智能判断静默模式下是否该显示：有消息、有系统提示，或开启了音乐控制且正在播放
@@ -626,6 +657,7 @@ const showCoverglassBg = computed(() => {
 
 // 辅助函数：获取当前状态应该拥有的默认大小
 const getBaseSize = () => {
+    if (displayResource.value) return { w: nsdMusicBaseWidth.value, h: Math.max(nsdBaseHeight.value + 8, 42) };
     if (displaySpeed.value) return { w: nsdBaseWidth.value, h: nsdBaseHeight.value };
     return { w: nsdMusicBaseWidth.value, h: Math.max(nsdBaseHeight.value + 8, 42) };
 };
@@ -1478,28 +1510,19 @@ onMounted(async () => {
     await listen<{ enabled: boolean }>('control-music-ctl', (event) => {
         const isEnabled = event.payload.enabled;
         isMusicCtlEnabled.value = isEnabled;
-
         if (isEnabled) {
-            // 开关打开时启动 WebSocket
+            enableSysResource.value = false; // 开启音乐，关资源监控
             initWebSocket();
-
-            // 判断是不是“首次”（本地有没有存过流光边框的数据）
             if (localStorage.getItem('nsd_glow_border') === null) {
                 isGlowBorderEnabled.value = true;
                 localStorage.setItem('nsd_glow_border', 'true');
             }
-
-            // 强制展示音乐岛，并打上“刚开启”的标记
             isMediaActive.value = true;
             isNewlyEnabled = true;
-
             showInfo.value = false;
             musicBoxKey.value++;
         } else {
-            // 开关关闭时断开 WebSocket
             stopWebSocket();
-
-            // 关闭时重置状态
             isMediaActive.value = true;
             isNewlyEnabled = false;
         }
@@ -1538,6 +1561,22 @@ onMounted(async () => {
             const { w, h } = getBaseSize();
             animateIslandSize(w, h);
         }
+    });
+
+    // 监听控制台发来的资源监控开关
+    await listen<{ enabled: boolean }>('control-sys-resource', (event) => {
+        const isEnabled = event.payload.enabled;
+        enableSysResource.value = isEnabled;
+        if (isEnabled) {
+            isMusicCtlEnabled.value = false; // 开启资源监控，关音乐控制器
+            stopWebSocket();
+        }
+    });
+
+    // 监听 Rust 底层发来的硬核资源数据
+    await listen<{ cpu: number, ram: number }>('resource-event', (event) => {
+        cpuUsage.value = event.payload.cpu;
+        ramUsage.value = event.payload.ram;
     });
 
     // 监听系统底层事件（音量、电源）
@@ -2743,5 +2782,107 @@ onUnmounted(() => {
 .status-dot {
     position: relative;
     z-index: 2;
+}
+
+/* 系统资源监控 */
+.resource-box {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-right: 8px;
+    box-sizing: border-box;
+    gap: 12px;
+    /* 稍微拉开 CPU 和 RAM 的距离 */
+    -webkit-app-region: no-drag;
+    overflow: hidden;
+}
+
+/* 单个资源组 (CPU/RAM) */
+.res-group {
+    flex: 1 1 0%;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    /* 改为纵向两行布局 */
+    justify-content: center;
+    gap: 6px;
+    /* 上下排间距 */
+}
+
+/* 第一行的文字容器 (标签 + 数值) */
+.res-info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    /* 底部对齐，让文字重心更稳 */
+    width: 100%;
+}
+
+/* 标签 (CPU/RAM) */
+.res-label {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+    font-size: 10px;
+    font-weight: 800;
+    opacity: 0.75;
+    color: currentColor;
+    background: rgba(150, 150, 150, 0.15);
+    padding: 2px 5px;
+    border-radius: 4px;
+    line-height: 1;
+}
+
+/* 进度条轨道 */
+.res-bar-track {
+    width: 100%;
+    /* 占满下面一整行 */
+    height: 4px;
+    /* 压低进度条高度，把空间留给上层文字 */
+    background: rgba(150, 150, 150, 0.2);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+}
+
+/* 进度条填充 */
+.res-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: currentColor;
+    border-radius: 2px;
+    opacity: 0.9;
+    transition: width 0.4s cubic-bezier(0.25, 1, 0.5, 1), background-color 0.3s ease;
+}
+
+/* 百分比数值 */
+.res-value {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+    font-size: 12px;
+    /* 稍微调大凸显数值 */
+    font-weight: 700;
+    color: currentColor;
+    opacity: 0.95;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    transform: translateY(-1px);
+}
+
+/* 高负载告警态 (>=85%) */
+.high-usage {
+    color: #b6170f !important;
+}
+
+/* 亮色主题适配 (可选，如果全局 currentColor 处理得当可省略) */
+:deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .res-label {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+:deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .res-bar-track {
+    background: rgba(0, 0, 0, 0.1);
 }
 </style>

@@ -104,7 +104,7 @@
                                     <template v-if="themeMode === 'light'">{{ t('lightMode') }}</template>
                                     <template v-else-if="themeMode === 'dark'">{{ t('darkMode') }}</template>
                                     <template v-else-if="themeMode === 'coverglass'">{{ t('coverglassMode')
-                                        }}</template>
+                                    }}</template>
                                     <template v-else-if="themeMode === 'system'">{{ t('systemMode') }}</template>
                                 </div>
                                 <svg viewBox="0 0 24 24" class="arrow-icon"
@@ -388,7 +388,17 @@
                             </div>
 
                             <div class="pager-page">
-                                <!--第二页设置项（请在此添加新组件）-->
+                                <!--第二页设置项-->
+                                <div class="set-item">
+                                    <div class="set-item-meta">
+                                        <span class="set-item-title">系统资源监控</span>
+                                        <span class="set-item-desc">在灵动岛显示 CPU 与 RAM 占用</span>
+                                    </div>
+                                    <label class="switch">
+                                        <input type="checkbox" v-model="enableSysResource" @change="toggleSysResource">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
                             </div>
 
                         </div>
@@ -435,7 +445,7 @@
                     </div>
                     <div class="modal-footer">
                         <button v-if="dialog.isConfirm" class="btn btn-secondary" @click="closeDialog">{{ t('cancel')
-                            }}</button>
+                        }}</button>
                         <button class="btn btn-primary" @click="handleDialogConfirm">{{ t('confirm') }}</button>
                     </div>
                 </div>
@@ -629,6 +639,20 @@ const enableMusicCtrl = ref(localStorage.getItem('nsd_music_ctrl') === 'true');
 const enableMsgNotify = ref(localStorage.getItem('nsd_msg_notify') === 'true');
 const msgModeEnabled = ref(localStorage.getItem('nsd_msg_mode') === 'true');
 const autoHideFullscreen = ref(localStorage.getItem('nsd_autohide_fs') === 'true');
+const enableSysResource = ref(localStorage.getItem('nsd_sys_resource') === 'true');
+
+// 切换系统资源监控
+const toggleSysResource = async () => {
+    localStorage.setItem('nsd_sys_resource', String(enableSysResource.value));
+    await emit('control-sys-resource', { enabled: enableSysResource.value });
+
+    // 互斥逻辑：开启系统资源监控时，自动关闭媒体控制器
+    if (enableSysResource.value && enableMusicCtrl.value) {
+        enableMusicCtrl.value = false;
+        localStorage.setItem('nsd_music_ctrl', 'false');
+        await emit('control-music-ctl', { enabled: false });
+    }
+};
 
 // 切换消息模式
 const toggleMsgMode = async () => {
@@ -1125,6 +1149,13 @@ watch(enableMusicCtrl, async (newVal) => {
     localStorage.setItem('nsd_music_ctrl', newVal.toString());
     await emit('control-music-ctl', { enabled: newVal });
     console.log('音乐控制器状态切换为:', newVal);
+
+    // 互斥逻辑：开启媒体控制器时，自动关闭系统资源监控
+    if (newVal && enableSysResource.value) {
+        enableSysResource.value = false;
+        localStorage.setItem('nsd_sys_resource', 'false');
+        await emit('control-sys-resource', { enabled: false });
+    }
 });
 
 onMounted(async () => {
