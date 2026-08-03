@@ -21,53 +21,52 @@
 ![Music Controller](./src/assets/screenshot2.png)
 ![Dynamic Island Notification](./src/assets/screenshot4.png)
 ![Music Controller 2.0](./src/assets/screenshot.gif)
-![2.4.1](./src/assets/screenshot3.png)
-![2.4.1](./src/assets/screenshot5.png)
+![2.4.2](./src/assets/screenshot3.png)
 
 ---
 
-NetSpeed Dynamic Pro (NSD) is a Windows desktop application built with Tauri 2, Rust, and Vue 3. It combines a floating Dynamic Island experience with a control console for real-time network monitoring, multi-platform music control, system notifications, and deep personalization.
+NetSpeed Dynamic Pro (NSD) is a Windows desktop application built with Tauri 2, Vue 3, TypeScript, and Rust. It packages real-time network monitoring, system resource visibility, music control, toast notifications, taskbar plugin support, and personalization into a floating Dynamic Island interface.
 
 ## Highlights
 
-- Monitor upload and download speeds in real time with traffic stats and trend charts
-- Show network, music, messages, and system status in a floating Dynamic Island UI
-- Support multi-platform media control through the Windows SMTC ecosystem
-- Capture system notifications and present them more intuitively on screen
-- Offer personalization options such as themes, opacity, size, corners, animations, and taskbar integration
-- Support auto-start, system tray, taskbar pinning, and fullscreen game avoidance
+- Monitor upload and download activity in real time with live traffic stats, monthly totals, and trend charts
+- Show network, music, message, CPU, RAM, and system status in a floating Dynamic Island UI
+- Support cross-platform media control through the Windows SMTC ecosystem and system media sessions
+- Capture incoming Toast notifications and render them as on-screen notification cards with priority handling
+- Offer theme switching, transparency, corner style, scaling, lyric timing, glow border, and animation tuning
+- Support startup launch, tray icon usage, taskbar plugin sync, fullscreen auto-hide, and position locking
 
 ## Core Features
 
 ### 1. Network Monitoring
 
-- Refresh upload/download speed every second and switch units automatically
-- Show network status indicators for normal, high latency, and disconnect states
-- Provide local traffic statistics and monthly cumulative traffic stats
-- Display built-in charts for recent traffic trends
-- Reduce false disconnection detection during heavy traffic periods
+- Refresh upload and download speed every second with auto-scaling units
+- Display network health indicators for normal, high-latency, and disconnected states
+- Provide local traffic totals and monthly cumulative traffic analytics
+- Switch between bar and line charts inside the console
+- Make disconnection decisions more conservatively during heavy traffic fluctuations
 
 ### 2. Music and Media Control
 
-- Control previous / play-pause / next through the Windows SMTC API
+- Use the Windows SMTC API to control previous / play-pause / next
 - Support NetEase Cloud Music, Spotify, Apple Music, QQ Music, Kugou Music, Echo Music, and LX Music
-- Show song title, artist, and cover art in real time
-- Prefer local cover art from the system media session with fallback sources
-- Support lyrics display, lyric queue handling, and visual glow borders
+- Present current song title, artist, and cover art in real time
+- Prefer local cover art from the system media session and fall back gracefully to other sources
+- Support synchronized lyrics, lyric queue logic, and glowing visual borders
 
 ### 3. Notifications and System Events
 
-- Receive system Toast notifications and display them inside the Dynamic Island
-- Support silent message mode, message priority queues, and click-to-open actions
-- Observe volume changes, power plug/unplug, lock/unlock, and low battery events
-- Provide dedicated icons and notification styles for different event types
+- Receive system Toast notifications and display them directly in the Dynamic Island
+- Support silent mode, a message priority queue, and click-to-open actions
+- Watch for volume changes, power connection/disconnection, lock/unlock, and low battery events
+- Use event-specific icons and visual styles for different kinds of system updates
 
-### 4. Personalization Center
+### 4. Taskbar Plugin and Desktop Integration
 
-- Choose between Stiff and Bouncy spring animation styles
-- Switch between black, white, and immersive themes
-- Adjust corner shape, opacity, size, and global scaling
-- Configure taskbar plugin behavior, lyric delay, position lock, and always-on-top options
+- Expose a taskbar plugin mode that mirrors live speed, lyrics, resource info, and messages into a taskbar companion component
+- Keep the app accessible through the tray icon
+- Auto-hide the island during fullscreen gaming or video playback
+- Support position reset, lock, glow border switching, and always-on-top behavior
 
 ## Tech Stack
 
@@ -92,21 +91,21 @@ NetSpeed Dynamic Pro (NSD) is a Windows desktop application built with Tauri 2, 
 ```text
 NetSpeed-Dynamic/
 ├── src/                      # Frontend source
-│   ├── main.ts               # Application entry
-│   ├── router/index.ts       # Router configuration
+│   ├── main.ts               # App entry
+│   ├── router/index.ts       # Router setup
 │   ├── i18n.ts               # Chinese/English localization
 │   ├── views/
-│   │   ├── MainPanel.vue     # Main console
+│   │   ├── MainPanel.vue     # Main console UI
 │   │   └── WidgetIsland.vue  # Floating Dynamic Island
 │   ├── components/
 │   │   └── DynamicSet.vue    # Personalization center
 │   └── assets/               # Icons, screenshots, and static assets
 ├── src-tauri/                # Tauri Rust backend
 │   ├── src/
-│   │   ├── lib.rs            # Core logic, windows, and animation
-│   │   ├── music_controller.rs  # Media control and cover/lyric handling
+│   │   ├── lib.rs            # Core logic, windows, animation, tray
+│   │   ├── music_controller.rs  # Media control and cover/lyric logic
 │   │   ├── notification.rs   # System notification capture
-│   │   ├── system_events.rs  # Volume, power, lock events
+│   │   ├── system_events.rs  # Volume, power, and lock events
 │   │   └── audio_spectrum.rs # Audio spectrum analysis
 │   ├── Cargo.toml           # Rust dependencies
 │   └── tauri.conf.json      # Tauri configuration
@@ -143,12 +142,12 @@ The packaged output is written to `src-tauri/target/release/bundle/`.
 ## Usage
 
 1. Launch the app to open the main console.
-2. Turn on the Widget switch to show the floating Dynamic Island.
-3. Drag it with the mouse and use the context menu for lock/reset/close actions.
-4. Configure music platform selection, notification preferences, theme, opacity, and startup behavior.
-5. Open the Personalization Center to adjust physics, appearance, size, and scaling.
+2. Enable the Widget switch to show the floating Dynamic Island.
+3. Drag it with the mouse and use the right-click menu to lock, reset, close, toggle the glow border, or pin it on top.
+4. Configure music platform selection, notification preferences, theme, opacity, auto-start, and taskbar plugin settings.
+5. Open the Personalization Center to adjust animation behavior, appearance, size, and scaling.
 
-> Note: This project is deeply adapted for Windows and relies on system SMTC, COM, and WinAPI features.
+> Note: This project is deeply adapted for Windows and relies on system SMTC, WinAPI, COM, and notification-management features.
 
 ## License
 
