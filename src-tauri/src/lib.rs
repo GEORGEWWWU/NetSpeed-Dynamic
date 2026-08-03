@@ -131,6 +131,8 @@ fn sync_to_taskbar(
     msg_title: String,
     msg_body: String,
     msg_icon: String,
+    cpu: u8,
+    ram: u8,
 ) {
     if let Some(tx) = TASKBAR_WS_SENDER.get() {
         // 使用 serde_json 防止特殊字符破坏 JSON 格式
@@ -143,7 +145,9 @@ fn sync_to_taskbar(
             "cover": cover,
             "msg_title": msg_title,
             "msg_body": msg_body,
-            "msg_icon": msg_icon
+            "msg_icon": msg_icon,
+            "cpu": cpu,
+            "ram": ram
         })
         .to_string();
 

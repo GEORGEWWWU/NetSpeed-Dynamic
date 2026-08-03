@@ -148,7 +148,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">CPU</span>
                                     <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{ cpuUsage
-                                    }}%</span>
+                                        }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: cpuUsage + '%' }"
@@ -159,7 +159,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">RAM</span>
                                     <span class="res-value" :class="{ 'high-usage': ramUsage >= 85 }">{{ ramUsage
-                                    }}%</span>
+                                        }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: ramUsage + '%' }"
@@ -1743,6 +1743,8 @@ onMounted(async () => {
                     currentMode = 'message';
                 } else if (displayMusic.value) {
                     currentMode = 'music';
+                } else if (displayResource.value) {
+                    currentMode = 'resource';
                 }
 
                 await invoke('sync_to_taskbar', {
@@ -1754,7 +1756,9 @@ onMounted(async () => {
                     cover: coverUrl.value || "",
                     msgTitle: msgTitle.value || msgAppName.value || "新通知",
                     msgBody: msgBody.value || "",
-                    msgIcon: currentMsgIcon.value || ""
+                    msgIcon: currentMsgIcon.value || "",
+                    cpu: Math.round(cpuUsage.value),
+                    ram: Math.round(ramUsage.value)
                 });
             } catch (e) {
                 console.error("同步任务栏失败:", e);
