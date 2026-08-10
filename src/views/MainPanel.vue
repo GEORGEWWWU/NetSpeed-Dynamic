@@ -104,7 +104,7 @@
                                     <template v-if="themeMode === 'light'">{{ t('lightMode') }}</template>
                                     <template v-else-if="themeMode === 'dark'">{{ t('darkMode') }}</template>
                                     <template v-else-if="themeMode === 'coverglass'">{{ t('coverglassMode')
-                                    }}</template>
+                                        }}</template>
                                     <template v-else-if="themeMode === 'system'">{{ t('systemMode') }}</template>
                                 </div>
                                 <svg viewBox="0 0 24 24" class="arrow-icon"
@@ -455,7 +455,7 @@
                     </div>
                     <div class="modal-footer">
                         <button v-if="dialog.isConfirm" class="btn btn-secondary" @click="closeDialog">{{ t('cancel')
-                        }}</button>
+                            }}</button>
                         <button class="btn btn-primary" @click="handleDialogConfirm">{{ t('confirm') }}</button>
                     </div>
                 </div>
@@ -511,7 +511,7 @@ const toggleFps = async () => {
     localStorage.setItem('nsd_fps_monitor', String(enableFps.value));
     await emit('control-fps-monitor', { enabled: enableFps.value });
 
-    // 互斥：开启 FPS 时，强制关闭音乐和资源监控
+    // 互斥逻辑：开启 FPS 时，强制关闭音乐和资源监控
     if (enableFps.value) {
         if (enableMusicCtrl.value) {
             enableMusicCtrl.value = false;
@@ -678,11 +678,18 @@ const toggleSysResource = async () => {
     localStorage.setItem('nsd_sys_resource', String(enableSysResource.value));
     await emit('control-sys-resource', { enabled: enableSysResource.value });
 
-    // 互斥逻辑：开启系统资源监控时，自动关闭媒体控制器
-    if (enableSysResource.value && enableMusicCtrl.value) {
-        enableMusicCtrl.value = false;
-        localStorage.setItem('nsd_music_ctrl', 'false');
-        await emit('control-music-ctl', { enabled: false });
+    // 互斥逻辑：开启系统资源监控时，自动关闭媒体控制器 和 FPS
+    if (enableSysResource.value) {
+        if (enableMusicCtrl.value) {
+            enableMusicCtrl.value = false;
+            localStorage.setItem('nsd_music_ctrl', 'false');
+            await emit('control-music-ctl', { enabled: false });
+        }
+        if (enableFps.value) {
+            enableFps.value = false;
+            localStorage.setItem('nsd_fps_monitor', 'false');
+            await emit('control-fps-monitor', { enabled: false });
+        }
     }
 };
 
@@ -1182,11 +1189,18 @@ watch(enableMusicCtrl, async (newVal) => {
     await emit('control-music-ctl', { enabled: newVal });
     console.log('音乐控制器状态切换为:', newVal);
 
-    // 互斥逻辑：开启媒体控制器时，自动关闭系统资源监控
-    if (newVal && enableSysResource.value) {
-        enableSysResource.value = false;
-        localStorage.setItem('nsd_sys_resource', 'false');
-        await emit('control-sys-resource', { enabled: false });
+    // 互斥逻辑：开启媒体控制器时，自动关闭系统资源监控 和 FPS
+    if (newVal) {
+        if (enableSysResource.value) {
+            enableSysResource.value = false;
+            localStorage.setItem('nsd_sys_resource', 'false');
+            await emit('control-sys-resource', { enabled: false });
+        }
+        if (enableFps.value) {
+            enableFps.value = false;
+            localStorage.setItem('nsd_fps_monitor', 'false');
+            await emit('control-fps-monitor', { enabled: false });
+        }
     }
 });
 

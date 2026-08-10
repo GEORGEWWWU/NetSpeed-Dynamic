@@ -148,7 +148,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">CPU</span>
                                     <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{ cpuUsage
-                                        }}%</span>
+                                    }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: cpuUsage + '%' }"
@@ -159,7 +159,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">RAM</span>
                                     <span class="res-value" :class="{ 'high-usage': ramUsage >= 85 }">{{ ramUsage
-                                        }}%</span>
+                                    }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: ramUsage + '%' }"
@@ -695,7 +695,7 @@ const getBaseSize = () => {
 };
 
 // 监听内容切换，触发丝滑动画过渡
-watch([displaySpeed, displayMusic], () => {
+watch([displaySpeed, displayMusic, displayResource, displayFps], () => {
     // 只有在没有被临时弹窗（消息、音乐展开）霸占时，才执行基础大小切换
     if (!isMsgActive.value && !displaySysToast.value && !isMusicExpanded.value && !isMusicExpanding.value) {
         const { w, h } = getBaseSize();
