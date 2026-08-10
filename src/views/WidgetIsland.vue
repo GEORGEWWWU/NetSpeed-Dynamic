@@ -148,7 +148,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">CPU</span>
                                     <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{ cpuUsage
-                                    }}%</span>
+                                        }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: cpuUsage + '%' }"
@@ -159,7 +159,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">RAM</span>
                                     <span class="res-value" :class="{ 'high-usage': ramUsage >= 85 }">{{ ramUsage
-                                    }}%</span>
+                                        }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: ramUsage + '%' }"
@@ -194,6 +194,15 @@
                                     </Transition>
                                 </div>
                             </Transition>
+                        </div>
+
+                        <div v-else-if="displayFps" class="speed-box" key="fps">
+                            <div class="speed-single-box">
+                                <div class="speed-item">
+                                    <span class="label">FPS</span>
+                                    <span class="value">{{ currentFps }}</span>
+                                </div>
+                            </div>
                         </div>
                     </transition>
                 </div>
@@ -493,6 +502,10 @@ const bakeBlurImage = (url: string): Promise<string> => {
     });
 };
 
+// 实时FPS功能相关
+const enableFps = ref(localStorage.getItem('nsd_fps_monitor') === 'true');
+const currentFps = ref(0);
+
 // 记录最后一次接收到真实 WS 歌词的时间
 let lastWsLyricTime = 0;
 
@@ -634,9 +647,12 @@ const enableSysResource = ref(localStorage.getItem('nsd_sys_resource') === 'true
 const cpuUsage = ref(0);
 const ramUsage = ref(0);
 
+// 新增 FPS 判定
+const displayFps = computed(() => !isMsgActive.value && !displaySysToast.value && enableFps.value);
+
 // 使用计算属性智能判断当前该显示谁
-const displayResource = computed(() => !isMsgActive.value && !displaySysToast.value && enableSysResource.value && (!isMusicCtlEnabled.value || !isMediaActive.value));
-const displaySpeed = computed(() => !isMsgActive.value && !displaySysToast.value && !enableSysResource.value && (!isMusicCtlEnabled.value || !isMediaActive.value));
+const displayResource = computed(() => !isMsgActive.value && !displaySysToast.value && enableSysResource.value && !enableFps.value && (!isMusicCtlEnabled.value || !isMediaActive.value));
+const displaySpeed = computed(() => !isMsgActive.value && !displaySysToast.value && !enableSysResource.value && !enableFps.value && (!isMusicCtlEnabled.value || !isMediaActive.value));
 const displayMusic = computed(() => !isMsgActive.value && !displaySysToast.value && isMusicCtlEnabled.value && isMediaActive.value);
 
 // 智能判断静默模式下是否该显示：有消息、有系统提示，或开启了音乐控制且正在播放
@@ -672,6 +688,7 @@ const showCoverglassBg = computed(() => {
 
 // 辅助函数：获取当前状态应该拥有的默认大小
 const getBaseSize = () => {
+    if (displayFps.value) return { w: nsdBaseWidth.value, h: nsdBaseHeight.value };
     if (displayResource.value) return { w: nsdMusicBaseWidth.value, h: Math.max(nsdBaseHeight.value + 8, 42) };
     if (displaySpeed.value) return { w: nsdBaseWidth.value, h: nsdBaseHeight.value };
     return { w: nsdMusicBaseWidth.value, h: Math.max(nsdBaseHeight.value + 8, 42) };
@@ -1780,6 +1797,23 @@ onMounted(async () => {
             }
         }
     };
+
+    // 接收来自控制台的 FPS 指令
+    await listen<{ enabled: boolean }>('control-fps-monitor', (event) => {
+        enableFps.value = event.payload.enabled;
+        if (enableFps.value) {
+            isMusicCtlEnabled.value = false;
+            enableSysResource.value = false;
+            invoke('toggle_fps_plugin', { enable: true }).catch(console.error);
+        } else {
+            invoke('toggle_fps_plugin', { enable: false }).catch(console.error);
+        }
+    });
+
+    // 监听后端发来的高频 UDP FPS 信号
+    await listen<{ fps: number }>('fps-event', (event) => {
+        currentFps.value = event.payload.fps;
+    });
 
     // 在你原有的每秒刷新定时器中，顺带执行音乐同步
     // 1. 高频定时器：专门负责网速和硬件监控（每 500ms ~ 1000ms 刷新一次）

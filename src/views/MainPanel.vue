@@ -399,6 +399,16 @@
                                         <span class="slider"></span>
                                     </label>
                                 </div>
+                                <div class="set-item">
+                                    <div class="set-item-meta">
+                                        <span class="set-item-title">实时 FPS 显示</span>
+                                        <span class="set-item-desc">在灵动岛显示系统当前帧率</span>
+                                    </div>
+                                    <label class="switch">
+                                        <input type="checkbox" v-model="enableFps" @change="toggleFps">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
                             </div>
 
                         </div>
@@ -493,6 +503,28 @@ const togglePage = () => {
 
 const isChecking = ref(false);
 const hasNewVersion = ref(false);
+
+const enableFps = ref(localStorage.getItem('nsd_fps_monitor') === 'true');
+
+// 添加切换方法
+const toggleFps = async () => {
+    localStorage.setItem('nsd_fps_monitor', String(enableFps.value));
+    await emit('control-fps-monitor', { enabled: enableFps.value });
+
+    // 互斥：开启 FPS 时，强制关闭音乐和资源监控
+    if (enableFps.value) {
+        if (enableMusicCtrl.value) {
+            enableMusicCtrl.value = false;
+            localStorage.setItem('nsd_music_ctrl', 'false');
+            await emit('control-music-ctl', { enabled: false });
+        }
+        if (enableSysResource.value) {
+            enableSysResource.value = false;
+            localStorage.setItem('nsd_sys_resource', 'false');
+            await emit('control-sys-resource', { enabled: false });
+        }
+    }
+};
 
 // 音乐控制平台切换功能
 const targetPlayer = ref(localStorage.getItem('nsd_target_player') || 'netease');

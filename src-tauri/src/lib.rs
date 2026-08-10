@@ -25,6 +25,9 @@ use std::process::{Child, Command};
 // 维护一个全局变量，持有挂件的子进程，方便随时掐死
 static TASKBAR_PLUGIN_PROCESS: Mutex<Option<Child>> = Mutex::new(None);
 
+// FPS 插件的全局进程控制器
+static FPS_PLUGIN_PROCESS: Mutex<Option<Child>> = Mutex::new(None);
+
 // 用于向任务栏挂件广播数据的通道
 static TASKBAR_WS_SENDER: OnceLock<broadcast::Sender<String>> = OnceLock::new();
 
@@ -112,6 +115,32 @@ fn toggle_taskbar_plugin(enable: bool) -> Result<bool, String> {
         }
     } else {
         // 关闭挂件
+        if let Some(mut child) = process_guard.take() {
+            let _ = child.kill();
+        }
+    }
+    Ok(true)
+}
+
+#[tauri::command]
+fn toggle_fps_plugin(enable: bool) -> Result<bool, String> {
+    let mut process_guard = FPS_PLUGIN_PROCESS.lock().unwrap();
+
+    if enable {
+        if process_guard.is_none() {
+            // 借用你写好的 get_plugin_path 方法，替换一下文件名
+            let mut exe_path = get_plugin_path()?;
+            exe_path.set_file_name("NSD_Fps_Plugin.exe");
+
+            match Command::new(exe_path).spawn() {
+                Ok(child) => {
+                    *process_guard = Some(child);
+                    return Ok(true);
+                }
+                Err(e) => return Err(format!("启动 FPS 插件失败: {}", e)),
+            }
+        }
+    } else {
         if let Some(mut child) = process_guard.take() {
             let _ = child.kill();
         }
@@ -428,10 +457,31 @@ pub fn run() {
             music_controller::fetch_netease_lyrics,
             music_controller::start_websocket_lyrics,
             music_controller::stop_websocket_lyrics,
+            toggle_fps_plugin,
         ])
         .setup(|app| {
             audio_spectrum::start_monitor();
             system_events::start_monitor(app.handle().clone());
+
+            // 启动超轻量 UDP 监听器，专用于接收 FPS 数据 (监听 47292 端口)
+            let app_handle_for_fps = app.handle().clone();
+            std::thread::spawn(move || {
+                // 监听 47292 端口，接收 C# 用 UDP 砸过来的帧率数据
+                if let Ok(socket) = std::net::UdpSocket::bind("127.0.0.1:47292") {
+                    let mut buf = [0; 16];
+                    loop {
+                        if let Ok((amt, _)) = socket.recv_from(&mut buf) {
+                            if let Ok(text) = std::str::from_utf8(&buf[..amt]) {
+                                if let Ok(fps) = text.trim().parse::<u32>() {
+                                    // 收到后瞬间抛给 Vue
+                                    let _ = app_handle_for_fps
+                                        .emit("fps-event", serde_json::json!({ "fps": fps }));
+                                }
+                            }
+                        }
+                    }
+                }
+            });
 
             // 全屏应用检测线程
             let app_handle_for_fs = app.handle().clone();
@@ -572,6 +622,11 @@ pub fn run() {
                                 let _ = child.kill();
                             }
                         }
+                        if let Ok(mut process_guard) = FPS_PLUGIN_PROCESS.lock() {
+                            if let Some(mut child) = process_guard.take() {
+                                let _ = child.kill();
+                            }
+                        }
                         // 使用 app_handle 优雅退出，而不是 std::process::exit
                         app_handle.exit(0);
                     }
@@ -610,6 +665,11 @@ pub fn run() {
             if let tauri::RunEvent::Exit = event {
                 // 程序主循环生命周期结束时，确保掐死任务栏子进程
                 if let Ok(mut process_guard) = TASKBAR_PLUGIN_PROCESS.lock() {
+                    if let Some(mut child) = process_guard.take() {
+                        let _ = child.kill();
+                    }
+                }
+                if let Ok(mut process_guard) = FPS_PLUGIN_PROCESS.lock() {
                     if let Some(mut child) = process_guard.take() {
                         let _ = child.kill();
                     }
