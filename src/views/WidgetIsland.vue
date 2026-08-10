@@ -148,7 +148,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">CPU</span>
                                     <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{ cpuUsage
-                                        }}%</span>
+                                    }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: cpuUsage + '%' }"
@@ -159,7 +159,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">RAM</span>
                                     <span class="res-value" :class="{ 'high-usage': ramUsage >= 85 }">{{ ramUsage
-                                        }}%</span>
+                                    }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: ramUsage + '%' }"
@@ -169,16 +169,31 @@
                         </div>
 
                         <div v-else-if="displaySpeed" class="speed-box" key="speed">
-                            <transition name="speed-fade" mode="out-in">
-                                <div v-if="isShowingUpload" class="speed-item" key="upload">
-                                    <span :class="['label', { 'high-traffic': isHighUpload }]">⬆</span>
-                                    <span class="value">{{ uploadSpeed }}</span>
+                            <Transition name="speed-fade" mode="out-in">
+                                <div v-if="nsdBaseWidth >= 240" key="dual" class="speed-dual-box">
+                                    <div class="speed-item">
+                                        <span :class="['label', { 'high-traffic': isHighUpload }]">⬆</span>
+                                        <span class="value">{{ uploadSpeed }}</span>
+                                    </div>
+                                    <div class="speed-item">
+                                        <span :class="['label', { 'high-traffic': isHighDownload }]">⬇</span>
+                                        <span class="value">{{ downloadSpeed }}</span>
+                                    </div>
                                 </div>
-                                <div v-else class="speed-item" key="download">
-                                    <span :class="['label', { 'high-traffic': isHighDownload }]">⬇</span>
-                                    <span class="value">{{ downloadSpeed }}</span>
+
+                                <div v-else key="single" class="speed-single-box">
+                                    <Transition name="speed-fade" mode="out-in">
+                                        <div v-if="isShowingUpload" class="speed-item" key="upload">
+                                            <span :class="['label', { 'high-traffic': isHighUpload }]">⬆</span>
+                                            <span class="value">{{ uploadSpeed }}</span>
+                                        </div>
+                                        <div v-else class="speed-item" key="download">
+                                            <span :class="['label', { 'high-traffic': isHighDownload }]">⬇</span>
+                                            <span class="value">{{ downloadSpeed }}</span>
+                                        </div>
+                                    </Transition>
                                 </div>
-                            </transition>
+                            </Transition>
                         </div>
                     </transition>
                 </div>
@@ -1727,8 +1742,8 @@ onMounted(async () => {
 
     // 启动网速和硬件显示轮换定时器 (每 5 秒切换一次)
     speedCycleTimer = window.setInterval(() => {
-        // 网速轮换
-        if (displaySpeed.value) {
+        // 仅在宽度小于 240px 时才进行上下行网速轮换
+        if (displaySpeed.value && nsdBaseWidth.value < 240) {
             isShowingUpload.value = !isShowingUpload.value;
         }
     }, 5000);
@@ -2888,5 +2903,18 @@ onUnmounted(() => {
 
 :deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .res-bar-track {
     background: rgba(0, 0, 0, 0.1);
+}
+
+.speed-dual-box {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+.speed-single-box {
+    display: flex;
+    align-items: center;
+    width: 100%;
 }
 </style>
