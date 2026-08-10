@@ -96,7 +96,7 @@
                         </div>
 
                         <div v-else-if="displayMusic" class="music-ctl-box" :class="{ 'expanded': isMusicExpanded }"
-                            :key="'music_' + musicBoxKey" @click="expandMusic" style="cursor: pointer;">
+                            :key="'music_' + musicBoxKey">
                             <div class="music-top-row">
                                 <div class="album-cover" :class="{ 'is-playing': isPlaying }">
                                     <div class="cover-inner"
@@ -1432,11 +1432,8 @@ const collapseMusic = () => {
     animateIslandSize(w, h);
 };
 
-// 音乐控制器点击展开方法
-const expandMusic = (e: MouseEvent) => {
-    if (Math.abs(e.clientX - mouseDownX) > 5 || Math.abs(e.clientY - mouseDownY) > 5) return;
-    if ((e.target as HTMLElement).closest('.ctl-btn')) return;
-
+// 音乐控制器展开方法
+const expandMusic = () => {
     if (isMusicExpanded.value || isMusicExpanding.value) return;
 
     isMusicExpanding.value = true;
@@ -1472,10 +1469,14 @@ const handleMouseLeave = () => {
     collapseMusic();
 };
 
-// 鼠标重新移入灵动岛时：立刻打断收缩企图
+// 鼠标移入灵动岛时：取消待收缩状态并自动展开音乐控制器
 const handleMouseEnter = () => {
     // 如果之前移出留下了收缩案底，但动画还没播完鼠标又回来了，直接取消这个案底
     isPendingCollapse = false;
+
+    if (displayMusic.value) {
+        expandMusic();
+    }
 };
 
 watch(displayMusic, (newVal: boolean) => {
