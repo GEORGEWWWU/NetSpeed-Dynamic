@@ -26,7 +26,7 @@
             <div class="brand">
                 <img src="../assets/logo.png" class="logo-icon">
                 <div>
-                    <h1>NetSpeed Dynamic Pro</h1>
+                    <h1>NetSpeed Dynamic Pro · Wei_XingYU Edition</h1>
                     <p class="subtitle">{{ t('appSubtitle') }} v{{ appVersion }}</p>
                 </div>
             </div>
@@ -61,11 +61,7 @@
                     <div class="speed-monitor">
                         <div class="speed-item">
                             <span class="arrow up">
-                                <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path
-                                        d="M16 4C16.8 4 17.5 4.3 18.1 4.9L28.1 14.9C29.3 16.1 29.3 18 28.1 19.1C26.9 20.3 25 20.3 23.9 19.1L18 13.2V26C18 27.7 16.7 29 15 29C13.3 29 12 27.7 12 26V13.2L6.1 19.1C4.9 20.3 3 20.3 1.9 19.1C0.7 18 0.7 16.1 1.9 14.9L11.9 4.9C12.5 4.3 13.2 4 14 4H16Z"
-                                        fill="currentColor" />
-                                </svg>
+                                <Upload theme="outline" :size="20" :stroke-width="3" />
                             </span>
                             <div class="speed-info">
                                 <span class="label">{{ t('uploadSpeed') }}</span>
@@ -74,11 +70,7 @@
                         </div>
                         <div class="speed-item">
                             <span class="arrow down">
-                                <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path
-                                        d="M16 28C15.2 28 14.5 27.7 13.9 27.1L3.9 17.1C2.7 15.9 2.7 14 3.9 12.9C5.1 11.7 7 11.7 8.1 12.9L14 18.8V6C14 4.3 15.3 3 17 3C18.7 3 20 4.3 20 6V18.8L25.9 12.9C27.1 11.7 29 11.7 30.1 12.9C31.3 14 31.3 15.9 30.1 17.1L20.1 27.1C19.5 27.7 18.8 28 18 28H16Z"
-                                        fill="currentColor" />
-                                </svg>
+                                <Download theme="outline" :size="20" :stroke-width="3" />
                             </span>
                             <div class="speed-info">
                                 <span class="label">{{ t('downloadSpeed') }}</span>
@@ -527,13 +519,10 @@
 
         <footer class="panel-footer">
             <div class="ft_left">
-                <span>&copy; 2026 <button class="openmywebsite" @click="openMywebsite">Ryen.</button> All rights
-                    reserved.</span>
-                <span>NSDPRO v{{ appVersion }}</span>
+                <span>&copy; 2026 <button class="openmywebsite" @click="openMywebsite">Wei_XingYU</button> Edition</span>
+                <span>NSD Wei_XingYU v{{ appVersion }}</span>
             </div>
             <div class="ft_right">
-                <span class="action-link" @click="openNSDweb">{{ t('officialWebsite') }}</span>
-                <span class="action-link" @click="openNSDdata">{{ t('openSourceData') }}</span>
                 <span class="action-link"
                     :style="{ opacity: isChecking ? 0.5 : 1, pointerEvents: isChecking ? 'none' : 'auto', position: 'relative' }"
                     @click="checkUpdate">
@@ -572,6 +561,8 @@ import * as echarts from 'echarts';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import Upload from '@icon-park/vue-next/es/icons/Upload';
+import Download from '@icon-park/vue-next/es/icons/Download';
 import DynamicSet from '../components/DynamicSet.vue';
 import { t, currentLanguage, setLanguage, languageOptions, type AppLanguage } from '../i18n';
 
@@ -591,7 +582,7 @@ let coverTimer: number | null = null;
 const uploadSpeed = ref('0 B/s');
 const downloadSpeed = ref('0 B/s');
 
-const appVersion = ref('1.0.0');
+const appVersion = ref('2.5.0');
 
 const isDynamicSet = ref(false);
 
@@ -1039,11 +1030,11 @@ const showDialog = (title: string, message: string, isConfirm = false, onConfirm
 const handlePluginDialog = () => {
     showDialog(
         '组件缺失提示',
-        '未检测到任务栏组件，请重启软件，或确保插件已放置在软件根目录下。是否立即前往 GitHub 下载？',
+        '未检测到任务栏组件。请重新安装本项目 Release 中的完整安装包后再试。是否打开下载页？',
         true, // true 表示这是一个需要“确定/取消”的双按钮弹窗
         () => {
             // 用户点击确定后，自动跳转最新 Release 页面
-            openUrl('https://github.com/GEORGEWWWU/NetSpeed-Dynamic/releases/latest');
+            openUrl('https://github.com/wei-xingyu/NetSpeed-Dynamic/releases/latest');
         }
     );
 };
@@ -1165,14 +1156,14 @@ const fetchSpeedStats = async () => {
 };
 
 const openMywebsite = () => {
-    openUrl('https://blog.georgewu.top');
+    openUrl('https://github.com/wei-xingyu/NetSpeed-Dynamic');
 }
 
 // 新增：静默检查更新（后台偷偷查，不弹窗，报错了也不干扰用户）
 const silentCheckUpdate = async () => {
     try {
         const localVersionStr = await getVersion();
-        const response = await fetch('https://api.github.com/repos/GEORGEWWWU/NetSpeed-Dynamic/releases/latest', {
+        const response = await fetch('https://api.github.com/repos/wei-xingyu/NetSpeed-Dynamic/releases/latest', {
             method: 'GET',
             headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'Tauri-App-NetSpeed-Dynamic' }
         });
@@ -1198,14 +1189,6 @@ const silentCheckUpdate = async () => {
     }
 };
 
-const openNSDweb = async () => {
-    openUrl('https://nsd.georgewu.top/');
-}
-
-const openNSDdata = async () => {
-    openUrl('https://nsd.georgewu.top/#stats');
-}
-
 const checkUpdate = async () => {
     if (isChecking.value) return; // 防止连点
     isChecking.value = true;
@@ -1217,7 +1200,7 @@ const checkUpdate = async () => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-        const response = await fetch('https://api.github.com/repos/GEORGEWWWU/NetSpeed-Dynamic/releases/latest', {
+        const response = await fetch('https://api.github.com/repos/wei-xingyu/NetSpeed-Dynamic/releases/latest', {
             method: 'GET',
             headers: {
                 'Accept': 'application/vnd.github.v3+json',

@@ -2,7 +2,7 @@
 
 <img src="./src/assets/logo.png" alt="音乐控制器" width="200" />
 
-<h1>NetSpeed Dynamic Pro</h1>
+<h1>NetSpeed Dynamic Pro · Wei_XingYU Edition</h1>
 <p>专为 Windows 而生的灵动岛</p>
 
 [![Tauri](https://img.shields.io/badge/Tauri-2.x-blue?logo=tauri)](https://tauri.app)
@@ -12,18 +12,29 @@
 [![Vite](https://img.shields.io/badge/Vite-6.x-yellow?logo=vite)](https://vite.dev)
 [![ECharts](https://img.shields.io/badge/ECharts-6.x-purple?logo=apache-echarts)](https://echarts.apache.org)
 
-[简体中文](./README.md) &nbsp; | [English](./README.en.md) &nbsp; | [下载地址](https://github.com/GEORGEWWWU/NetSpeed-Dynamic/releases/latest) &nbsp; | [官方网站](https://nsd.georgewu.top/) &nbsp; | [QQ群：1080730621](https://qm.qq.com/cgi-bin/qm/qr?k=i70z7rbl-VWpejQugvlXeARDUjwP7sIW&jump_from=webapi&authKey=b6Pj6zLuuCINDhafPJRttePdy3D45vvtWzcZ109LWoWYXkcKo8bNWI7fMhr+yV87)
+[简体中文](./README.md) &nbsp; | [English](./README.en.md) &nbsp; | [直接下载安装包](https://github.com/wei-xingyu/NetSpeed-Dynamic/releases/latest/download/NetSpeed%20Dynamic%20Pro%20-%20Wei_XingYU%20Edition_2.5.0_x64-setup.exe)
 
 </div>
 
 ![音乐控制器](./src/assets/screenshot2.png)
 ![灵动岛通知](./src/assets/screenshot4.png)
 ![音乐控制器 2.0](./src/assets/screenshot.gif)
-![2.4.2](./src/assets/screenshot3.png)
+![Wei_XingYU Edition 2.5.0](./src/assets/screenshot3.png)
 
 ---
 
-NetSpeed Dynamic Pro（NSD）是一个基于 Tauri 2、Vue 3、TypeScript 与 Rust 构建的 Windows 桌面应用。它将 “实时网速监控、系统资源观察、音乐控制、系统通知、任务栏插件与个性化配置” 封装在一个悬浮式 Dynamic Island 中，旨在为桌面环境提供更轻量、更顺手的状态展示与交互体验。
+NetSpeed Dynamic Pro · Wei_XingYU Edition（NSD）是一个基于 Tauri 2、Vue 3、TypeScript 与 Rust 构建的 Windows 桌面应用。它将“实时网速监控、系统资源观察、音乐控制、系统通知、任务栏插件与个性化配置”封装在一个悬浮式 Dynamic Island 中。
+
+## Wei_XingYU Edition 2.5.0：基于上游新增内容
+
+本项目基于 [GEORGEWWWU/NetSpeed-Dynamic](https://github.com/GEORGEWWWU/NetSpeed-Dynamic) 继续开发，保留上游 MIT 许可证和原作者署名。本版本新增或完善：
+
+- 展开态设备状态卡片：网络名称与信号、音频输出设备、蓝牙连接数、系统音量和日历。
+- 收起态/展开态分别配置媒体、资源、FPS、网速等显示内容。
+- CPU、内存、FPS 与网速卡片的紧凑布局和图标显示优化。
+- 灵动岛位置自定义、全屏隐藏和媒体控制展开体验优化。
+- 任务栏插件与 FPS 插件随安装包一并提供；安装后无需手动复制组件。
+- 更新检查、下载入口和问题提示均指向本仓库的 GitHub Releases。
 
 ## 项目亮点
 
@@ -123,7 +134,7 @@ NetSpeed-Dynamic/
 ### 安装与运行
 
 ```bash
-git clone https://github.com/GEORGEWWWU/NetSpeed-Dynamic.git
+git clone https://github.com/wei-xingyu/NetSpeed-Dynamic.git
 cd NetSpeed-Dynamic
 npm install
 npm run tauri dev
@@ -135,7 +146,15 @@ npm run tauri dev
 npm run tauri build
 ```
 
-构建产物会输出到 `src-tauri/target/release/bundle/`。
+构建产物会输出到 `src-tauri/target/release/bundle/`；任务栏插件和 FPS 插件会自动纳入安装包。
+
+## 直接下载与安装（普通用户）
+
+[点击直接下载 Windows 安装包](https://github.com/wei-xingyu/NetSpeed-Dynamic/releases/latest/download/NetSpeed%20Dynamic%20Pro%20-%20Wei_XingYU%20Edition_2.5.0_x64-setup.exe)
+
+下载后双击安装即可使用，不需要安装 Node.js、Rust，也无需手动复制任何插件。首次运行可在控制台开启“开机自启动”。
+
+> Windows 如显示“未知发布者”提示，是因为当前安装包尚未做代码签名；请仅从本仓库的 Release 下载。
 
 ## 使用方式
 
@@ -151,18 +170,6 @@ npm run tauri build
 
 MIT License
 
-Copyright (c) 2026 Ryen (GEORGEWU)
+Upstream Copyright (c) 2026 Ryen (GEORGEWU)
 
-## 支持与捐赠
-
-如果这个项目对你有帮助，欢迎支持作者：
-
-| 方式 | 信息 |
-|------|------|
-| 微信支付 | [微信](./src/assets/wechat-pay.png) |
-| 支付宝 | [支付宝](./src/assets/alipay.jpg) |
-| GitHub Sponsors | [前往支持](https://github.com/sponsors/GEORGEWWWU) |
-
----
-
-> 感谢每一位支持者与使用者！
+Wei_XingYU Edition modifications Copyright (c) 2026 Wei_XingYU

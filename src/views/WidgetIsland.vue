@@ -164,14 +164,20 @@
                                 :style="{ gridTemplateColumns: `repeat(${expandedMonitorCardCount}, minmax(0, 1fr))` }">
                                 <div v-if="showExpandedResource" class="expanded-resource-summary">
                                     <div class="monitor-chip">
-                                        <span class="monitor-chip-label">CPU</span>
+                                        <span class="monitor-chip-title">
+                                            <Cpu class="status-card-icon" theme="outline" :size="13" :stroke-width="3" />
+                                            <span class="monitor-chip-label">CPU</span>
+                                        </span>
                                         <span :class="['monitor-chip-value', { 'high-usage': cpuUsage >= 85 }]">{{ cpuUsage }}%</span>
                                         <span class="monitor-chip-track"><span class="monitor-chip-fill"
                                                 :class="{ 'high-usage-bg': cpuUsage >= 85 }"
                                                 :style="{ width: cpuUsage + '%' }"></span></span>
                                     </div>
                                     <div class="monitor-chip">
-                                        <span class="monitor-chip-label">RAM</span>
+                                        <span class="monitor-chip-title">
+                                            <Memory class="status-card-icon" theme="outline" :size="13" :stroke-width="3" />
+                                            <span class="monitor-chip-label">RAM</span>
+                                        </span>
                                         <span :class="['monitor-chip-value', { 'high-usage': ramUsage >= 85 }]">{{ ramUsage }}%</span>
                                         <span class="monitor-chip-track"><span class="monitor-chip-fill"
                                                 :class="{ 'high-usage-bg': ramUsage >= 85 }"
@@ -179,16 +185,21 @@
                                     </div>
                                 </div>
                                 <div v-if="showExpandedFps" class="fps-pill compact">
-                                    <span class="fps-label">FPS</span>
+                                    <span class="fps-title">
+                                        <Speed class="status-card-icon" theme="outline" :size="14" :stroke-width="3" />
+                                        <span class="fps-label">FPS</span>
+                                    </span>
                                     <span class="fps-value">{{ currentFps || '—' }}</span>
                                 </div>
                                 <div v-if="showExpandedSpeed" class="telemetry-speed-card">
                                     <Transition name="speed-fade" mode="out-in">
                                         <span v-if="isShowingUpload" class="telemetry-speed-line" key="expanded-up">
-                                            <b>↑</b><em>{{ uploadSpeed }}</em>
+                                            <Upload class="status-card-icon speed-direction-icon" theme="outline" :size="14" :stroke-width="3" />
+                                            <em>{{ uploadSpeed }}</em>
                                         </span>
                                         <span v-else class="telemetry-speed-line" key="expanded-down">
-                                            <b>↓</b><em>{{ downloadSpeed }}</em>
+                                            <Download class="status-card-icon speed-direction-icon" theme="outline" :size="14" :stroke-width="3" />
+                                            <em>{{ downloadSpeed }}</em>
                                         </span>
                                     </Transition>
                                 </div>
@@ -221,18 +232,17 @@
                             <div v-if="displayResource" class="resource-box">
                                 <div class="res-group">
                                     <div class="res-info-row">
-                                        <span class="res-title">
-                                            <svg class="status-card-icon" viewBox="0 0 24 24" width="14" height="14"
-                                                fill="none" stroke="currentColor" stroke-width="2.4"
-                                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                                <rect x="5" y="5" width="14" height="14" rx="2" />
-                                                <rect x="9" y="9" width="6" height="6" rx="1" />
-                                                <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" />
-                                            </svg>
+                                        <svg class="status-card-icon" viewBox="0 0 24 24" width="14" height="14"
+                                            fill="none" stroke="currentColor" stroke-width="2.4"
+                                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                            <rect x="5" y="5" width="14" height="14" rx="2" />
+                                            <rect x="9" y="9" width="6" height="6" rx="1" />
+                                            <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" />
+                                        </svg>
+                                        <span class="res-copy">
                                             <span class="res-label">CPU</span>
+                                            <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{ cpuUsage }}%</span>
                                         </span>
-                                        <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{ cpuUsage
-                                        }}%</span>
                                     </div>
                                     <div class="res-bar-track">
                                         <div class="res-bar-fill" :style="{ width: cpuUsage + '%' }"
@@ -241,17 +251,16 @@
                                 </div>
                                 <div class="res-group">
                                     <div class="res-info-row">
-                                        <span class="res-title">
-                                            <svg class="status-card-icon" viewBox="0 0 24 24" width="14" height="14"
-                                                fill="none" stroke="currentColor" stroke-width="2.4"
-                                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                                <rect x="3" y="6" width="18" height="12" rx="2" />
-                                                <path d="M7 10v4M11 10v4M15 10v4M19 10v4M7 18v3M17 18v3" />
-                                            </svg>
+                                        <svg class="status-card-icon" viewBox="0 0 24 24" width="14" height="14"
+                                            fill="none" stroke="currentColor" stroke-width="2.4"
+                                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                            <rect x="3" y="6" width="18" height="12" rx="2" />
+                                            <path d="M7 10v4M11 10v4M15 10v4M19 10v4M7 18v3M17 18v3" />
+                                        </svg>
+                                        <span class="res-copy">
                                             <span class="res-label">RAM</span>
+                                            <span class="res-value" :class="{ 'high-usage': ramUsage >= 85 }">{{ ramUsage }}%</span>
                                         </span>
-                                        <span class="res-value" :class="{ 'high-usage': ramUsage >= 85 }">{{ ramUsage
-                                        }}%</span>
                                     </div>
                                     <div class="res-bar-track">
                                         <div class="res-bar-fill" :style="{ width: ramUsage + '%' }"
@@ -299,11 +308,11 @@
                             <Transition name="speed-fade" mode="out-in">
                                 <div v-if="nsdBaseWidth >= 240" key="dual" class="speed-dual-box">
                                     <div class="speed-item">
-                                        <span :class="['label', { 'high-traffic': isHighUpload }]">⬆</span>
+                                        <span :class="['label', { 'high-traffic': isHighUpload }]"><Upload theme="outline" :size="12" :stroke-width="3" /></span>
                                         <span class="value">{{ uploadSpeed }}</span>
                                     </div>
                                     <div class="speed-item">
-                                        <span :class="['label', { 'high-traffic': isHighDownload }]">⬇</span>
+                                        <span :class="['label', { 'high-traffic': isHighDownload }]"><Download theme="outline" :size="12" :stroke-width="3" /></span>
                                         <span class="value">{{ downloadSpeed }}</span>
                                     </div>
                                 </div>
@@ -311,11 +320,11 @@
                                 <div v-else key="single" class="speed-single-box">
                                     <Transition name="speed-fade" mode="out-in">
                                         <div v-if="isShowingUpload" class="speed-item" key="upload">
-                                            <span :class="['label', { 'high-traffic': isHighUpload }]">⬆</span>
+                                            <span :class="['label', { 'high-traffic': isHighUpload }]"><Upload theme="outline" :size="12" :stroke-width="3" /></span>
                                             <span class="value">{{ uploadSpeed }}</span>
                                         </div>
                                         <div v-else class="speed-item" key="download">
-                                            <span :class="['label', { 'high-traffic': isHighDownload }]">⬇</span>
+                                            <span :class="['label', { 'high-traffic': isHighDownload }]"><Download theme="outline" :size="12" :stroke-width="3" /></span>
                                             <span class="value">{{ downloadSpeed }}</span>
                                         </div>
                                     </Transition>
@@ -2773,6 +2782,8 @@ onUnmounted(() => {
 }
 
 .label {
+    display: grid;
+    place-items: center;
     font-size: 10px;
     /* 稍微调大箭头 */
     color: currentColor;
@@ -3454,6 +3465,13 @@ onUnmounted(() => {
     opacity: 0.62;
 }
 
+.monitor-chip-title {
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
 .monitor-chip-value {
     justify-self: end;
     font-size: 12px;
@@ -4016,11 +4034,18 @@ onUnmounted(() => {
 /* 第一行的文字容器 (标签 + 数值) */
 .res-info-row {
     display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    gap: 8px;
-    /* 底部对齐，让文字重心更稳 */
+    align-items: center;
+    gap: 6px;
     width: 100%;
+}
+
+.res-copy {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
 }
 
 /* 标签 (CPU/RAM) */
@@ -4107,7 +4132,6 @@ onUnmounted(() => {
     width: 100%;
 }
 
-.res-title,
 .fps-title {
     display: inline-flex;
     align-items: center;
@@ -4116,8 +4140,65 @@ onUnmounted(() => {
 }
 
 .status-card-icon {
-    flex: 0 0 auto;
+    display: inline-flex;
+    flex: 0 0 14px;
+    width: 14px;
+    height: 14px;
     opacity: 0.68;
+}
+
+.status-card-icon > svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.res-copy .res-value {
+    white-space: nowrap;
+}
+
+.fps-pill {
+    justify-content: space-between;
+    gap: 5px;
+}
+
+/* 折叠态卡片空间有限：四项信息必须完整显示，统一压缩图标与字号。 */
+.monitor-dashboard:not(.expanded) .res-info-row {
+    display: grid;
+    grid-template-columns: 9px minmax(0, 1fr);
+    align-items: center;
+    gap: 4px;
+}
+
+.monitor-dashboard:not(.expanded) .res-group {
+    padding: 3px 8px;
+    gap: 2px;
+}
+
+.monitor-dashboard:not(.expanded) .status-card-icon {
+    flex-basis: 9px;
+    width: 9px;
+    height: 9px;
+}
+
+.monitor-dashboard:not(.expanded) .res-label {
+    font-size: 7px;
+    letter-spacing: 0;
+    line-height: 0.9;
+}
+
+.monitor-dashboard:not(.expanded) .res-value {
+    font-size: 12px;
+    line-height: 0.9;
+    transform: none;
+}
+
+.monitor-dashboard:not(.expanded) .res-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 2px;
 }
 
 .monitor-dashboard.expanded .res-group,

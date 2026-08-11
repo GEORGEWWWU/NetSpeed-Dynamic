@@ -1,10 +1,10 @@
-# NetSpeed Dynamic Pro (NSD)
+# NetSpeed Dynamic Pro · Wei_XingYU Edition
 
 <div align="center">
 
 <img src="./src/assets/logo.png" alt="Music Controller" width="200" />
 
-<h1>NetSpeed Dynamic Pro</h1>
+<h1>NetSpeed Dynamic Pro · Wei_XingYU Edition</h1>
 <p>Dynamic Island for Windows</p>
 
 [![Tauri](https://img.shields.io/badge/Tauri-2.x-blue?logo=tauri)](https://tauri.app)
@@ -14,18 +14,22 @@
 [![Vite](https://img.shields.io/badge/Vite-6.x-yellow?logo=vite)](https://vite.dev)
 [![ECharts](https://img.shields.io/badge/ECharts-6.x-purple?logo=apache-echarts)](https://echarts.apache.org)
 
-[简体中文](./README.md) &nbsp; | [English](./README.en.md) &nbsp; | [Download](https://github.com/GEORGEWWWU/NetSpeed-Dynamic/releases/latest) &nbsp; | [Website](https://nsd.georgewu.top/) &nbsp; | [QQ Group：1080730621](https://qm.qq.com/cgi-bin/qm/qr?k=i70z7rbl-VWpejQugvlXeARDUjwP7sIW&jump_from=webapi&authKey=b6Pj6zLuuCINDhafPJRttePdy3D45vvtWzcZ109LWoWYXkcKo8bNWI7fMhr+yV87)
+[简体中文](./README.md) &nbsp; | [English](./README.en.md) &nbsp; | [Download installer](https://github.com/wei-xingyu/NetSpeed-Dynamic/releases/latest/download/NetSpeed%20Dynamic%20Pro%20-%20Wei_XingYU%20Edition_2.5.0_x64-setup.exe)
 
 </div>
 
 ![Music Controller](./src/assets/screenshot2.png)
 ![Dynamic Island Notification](./src/assets/screenshot4.png)
 ![Music Controller 2.0](./src/assets/screenshot.gif)
-![2.4.2](./src/assets/screenshot3.png)
+![Wei_XingYU Edition 2.5.0](./src/assets/screenshot3.png)
 
 ---
 
-NetSpeed Dynamic Pro (NSD) is a Windows desktop application built with Tauri 2, Vue 3, TypeScript, and Rust. It packages real-time network monitoring, system resource visibility, music control, toast notifications, taskbar plugin support, and personalization into a floating Dynamic Island interface.
+NetSpeed Dynamic Pro · Wei_XingYU Edition (NSD) is a Windows desktop application built with Tauri 2, Vue 3, TypeScript, and Rust. It packages real-time network monitoring, system resource visibility, music control, toast notifications, taskbar plugin support, and personalization into a floating Dynamic Island interface.
+
+## Wei_XingYU Edition 2.5.0
+
+This project continues development from [GEORGEWWWU/NetSpeed-Dynamic](https://github.com/GEORGEWWWU/NetSpeed-Dynamic) under the upstream MIT license. This edition adds device-status cards, separate collapsed/expanded content preferences, compact monitor layouts, island positioning refinements, and bundles the taskbar and FPS plugins with the installer.
 
 ## Highlights
 
@@ -125,7 +129,7 @@ NetSpeed-Dynamic/
 ### Install and Run
 
 ```bash
-git clone https://github.com/GEORGEWWWU/NetSpeed-Dynamic.git
+git clone https://github.com/wei-xingyu/NetSpeed-Dynamic.git
 cd NetSpeed-Dynamic
 npm install
 npm run tauri dev
@@ -137,7 +141,13 @@ npm run tauri dev
 npm run tauri build
 ```
 
-The packaged output is written to `src-tauri/target/release/bundle/`.
+The packaged output is written to `src-tauri/target/release/bundle/`; the taskbar and FPS plugins are included automatically.
+
+## Install
+
+[Download the Windows installer directly](https://github.com/wei-xingyu/NetSpeed-Dynamic/releases/latest/download/NetSpeed%20Dynamic%20Pro%20-%20Wei_XingYU%20Edition_2.5.0_x64-setup.exe)
+
+Run the downloaded installer. Node.js, Rust, and separate plugin downloads are not required.
 
 ## Usage
 
@@ -153,18 +163,6 @@ The packaged output is written to `src-tauri/target/release/bundle/`.
 
 MIT License
 
-Copyright (c) 2026 Ryen (GEORGEWU)
+Upstream Copyright (c) 2026 Ryen (GEORGEWU)
 
-## Support and Donation
-
-If this project helps you, feel free to support the author:
-
-| Method | Information |
-|--------|-------------|
-| WeChat Pay | [WeChat](./src/assets/wechat-pay.png) |
-| Alipay | [Alipay](./src/assets/alipay.jpg) |
-| GitHub Sponsors | [Support Here](https://github.com/sponsors/GEORGEWWWU) |
-
----
-
-> Thank you to every supporter and user!
+Wei_XingYU Edition modifications Copyright (c) 2026 Wei_XingYU
