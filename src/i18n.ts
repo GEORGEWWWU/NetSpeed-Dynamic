@@ -136,6 +136,13 @@ const messages = {
         globalScaleDesc: '调整灵动岛的整体显示比例 (DPI)',
         lyricDelay: '歌词延迟调整',
         lyricDelayDesc: '微调歌词同步时间',
+        sysResourceMonitor: '系统资源监控',
+        sysResourceMonitorDesc: '在灵动岛显示 CPU 与 RAM 占用',
+        realtimeFps: '实时 FPS 显示',
+        realtimeFpsDesc: '在灵动岛显示系统当前帧率',
+        taskbarComponent: '任务栏组件',
+        pluginMissingTitle: '组件缺失提示',
+        pluginMissingDesc: '未检测到任务栏组件，请重启软件，或确保插件已放置在软件根目录下。是否立即前往 GitHub 下载？',
     },
     'en-US': {
         appSubtitle: 'NSD desktop Dynamic Island widget',
@@ -266,6 +273,13 @@ const messages = {
         globalScaleDesc: 'Adjust the overall display scale (DPI)',
         lyricDelay: 'Lyric Delay',
         lyricDelayDesc: 'Fine-tune lyric sync',
+        sysResourceMonitor: 'System Resource Monitor',
+        sysResourceMonitorDesc: 'Show CPU & RAM usage',
+        realtimeFps: 'Live FPS Display',
+        realtimeFpsDesc: 'Show current system framerate',
+        taskbarComponent: 'Taskbar Component',
+        pluginMissingTitle: 'Component Missing',
+        pluginMissingDesc: 'Taskbar component not found. Please restart the app or ensure the plugin is in the root directory. Download from GitHub now?',
     },
 };
 

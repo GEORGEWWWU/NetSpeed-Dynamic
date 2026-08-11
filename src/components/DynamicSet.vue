@@ -78,7 +78,7 @@
                 </div>
                 <div class="form-group-list">
                     <div class="form-item">
-                        <span class="label">任务栏组件</span>
+                        <span class="label">{{ t('taskbarComponent') }}</span>
                         <label class="mock-switch">
                             <input type="checkbox" v-model="enableTaskbarPlugin" @change="toggleTaskbar">
                             <span class="slider"></span>

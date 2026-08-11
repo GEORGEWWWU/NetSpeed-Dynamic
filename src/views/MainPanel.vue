@@ -388,11 +388,10 @@
                             </div>
 
                             <div class="pager-page">
-                                <!--第二页设置项-->
                                 <div class="set-item">
                                     <div class="set-item-meta">
-                                        <span class="set-item-title">系统资源监控</span>
-                                        <span class="set-item-desc">在灵动岛显示 CPU 与 RAM 占用</span>
+                                        <span class="set-item-title">{{ t('sysResourceMonitor') }}</span>
+                                        <span class="set-item-desc">{{ t('sysResourceMonitorDesc') }}</span>
                                     </div>
                                     <label class="switch">
                                         <input type="checkbox" v-model="enableSysResource" @change="toggleSysResource">
@@ -401,8 +400,8 @@
                                 </div>
                                 <div class="set-item">
                                     <div class="set-item-meta">
-                                        <span class="set-item-title">实时 FPS 显示</span>
-                                        <span class="set-item-desc">在灵动岛显示系统当前帧率</span>
+                                        <span class="set-item-title">{{ t('realtimeFps') }}</span>
+                                        <span class="set-item-desc">{{ t('realtimeFpsDesc') }}</span>
                                     </div>
                                     <label class="switch">
                                         <input type="checkbox" v-model="enableFps" @change="toggleFps">
@@ -901,8 +900,8 @@ const showDialog = (title: string, message: string, isConfirm = false, onConfirm
 // 处理插件缺失的弹窗逻辑
 const handlePluginDialog = () => {
     showDialog(
-        '组件缺失提示',
-        '未检测到任务栏组件，请重启软件，或确保插件已放置在软件根目录下。是否立即前往 GitHub 下载？',
+        t('pluginMissingTitle'),
+        t('pluginMissingDesc'),
         true, // true 表示这是一个需要“确定/取消”的双按钮弹窗
         () => {
             // 用户点击确定后，自动跳转最新 Release 页面
