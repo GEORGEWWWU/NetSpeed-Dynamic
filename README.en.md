@@ -14,7 +14,7 @@
 [![Vite](https://img.shields.io/badge/Vite-6.x-yellow?logo=vite)](https://vite.dev)
 [![ECharts](https://img.shields.io/badge/ECharts-6.x-purple?logo=apache-echarts)](https://echarts.apache.org)
 
-[简体中文](./README.md) &nbsp; | [English](./README.en.md) &nbsp; | [Download installer](https://github.com/wei-xingyu/NetSpeed-Dynamic/releases/latest/download/NetSpeed%20Dynamic%20Pro%20-%20Wei_XingYU%20Edition_2.5.0_x64-setup.exe)
+[简体中文](./README.md) &nbsp; | [English](./README.en.md) &nbsp; | [Download installer](https://github.com/wei-xingyu/NetSpeed-Dynamic/releases/latest/download/NetSpeed.Dynamic.Pro.-.Wei_XingYU.Edition_2.5.0_x64-setup.exe)
 
 </div>
 
@@ -145,7 +145,7 @@ The packaged output is written to `src-tauri/target/release/bundle/`; the taskba
 
 ## Install
 
-[Download the Windows installer directly](https://github.com/wei-xingyu/NetSpeed-Dynamic/releases/latest/download/NetSpeed%20Dynamic%20Pro%20-%20Wei_XingYU%20Edition_2.5.0_x64-setup.exe)
+[Download the Windows installer directly](https://github.com/wei-xingyu/NetSpeed-Dynamic/releases/latest/download/NetSpeed.Dynamic.Pro.-.Wei_XingYU.Edition_2.5.0_x64-setup.exe)
 
 Run the downloaded installer. Node.js, Rust, and separate plugin downloads are not required.
 
