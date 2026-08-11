@@ -2415,8 +2415,8 @@ dependencies = [
  "futures-util",
  "lazy_static",
  "rand",
+ "realfft",
  "reqwest 0.12.28",
- "rustfft",
  "serde",
  "serde_json",
  "sysinfo",
@@ -3209,6 +3209,15 @@ checksum = "22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91"
 dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
+]
+
+[[package]]
+name = "realfft"
+version = "3.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f821338fddb99d089116342c46e9f1fbf3828dba077674613e734e01d6ea8677"
+dependencies = [
+ "rustfft",
 ]
 
 [[package]]

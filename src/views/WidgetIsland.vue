@@ -470,7 +470,7 @@ const parseLrc = (lrcStr: string) => {
 const isGlowBorderEnabled = ref(localStorage.getItem('nsd_glow_border') === 'true');
 
 // 律动频谱
-const spectrumData = ref([0.35, 0.35, 0.35, 0.35, 0.35]);
+const spectrumData = ref([0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35]);
 let spectrumTimer: number;
 
 // 封面url
@@ -1972,7 +1972,7 @@ onMounted(async () => {
             }
         } else {
             // 没在播放时，让柱子平滑回落到最低点
-            spectrumData.value = [0.35, 0.35, 0.35, 0.35, 0.35];
+            spectrumData.value = [0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35];
         }
     }, 50) as unknown as number;
 
@@ -2473,7 +2473,7 @@ onUnmounted(() => {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 2px;
+    gap: 1.5px;
     height: 12px;
     padding-right: 2px;
 }
@@ -2483,7 +2483,7 @@ onUnmounted(() => {
     width: 2px;
     height: 18px;
     background-color: #b6e0ee;
-    border-radius: 3px;
+    border-radius: 8px;
     transform-origin: center;
     /* 改用极速的 ease-out 过渡，让前端完美衔接后端的帧率 */
     transition: transform 0.08s ease-out;

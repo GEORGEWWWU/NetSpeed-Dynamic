@@ -1,133 +1,173 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use rustfft::{num_complex::Complex, FftPlanner};
-use std::sync::Mutex;
+use realfft::RealFftPlanner;
+use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 
-// 存储 5 个频段的全局数组，默认高度 0.35 (对应前端的 scaleY(0.35))
-static SPECTRUM: Mutex<[f32; 5]> = Mutex::new([0.35; 5]);
+const FFT_LEN: usize = 1024;
+const BAR_COUNT: usize = 7;
+
+static SPECTRUM: Mutex<[f32; BAR_COUNT]> = Mutex::new([0.35; BAR_COUNT]);
 
 #[tauri::command]
-pub fn get_audio_spectrum() -> [f32; 5] {
-    *SPECTRUM.lock().unwrap()
+pub fn get_audio_spectrum() -> [f32; BAR_COUNT] {
+    *SPECTRUM.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+// ── 频谱分析器 ──────────────────────────────────────────
+struct SpectrumAnalyzer {
+    fft: Arc<dyn realfft::RealToComplex<f32>>,
+    output: Vec<realfft::num_complex::Complex32>,
+    input: Vec<f32>,
+    input_len: usize,
+    adaptive_max: [f32; BAR_COUNT],
+}
+
+impl SpectrumAnalyzer {
+    fn new() -> Self {
+        let mut planner = RealFftPlanner::<f32>::new();
+        let fft = planner.plan_fft_forward(FFT_LEN);
+        let output = fft.make_output_vec();
+        Self {
+            fft,
+            output,
+            input: vec![0.0; FFT_LEN],
+            input_len: 0,
+            adaptive_max: [0.1; BAR_COUNT],
+        }
+    }
+
+    fn push_sample(&mut self, sample: f32) {
+        self.input[self.input_len] = sample;
+        self.input_len += 1;
+        if self.input_len == FFT_LEN {
+            self.process();
+            self.input_len = 0;
+        }
+    }
+
+    fn process(&mut self) {
+        if self.fft.process(&mut self.input, &mut self.output).is_err() {
+            return;
+        }
+
+        // 7 个对数频段 (bin 范围)，覆盖 ~90 Hz → ~24 kHz
+        let ranges: [(usize, usize); BAR_COUNT] = [
+            (2, 8),     // ~90 – 375 Hz   低频
+            (8, 18),    // ~375 – 844 Hz  中低
+            (18, 40),   // ~844 – 1875 Hz 中频
+            (40, 90),   // ~1.9k – 4.2k   中高
+            (90, 190),  // ~4.2k – 8.9k   高频
+            (190, 350), // ~8.9k – 16.4k  亮频
+            (350, 511), // ~16.4k – 24k   空气感
+        ];
+
+        let mut raw = [0.0f32; BAR_COUNT];
+        for (j, &(start, end)) in ranges.iter().enumerate() {
+            let sum: f32 = self.output[start..end].iter().map(|v| v.norm()).sum();
+            let avg = sum / (end - start) as f32;
+
+            // 自适应归一化：EMA 跟踪历史峰值，自动调整灵敏度
+            self.adaptive_max[j] = self.adaptive_max[j] * 0.995 + avg.max(0.01) * 0.005;
+            raw[j] = (avg / (self.adaptive_max[j] * 2.3)).clamp(0.0, 1.0);
+        }
+
+        // 对称"山丘"排列：两端低、中间高，视觉更饱满
+        let final_bins = [
+            raw[6] * 0.75, // 最右：空气感
+            raw[4] * 0.85, // 右二：高频
+            raw[1] * 0.95, // 右三：中低
+            raw[2] * 1.0,  // 正中：中频（最高）
+            raw[3] * 0.95, // 左三：中高
+            raw[5] * 0.85, // 左二：亮频
+            raw[0] * 0.75, // 最左：低频
+        ];
+
+        // 直接写入，不做后端平滑（CSS transition 已足够）
+        if let Ok(mut s) = SPECTRUM.try_lock() {
+            *s = final_bins;
+        }
+    }
+}
+
+// ── 启动监听 ──────────────────────────────────────────
 pub fn start_monitor() {
     thread::spawn(|| {
         let host = cpal::default_host();
-        
-        // 获取系统默认播放设备
-        let device = match host.default_output_device() {
-            Some(d) => d,
-            None => return,
-        };
 
-        let config = match device.default_output_config() {
-            Ok(c) => c,
-            Err(_) => return,
-        };
+        // 外层循环：设备拔出 / 切换时自动重连
+        loop {
+            let device = match host.default_output_device() {
+                Some(d) => d,
+                None => {
+                    thread::sleep(Duration::from_secs(1));
+                    continue;
+                }
+            };
+            let config = match device.default_output_config() {
+                Ok(c) => c,
+                Err(_) => {
+                    thread::sleep(Duration::from_secs(1));
+                    continue;
+                }
+            };
 
-        let err_fn = |err| eprintln!("Audio capture error: {}", err);
-        let sample_format = config.sample_format();
-        let config: cpal::StreamConfig = config.into();
-        let channels = config.channels;
+            let sample_format = config.sample_format();
+            let stream_config: cpal::StreamConfig = config.config();
+            let channels = stream_config.channels as usize;
 
-        // 在 Windows 上，对 output_device 调用 build_input_stream 会自动开启 Loopback(内录) 模式
-        let stream = match sample_format {
-            cpal::SampleFormat::F32 => device.build_input_stream(
-                &config,
-                move |data: &[f32], _: &_| process_data(data, channels),
-                err_fn,
-                None,
-            ),
-            cpal::SampleFormat::I16 => device.build_input_stream(
-                &config,
-                move |data: &[i16], _: &_| {
-                    let f32_data: Vec<f32> = data.iter().map(|&s| s as f32 / i16::MAX as f32).collect();
-                    process_data(&f32_data, channels);
-                },
-                err_fn,
-                None,
-            ),
-            _ => return,
-        };
+            let mut analyzer = SpectrumAnalyzer::new();
+            let err_fn = |err| eprintln!("Audio capture error: {}", err);
 
-        if let Ok(stream) = stream {
-            let _ = stream.play();
-            // 保持子线程存活
-            loop {
-                thread::sleep(std::time::Duration::from_secs(3600));
+            let stream = match sample_format {
+                cpal::SampleFormat::F32 => device.build_input_stream(
+                    &stream_config,
+                    move |data: &[f32], _: &_| {
+                        // 多声道混为单声道
+                        for chunk in data.chunks(channels) {
+                            let mono = chunk.iter().sum::<f32>() / channels as f32;
+                            analyzer.push_sample(mono);
+                        }
+                    },
+                    err_fn,
+                    None,
+                ),
+                cpal::SampleFormat::I16 => device.build_input_stream(
+                    &stream_config,
+                    move |data: &[i16], _: &_| {
+                        for chunk in data.chunks(channels) {
+                            let mono = chunk
+                                .iter()
+                                .map(|&s| s as f32 / i16::MAX as f32)
+                                .sum::<f32>()
+                                / channels as f32;
+                            analyzer.push_sample(mono);
+                        }
+                    },
+                    err_fn,
+                    None,
+                ),
+                _ => {
+                    thread::sleep(Duration::from_secs(1));
+                    continue;
+                }
+            };
+
+            match stream {
+                Ok(s) => {
+                    if s.play().is_err() {
+                        thread::sleep(Duration::from_secs(1));
+                        continue;
+                    }
+                    // 保持线程存活
+                    loop {
+                        thread::sleep(Duration::from_secs(3600));
+                    }
+                }
+                Err(_) => {
+                    thread::sleep(Duration::from_secs(1));
+                }
             }
         }
     });
-}
-
-// FFT 核心处理逻辑
-fn process_data(data: &[f32], channels: u16) {
-    if data.is_empty() { return; }
-
-    // 1. 将双声道/多声道合并为单声道
-    let mut mono = Vec::with_capacity(data.len() / channels as usize);
-    for chunk in data.chunks(channels as usize) {
-        let sum: f32 = chunk.iter().sum();
-        mono.push(sum / channels as f32);
-    }
-
-    let n = mono.len();
-    if n < 128 { return; } // 样本太少不做分析
-
-    // 2. FFT 准备
-    let mut planner = FftPlanner::new();
-    let fft = planner.plan_fft_forward(n);
-
-    // 3. 加汉宁窗 (Hanning Window) 平滑边缘，减少频谱泄漏
-    let mut buffer: Vec<Complex<f32>> = mono.iter().enumerate().map(|(i, &val)| {
-        let multiplier = 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / (n - 1) as f32).cos());
-        Complex { re: val * multiplier, im: 0.0 }
-    }).collect();
-
-    // 4. 执行 FFT 运算
-    fft.process(&mut buffer);
-
-    // 5. 分成 5 个对数频段：低音(Bass) -> 高音(Treble)
-    let mut bins = [0.0_f32; 5];
-    let half_n = n / 2;
-    
-    // 忽略直流分量(0)
-    for i in 1..half_n {
-        let mag = (buffer[i].re.powi(2) + buffer[i].im.powi(2)).sqrt();
-        
-        let bin_idx = if i < half_n / 16 { 0 }       // 低频
-        else if i < half_n / 8 { 1 }                 // 中低频
-        else if i < half_n / 4 { 2 }                 // 中频
-        else if i < half_n / 2 { 3 }                 // 中高频
-        else { 4 };                                  // 高频
-        
-        // 取该频段的最大振幅
-        if mag > bins[bin_idx] {
-            bins[bin_idx] = mag;
-        }
-    }
-
-    // 6. 映射高度并平滑过渡
-    let mut final_spectrum = [0.35_f32; 5];
-    
-    // 频段能量补偿权重（大幅压平）：高频保留最基础的补偿，不再强行放大
-    let eq_weights = [1.2, 1.1, 1.5, 3.0, 5.0]; 
-    // 整体小音量放大系数（再次削减）：直接降到个位数，大幅抑制微小底噪的跳动
-    let base_gain = 5.0; 
-
-    for i in 0..5 {
-        let energy = bins[i] * eq_weights[i] * base_gain;
-        
-        let scaled = ((energy + 1.0).log10() * 0.20) + 0.35; 
-        
-        final_spectrum[i] = scaled.clamp(0.35, 0.95); 
-    }
-
-    // 7. 更新到全局并应用平滑插值 (Lerp)，防止画面闪烁跳动过于剧烈
-    if let Ok(mut spec) = SPECTRUM.lock() {
-        for i in 0..5 {
-            spec[i] = spec[i] * 0.6 + final_spectrum[i] * 0.4; 
-        }
-    }
 }
