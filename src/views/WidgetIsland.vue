@@ -2525,6 +2525,7 @@ onUnmounted(() => {
 .audio-spectrum .bar {
     width: 2px;
     height: 18px;
+    min-height: 3px;
     background-color: #b6e0ee;
     border-radius: 8px;
     transform-origin: center;
