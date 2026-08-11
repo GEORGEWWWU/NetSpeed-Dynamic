@@ -477,6 +477,31 @@
                                                                 @change="updateDisplayPreferences">
                                                             <span>{{ t('speedShort') }}</span>
                                                         </label>
+                                                        <label class="display-pref-option">
+                                                            <input type="checkbox" v-model="displayPreferences.expanded.network"
+                                                                @change="updateDisplayPreferences">
+                                                            <span>{{ t('networkConnectionShort') }}</span>
+                                                        </label>
+                                                        <label class="display-pref-option">
+                                                            <input type="checkbox" v-model="displayPreferences.expanded.audioOutput"
+                                                                @change="updateDisplayPreferences">
+                                                            <span>{{ t('audioOutputShort') }}</span>
+                                                        </label>
+                                                        <label class="display-pref-option">
+                                                            <input type="checkbox" v-model="displayPreferences.expanded.bluetooth"
+                                                                @change="updateDisplayPreferences">
+                                                            <span>{{ t('bluetoothShort') }}</span>
+                                                        </label>
+                                                        <label class="display-pref-option">
+                                                            <input type="checkbox" v-model="displayPreferences.expanded.outputVolume"
+                                                                @change="updateDisplayPreferences">
+                                                            <span>{{ t('outputVolumeShort') }}</span>
+                                                        </label>
+                                                        <label class="display-pref-option">
+                                                            <input type="checkbox" v-model="displayPreferences.expanded.calendar"
+                                                                @change="updateDisplayPreferences">
+                                                            <span>{{ t('calendarShort') }}</span>
+                                                        </label>
                                                     </div>
                                                 </div>
                                             </div>
@@ -749,9 +774,17 @@ type DisplayPreferenceGroup = {
     speed: boolean;
 };
 
+type ExpandedDisplayPreferenceGroup = DisplayPreferenceGroup & {
+    network: boolean;
+    audioOutput: boolean;
+    bluetooth: boolean;
+    outputVolume: boolean;
+    calendar: boolean;
+};
+
 type DisplayPreferences = {
     collapsed: DisplayPreferenceGroup;
-    expanded: DisplayPreferenceGroup;
+    expanded: ExpandedDisplayPreferenceGroup;
 };
 
 const readDisplayPreference = (key: string) => localStorage.getItem(key) !== 'false';
@@ -767,6 +800,11 @@ const displayPreferences = ref<DisplayPreferences>({
         resource: readDisplayPreference('nsd_display_expanded_resource'),
         fps: readDisplayPreference('nsd_display_expanded_fps'),
         speed: readDisplayPreference('nsd_display_expanded_speed'),
+        network: readDisplayPreference('nsd_display_expanded_network'),
+        audioOutput: readDisplayPreference('nsd_display_expanded_audioOutput'),
+        bluetooth: readDisplayPreference('nsd_display_expanded_bluetooth'),
+        outputVolume: readDisplayPreference('nsd_display_expanded_outputVolume'),
+        calendar: readDisplayPreference('nsd_display_expanded_calendar'),
     },
 });
 
@@ -2381,7 +2419,10 @@ input:disabled+.slider {
 }
 
 .display-pref-menu {
-    width: 300px;
+    top: auto;
+    right: 0;
+    bottom: calc(100% + 8px);
+    width: 330px;
     max-height: none;
     padding: 10px;
     gap: 9px;
@@ -2403,8 +2444,8 @@ input:disabled+.slider {
 
 .display-pref-options {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 6px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
 }
 
 .display-pref-option {
@@ -2419,7 +2460,7 @@ input:disabled+.slider {
 }
 
 .display-pref-option span {
-    min-height: 28px;
+    min-height: 30px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2692,7 +2733,8 @@ input:disabled+.slider {
     width: 100%;
     position: relative;
     z-index: 5;
-    clip-path: inset(0 0 -250px 0);
+    /* 显示内容配置面板向上展开，预留完整空间，避免被分页视口裁掉。 */
+    clip-path: inset(-320px 0 -250px 0);
 }
 
 /* 快速响应的贝塞尔曲线平滑轨道 */

@@ -17,7 +17,16 @@
 
                 <div class="inner-wrapper">
                     <transition mode="out-in" @enter="onInnerEnter" @leave="onInnerLeave" :css="false">
-                        <div v-if="isMsgActive" class="msg-box" key="msg">
+                        <div v-if="isPositionAdjusting" class="position-adjustment-box" key="position-adjustment">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M12 2v20M2 12h20" />
+                                <circle cx="12" cy="12" r="4" />
+                            </svg>
+                            <span>{{ t('dragIslandToPosition') }}</span>
+                        </div>
+
+                        <div v-else-if="isMsgActive" class="msg-box" key="msg">
                             <div class="msg-avatar">
                                 <img :src="currentMsgIcon" alt="消息图标" class="msg-avatar-img">
                             </div>
@@ -95,7 +104,8 @@
                             <div class="toast-text">{{ sysToastText }}</div>
                         </div>
 
-                        <div v-else-if="displayMusic" class="music-ctl-box" :class="{ 'expanded': isMusicExpanded }"
+                        <div v-else-if="displayMusic" class="music-ctl-box"
+                            :class="{ 'expanded': isMusicExpanded, 'has-calendar': isMusicExpanded && showExpandedCalendar }"
                             :key="'music_' + musicBoxKey">
                             <div class="music-top-row">
                                 <div class="album-cover" :class="{ 'is-playing': isPlaying }">
@@ -118,6 +128,13 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <div v-if="isMusicExpanded" class="audio-spectrum embedded"
+                                :class="{ 'is-playing': isPlaying }" aria-hidden="true">
+                                <span class="bar" v-for="(val, index) in spectrumData" :key="`expanded-${index}`"
+                                    :style="{ transform: `scaleY(${val})` }"></span>
+                            </div>
+
                             <transition name="fade">
                                 <div class="music-controls" v-show="isMusicExpanded">
                                     <button class="ctl-btn" @click.stop="prevTrack">
@@ -142,7 +159,9 @@
                                 </div>
                             </transition>
 
-                            <div v-if="isMusicExpanded && hasExpandedDetails" class="expanded-monitor-row">
+                            <div v-if="isMusicExpanded && hasExpandedDetails" class="expanded-monitor-row"
+                                :class="{ 'has-calendar': showExpandedCalendar }"
+                                :style="{ gridTemplateColumns: `repeat(${expandedMonitorCardCount}, minmax(0, 1fr))` }">
                                 <div v-if="showExpandedResource" class="expanded-resource-summary">
                                     <div class="monitor-chip">
                                         <span class="monitor-chip-label">CPU</span>
@@ -161,7 +180,7 @@
                                 </div>
                                 <div v-if="showExpandedFps" class="fps-pill compact">
                                     <span class="fps-label">FPS</span>
-                                    <span class="fps-value">{{ currentFps }}</span>
+                                    <span class="fps-value">{{ currentFps || '—' }}</span>
                                 </div>
                                 <div v-if="showExpandedSpeed" class="telemetry-speed-card">
                                     <Transition name="speed-fade" mode="out-in">
@@ -174,14 +193,38 @@
                                     </Transition>
                                 </div>
                             </div>
+
+                            <div v-if="isMusicExpanded && showExpandedCalendar" class="expanded-calendar-card">
+                                <div class="calendar-month">{{ calendarMonth }}</div>
+                                <div class="calendar-date">{{ calendarDate }}</div>
+                                <div class="calendar-weekday">{{ calendarWeekday }}</div>
+                                <div class="calendar-grid" aria-label="Current month calendar">
+                                    <span v-for="weekday in calendarWeekdays" :key="weekday" class="calendar-grid-weekday">{{ weekday }}</span>
+                                    <span v-for="day in calendarDays" :key="day.dateKey"
+                                        :class="['calendar-grid-day', { 'is-today': day.isToday }]">
+                                        {{ day.value }}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
 
                         <div v-else-if="displayMonitors" class="monitor-dashboard"
-                            :class="{ 'expanded': isMusicExpanded }" key="monitors">
+                            :class="{
+                                'expanded': isMusicExpanded,
+                                'has-device-row': isMusicExpanded && hasExpandedDeviceDetails,
+                                'has-calendar': isMusicExpanded && !displayMusic && showExpandedCalendar,
+                            }"
+                            :style="isMusicExpanded
+                                ? { gridTemplateColumns: `repeat(${expandedMonitorCardCount}, minmax(0, 1fr))` }
+                                : undefined"
+                            key="monitors">
                             <div v-if="displayResource" class="resource-box">
                                 <div class="res-group">
                                     <div class="res-info-row">
-                                        <span class="res-label">CPU</span>
+                                        <span class="res-title">
+                                            <Cpu class="status-card-icon" theme="outline" :size="14" :stroke-width="3" />
+                                            <span class="res-label">CPU</span>
+                                        </span>
                                         <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{ cpuUsage
                                         }}%</span>
                                     </div>
@@ -192,7 +235,10 @@
                                 </div>
                                 <div class="res-group">
                                     <div class="res-info-row">
-                                        <span class="res-label">RAM</span>
+                                        <span class="res-title">
+                                            <Memory class="status-card-icon" theme="outline" :size="14" :stroke-width="3" />
+                                            <span class="res-label">RAM</span>
+                                        </span>
                                         <span class="res-value" :class="{ 'high-usage': ramUsage >= 85 }">{{ ramUsage
                                         }}%</span>
                                     </div>
@@ -203,17 +249,22 @@
                                 </div>
                             </div>
                             <div v-if="displayFps" class="fps-pill">
-                                <span class="fps-label">FPS</span>
-                                <span class="fps-value">{{ currentFps }}</span>
+                                <span class="fps-title">
+                                    <Speed class="status-card-icon" theme="outline" :size="14" :stroke-width="3" />
+                                    <span class="fps-label">FPS</span>
+                                </span>
+                                <span class="fps-value">{{ currentFps || '—' }}</span>
                             </div>
                             <div v-if="displayMonitorSpeed" class="monitor-speed-section"
                                 :class="{ 'has-divider': displayResource || displayFps }">
                                 <Transition name="speed-fade" mode="out-in">
                                     <span v-if="isShowingUpload" class="telemetry-speed-line" key="monitor-up">
-                                        <b>↑</b><em>{{ uploadSpeed }}</em>
+                                        <Upload class="status-card-icon speed-direction-icon" theme="outline" :size="14" :stroke-width="3" />
+                                        <em>{{ uploadSpeed }}</em>
                                     </span>
                                     <span v-else class="telemetry-speed-line" key="monitor-down">
-                                        <b>↓</b><em>{{ downloadSpeed }}</em>
+                                        <Download class="status-card-icon speed-direction-icon" theme="outline" :size="14" :stroke-width="3" />
+                                        <em>{{ downloadSpeed }}</em>
                                     </span>
                                 </Transition>
                             </div>
@@ -248,11 +299,92 @@
                         </div>
 
                     </transition>
+
+                    <div v-if="isMusicExpanded && !displayMusic && showExpandedCalendar"
+                        class="expanded-calendar-card without-music">
+                        <div class="calendar-month">{{ calendarMonth }}</div>
+                        <div class="calendar-date">{{ calendarDate }}</div>
+                        <div class="calendar-weekday">{{ calendarWeekday }}</div>
+                        <div class="calendar-grid" aria-label="Current month calendar">
+                            <span v-for="weekday in calendarWeekdays" :key="weekday" class="calendar-grid-weekday">{{ weekday }}</span>
+                            <span v-for="day in calendarDays" :key="day.dateKey"
+                                :class="['calendar-grid-day', { 'is-today': day.isToday }]">
+                                {{ day.value }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <transition name="device-row-fade">
+                        <div v-if="isMusicExpanded && hasExpandedDeviceDetails" class="device-status-row"
+                            :class="{
+                                'with-music': displayMusic,
+                                'without-music': !displayMusic,
+                                'has-calendar': showExpandedCalendar,
+                                'has-monitor-row': hasExpandedDetails,
+                            }"
+                            :style="{ gridTemplateColumns: `repeat(${expandedDeviceCardCount}, minmax(0, 1fr))` }">
+                            <div v-if="showExpandedNetwork" class="device-status-card">
+                                <svg class="device-status-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+                                    <path d="M4 18.9653C15.5888 7.9865 33.3821 8.9029 44 18.9653M38 25.799C30.268 18.067 17.732 18.067 10 25.799M32 32.3137C27.5817 27.8954 20.4183 27.8954 16 32.3137"
+                                        stroke="currentColor" stroke-width="4" stroke-linecap="round"
+                                        stroke-linejoin="round" />
+                                    <circle cx="24" cy="37.5" r="2.5" fill="currentColor" />
+                                </svg>
+                                <div class="device-status-copy">
+                                    <span class="device-status-label">{{ t('networkConnection') }}</span>
+                                    <strong :title="deviceStatus.networkName || t('notConnected')">{{
+                                        deviceStatus.networkName || t('notConnected') }}</strong>
+                                    <small>{{ networkStatusDetail }}</small>
+                                </div>
+                            </div>
+
+                            <div v-if="showExpandedAudioOutput" class="device-status-card">
+                                <svg class="device-status-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+                                    <path d="M36 32C40.4183 32 44 28.4183 44 24C44 19.5817 40.4183 16 36 16M12 16C7.5817 16 4 19.5817 4 24C4 28.4183 7.5817 32 12 32M12 32V16C12 9.3726 17.3726 4 24 4C30.6274 4 36 9.3726 36 16V32C36 38.6274 30.6274 44 24 44"
+                                        stroke="currentColor" stroke-width="4" stroke-linecap="round"
+                                        stroke-linejoin="round" />
+                                </svg>
+                                <div class="device-status-copy">
+                                    <span class="device-status-label">{{ t('audioOutput') }}</span>
+                                    <strong :title="deviceStatus.audioOutputName || t('unavailable')">{{
+                                        deviceStatus.audioOutputName || t('unavailable') }}</strong>
+                                    <small>{{ t('defaultOutput') }}</small>
+                                </div>
+                            </div>
+
+                            <div v-if="showExpandedBluetooth" class="device-status-card">
+                                <svg class="device-status-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+                                    <path d="M12 13L34 34L23 44V4L34 14L12 35" stroke="currentColor"
+                                        stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                <div class="device-status-copy">
+                                    <span class="device-status-label">{{ t('bluetoothConnection') }}</span>
+                                    <strong>{{ bluetoothConnectionText }}</strong>
+                                </div>
+                            </div>
+
+                            <div v-if="showExpandedOutputVolume" class="device-status-card volume-card">
+                                <svg class="device-status-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+                                    <path d="M24 6V42C17 42 11.7985 32.8391 11.7985 32.8391H6C4.8954 32.8391 4 31.9437 4 30.8391V17.0108C4 15.9062 4.8954 15.0108 6 15.0108H11.7985C11.7985 15.0108 17 6 24 6Z"
+                                        stroke="currentColor" stroke-width="4" stroke-linejoin="round" />
+                                    <path d="M32 15C34.454 17.1919 36 20.3791 36 24C36 27.5895 34.4807 30.7517 32 33"
+                                        stroke="currentColor" stroke-width="4" stroke-linecap="round"
+                                        stroke-linejoin="round" />
+                                </svg>
+                                <div class="device-status-copy">
+                                    <span class="device-status-label">{{ t('outputVolume') }}</span>
+                                    <strong>{{ outputVolumeText }}</strong>
+                                    <span class="device-volume-track"><span class="device-volume-fill"
+                                            :style="{ width: `${deviceStatus.outputVolume || 0}%` }"></span></span>
+                                </div>
+                            </div>
+                        </div>
+                    </transition>
                 </div>
 
                 <transition mode="out-in" @enter="onInnerEnter" @leave="onInnerLeave" :css="false">
-                    <div v-if="showSpectrumIndicator" class="audio-spectrum"
-                        :class="{ 'is-playing': isPlaying, 'expanded': isMusicExpanded }" key="spectrum">
+                    <div v-if="showSpectrumIndicator && !isMusicExpanded" class="audio-spectrum"
+                        :class="{ 'is-playing': isPlaying }" key="spectrum">
                         <span class="bar" v-for="(val, index) in spectrumData" :key="index"
                             :style="{ transform: `scaleY(${val})` }"></span>
                     </div>
@@ -269,6 +401,11 @@ import { ref, onMounted, onUnmounted, computed, watch, nextTick, type CSSPropert
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow, currentMonitor, PhysicalPosition, LogicalPosition, PhysicalSize } from '@tauri-apps/api/window'; import { Menu, MenuItem } from '@tauri-apps/api/menu';
 import { listen, emit } from '@tauri-apps/api/event';
+import Cpu from '@icon-park/vue-next/es/icons/Cpu';
+import Memory from '@icon-park/vue-next/es/icons/Memory';
+import Speed from '@icon-park/vue-next/es/icons/Speed';
+import Download from '@icon-park/vue-next/es/icons/Download';
+import Upload from '@icon-park/vue-next/es/icons/Upload';
 import { t, currentLanguage, type AppLanguage } from '../i18n';
 
 const isIslandVisible = ref(false);
@@ -281,6 +418,7 @@ watch(isIslandVisible, (newVal) => {
 
 // 记录全屏自动隐藏开关状态
 const isAutoHideEnabled = ref(localStorage.getItem('nsd_autohide_fs') === 'true');
+const isFullscreenAppActive = ref(false);
 // 记录进入全屏前的灵动岛显隐状态，用来决定退回桌面时要不要恢复
 let wasVisibleBeforeFullscreen = false;
 
@@ -369,6 +507,7 @@ watch(isMsgActive, (newVal) => {
 const isMusicExpanded = ref(false);
 const isMusicExpanding = ref(false); // 记录是否正在播放弹性按压展开动画
 let musicExpandAnimTimer: number | null = null; // 用于接管展开时的定时器，防止冲突
+const isPositionAdjusting = ref(false);
 
 // 灵动岛自身的透明度变量（默认100）
 const islandOpacity = ref(Number(localStorage.getItem('nsd_island_opacity') || '100'));
@@ -477,6 +616,13 @@ const currentBaseInfo = ref(''); // 用于在没有歌词时兜底显示 "歌名
 // 歌词时间推算专用变量
 const localPositionMs = ref(0);
 let lastTickTime = performance.now();
+// 除了拖动/切歌时的即时校准，播放中每 25 秒再向真实播放器时间线校准一次。
+const AUTO_LYRIC_CALIBRATION_INTERVAL_MS = 25_000;
+let lastAutoLyricCalibrationAt = 0;
+// 酷狗切歌时，SMTC 标题比底部时间更早刷新。先等待底栏切换完成，
+// 再采用第一条有效的真实时间，避免把上一首歌的时间误套到新歌上。
+const kugouTimelineReady = ref(true);
+let kugouTrackChangedAt = 0;
 // 歌词防吞字与队列控制
 const lyricQueue = ref<string[]>([]);
 let lastLyricChangeTime = 0;
@@ -565,7 +711,47 @@ const bakeBlurImage = (url: string): Promise<string> => {
 
 // 实时FPS功能相关
 const enableFps = ref(localStorage.getItem('nsd_fps_monitor') === 'true');
-const currentFps = ref(0);
+const pluginFps = ref(0);
+const desktopFps = ref(0);
+const lastPluginFpsAt = ref(0);
+let desktopFpsTimer: number | null = null;
+
+// 游戏/前台 3D 程序有数据时优先显示插件采集值；
+// 暂时没有游戏帧时，回退到 Windows 桌面合成器的实际刷新率，避免把“无游戏数据”误显示为 0 FPS。
+const currentFps = computed(() => {
+    const pluginValueIsFresh = isFullscreenAppActive.value &&
+        pluginFps.value > 0 && Date.now() - lastPluginFpsAt.value < 2500;
+    return pluginValueIsFresh ? pluginFps.value : desktopFps.value;
+});
+
+const stopDesktopFpsSampler = () => {
+    if (desktopFpsTimer !== null) {
+        clearInterval(desktopFpsTimer);
+        desktopFpsTimer = null;
+    }
+    desktopFps.value = 0;
+};
+
+const startDesktopFpsSampler = () => {
+    stopDesktopFpsSampler();
+    const refreshDesktopFps = async () => {
+        if (!enableFps.value) return;
+        try {
+            const fps = await invoke<number>('get_desktop_fps');
+            if (Number.isFinite(fps) && fps > 0) desktopFps.value = Math.round(fps);
+        } catch (error) {
+            console.error('读取 Windows 桌面帧率失败:', error);
+        }
+
+        if (pluginFps.value > 0 && Date.now() - lastPluginFpsAt.value >= 2500) {
+            pluginFps.value = 0;
+            lastPluginFpsAt.value = 0;
+        }
+    };
+
+    refreshDesktopFps();
+    desktopFpsTimer = window.setInterval(refreshDesktopFps, 1000);
+};
 
 // 记录最后一次接收到真实 WS 歌词的时间
 let lastWsLyricTime = 0;
@@ -744,9 +930,27 @@ type DisplayPreferenceGroup = {
     speed: boolean;
 };
 
+type ExpandedDisplayPreferenceGroup = DisplayPreferenceGroup & {
+    network: boolean;
+    audioOutput: boolean;
+    bluetooth: boolean;
+    outputVolume: boolean;
+    calendar: boolean;
+};
+
 type DisplayPreferences = {
     collapsed: DisplayPreferenceGroup;
-    expanded: DisplayPreferenceGroup;
+    expanded: ExpandedDisplayPreferenceGroup;
+};
+
+type DeviceStatus = {
+    networkName: string | null;
+    networkType: string | null;
+    networkSignal: number | null;
+    audioOutputName: string | null;
+    outputVolume: number | null;
+    outputMuted: boolean;
+    bluetoothConnectedCount: number | null;
 };
 
 const readDisplayPreference = (key: string) => localStorage.getItem(key) !== 'false';
@@ -762,8 +966,36 @@ const displayPreferences = ref<DisplayPreferences>({
         resource: readDisplayPreference('nsd_display_expanded_resource'),
         fps: readDisplayPreference('nsd_display_expanded_fps'),
         speed: readDisplayPreference('nsd_display_expanded_speed'),
+        network: readDisplayPreference('nsd_display_expanded_network'),
+        audioOutput: readDisplayPreference('nsd_display_expanded_audioOutput'),
+        bluetooth: readDisplayPreference('nsd_display_expanded_bluetooth'),
+        outputVolume: readDisplayPreference('nsd_display_expanded_outputVolume'),
+        calendar: readDisplayPreference('nsd_display_expanded_calendar'),
     },
 });
+
+const deviceStatus = ref<DeviceStatus>({
+    networkName: null,
+    networkType: null,
+    networkSignal: null,
+    audioOutputName: null,
+    outputVolume: null,
+    outputMuted: false,
+    bluetoothConnectedCount: null,
+});
+let isDeviceStatusRefreshing = false;
+
+const refreshDeviceStatus = async () => {
+    if (isDeviceStatusRefreshing || !isMusicExpanded.value || !hasExpandedDeviceDetails.value) return;
+    isDeviceStatusRefreshing = true;
+    try {
+        deviceStatus.value = await invoke<DeviceStatus>('get_device_status');
+    } catch (error) {
+        console.error('读取系统设备状态失败:', error);
+    } finally {
+        isDeviceStatusRefreshing = false;
+    }
+};
 
 // 功能开关只负责采集数据；显示偏好独立决定收起和展开时的内容。
 const canShowPrimaryContent = computed(() => !isMsgActive.value && !displaySysToast.value);
@@ -778,10 +1010,74 @@ const showExpandedMusic = computed(() => isMusicAvailable.value && displayPrefer
 const showExpandedResource = computed(() => enableSysResource.value && displayPreferences.value.expanded.resource);
 const showExpandedFps = computed(() => enableFps.value && displayPreferences.value.expanded.fps);
 const showExpandedSpeed = computed(() => displayPreferences.value.expanded.speed);
+const showExpandedNetwork = computed(() => displayPreferences.value.expanded.network);
+const showExpandedAudioOutput = computed(() => displayPreferences.value.expanded.audioOutput);
+const showExpandedBluetooth = computed(() => displayPreferences.value.expanded.bluetooth);
+const showExpandedOutputVolume = computed(() => displayPreferences.value.expanded.outputVolume);
+const showExpandedCalendar = computed(() => displayPreferences.value.expanded.calendar);
+const calendarNow = ref(new Date());
+let calendarRefreshTimer: number | null = null;
+const calendarMonth = computed(() => new Intl.DateTimeFormat('en-US', { month: 'short' })
+    .format(calendarNow.value).toUpperCase());
+const calendarDate = computed(() => calendarNow.value.getDate());
+const calendarWeekday = computed(() => new Intl.DateTimeFormat('en-US', { weekday: 'long' })
+    .format(calendarNow.value).toUpperCase());
+const calendarStart = computed(() => {
+    const start = new Date(calendarNow.value);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - start.getDay());
+    return start;
+});
+const calendarWeekdays = computed(() => Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(calendarStart.value);
+    date.setDate(date.getDate() + index);
+    return new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(date).slice(0, 1).toUpperCase();
+}));
+const calendarDays = computed(() => {
+    const now = calendarNow.value;
+    return Array.from({ length: 14 }, (_, index) => {
+        const date = new Date(calendarStart.value);
+        date.setDate(date.getDate() + index);
+        return {
+            value: date.getDate(),
+            isToday: date.toDateString() === now.toDateString(),
+            dateKey: date.toISOString().slice(0, 10),
+        };
+    });
+});
+const expandedDeviceCardCount = computed(() =>
+    Number(showExpandedNetwork.value) + Number(showExpandedAudioOutput.value) +
+    Number(showExpandedBluetooth.value) + Number(showExpandedOutputVolume.value)
+);
+const expandedMonitorCardCount = computed(() =>
+    Number(showExpandedResource.value) * 2 + Number(showExpandedFps.value) + Number(showExpandedSpeed.value)
+);
+const hasExpandedDeviceDetails = computed(() => expandedDeviceCardCount.value > 0);
 const hasExpandedMonitors = computed(() => showExpandedResource.value || showExpandedFps.value);
 const hasExpandedDetails = computed(() => hasExpandedMonitors.value || showExpandedSpeed.value);
 const canExpandCard = computed(() => canShowPrimaryContent.value &&
-    (showExpandedMusic.value || showExpandedResource.value || showExpandedFps.value || showExpandedSpeed.value));
+    (showExpandedMusic.value || showExpandedResource.value || showExpandedFps.value ||
+        showExpandedSpeed.value || hasExpandedDeviceDetails.value || showExpandedCalendar.value));
+
+const networkStatusDetail = computed(() => {
+    if (!deviceStatus.value.networkName) return t('unavailable');
+    const parts = [deviceStatus.value.networkType];
+    if (deviceStatus.value.networkSignal !== null) {
+        parts.push(`${deviceStatus.value.networkSignal}%`);
+    }
+    return parts.filter(Boolean).join(' · ');
+});
+
+const outputVolumeText = computed(() => {
+    if (deviceStatus.value.outputMuted) return t('muted');
+    if (deviceStatus.value.outputVolume === null) return t('unavailable');
+    return `${deviceStatus.value.outputVolume}%`;
+});
+
+const bluetoothConnectionText = computed(() => {
+    if (deviceStatus.value.bluetoothConnectedCount === null) return t('unavailable');
+    return `${deviceStatus.value.bluetoothConnectedCount}${t('devicesConnected')}`;
+});
 
 const displayMusic = computed(() => canShowPrimaryContent.value &&
     (isMusicExpanded.value ? showExpandedMusic.value : showCollapsedMusic.value));
@@ -849,17 +1145,27 @@ const getExpandedSize = () => {
     if (showExpandedMusic.value) {
         const detailSegmentUnits = Number(showExpandedResource.value) * 2 +
             Number(showExpandedFps.value) + Number(showExpandedSpeed.value) * 1.15;
+        const expandedContentRows = Number(hasExpandedDetails.value) + Number(hasExpandedDeviceDetails.value);
         return {
-            w: Math.max(nsdMusicExpandedWidth.value, 110 + detailSegmentUnits * 70),
-            h: hasExpandedDetails.value ? 158 : 115,
+            w: Math.max(nsdMusicExpandedWidth.value, 110 + detailSegmentUnits * 70,
+                80 + expandedDeviceCardCount.value * 100, showExpandedCalendar.value ? 840 : 0),
+            h: Math.max(124 + expandedContentRows * 53,
+                showExpandedCalendar.value ? 250 : 0),
         };
     }
 
     const visibleSegmentUnits = Number(showExpandedResource.value) * 2 +
         Number(showExpandedFps.value) + Number(showExpandedSpeed.value) * 1.15;
+    const expandedContentRows = Number(hasExpandedDetails.value) + Number(hasExpandedDeviceDetails.value);
+    const compactContentHeight = expandedContentRows > 0
+        ? 20 + expandedContentRows * 81 + Math.max(0, expandedContentRows - 1) * 8
+        : 0;
     return {
-        w: Math.max(nsdBaseWidth.value, 60 + visibleSegmentUnits * 90),
-        h: Math.max(nsdBaseHeight.value + 30, 72),
+        w: Math.max(nsdBaseWidth.value, 60 + visibleSegmentUnits * 90,
+            80 + expandedDeviceCardCount.value * 100,
+            showExpandedCalendar.value && (hasExpandedDetails.value || hasExpandedDeviceDetails.value) ? 740 : 0),
+        h: Math.max(nsdBaseHeight.value + 30, compactContentHeight,
+            showExpandedCalendar.value ? 190 : 0),
     };
 };
 
@@ -872,7 +1178,8 @@ watch([displaySpeed, displayMusic, displayResource, displayFps, displayMonitorSp
     }
 });
 
-watch([showExpandedMusic, showExpandedResource, showExpandedFps, showExpandedSpeed], () => {
+watch([showExpandedMusic, showExpandedResource, showExpandedFps, showExpandedSpeed,
+    showExpandedNetwork, showExpandedAudioOutput, showExpandedBluetooth, showExpandedOutputVolume, showExpandedCalendar], () => {
     if (isMusicExpanded.value) {
         if (!canExpandCard.value) {
             collapseMusic();
@@ -880,6 +1187,8 @@ watch([showExpandedMusic, showExpandedResource, showExpandedFps, showExpandedSpe
         }
         const { w, h } = getExpandedSize();
         animateIslandSize(w, h);
+        refreshDeviceStatus();
+        refreshDeviceStatus();
     }
 });
 
@@ -936,9 +1245,25 @@ const syncMusicStatus = async () => {
             currentSongName.value = song;
             currentArtistName.value = artist || t('unknownArtist');
             const newTrackInfo = artist ? `${song} - ${artist}` : song;
+            const targetPlayer = localStorage.getItem('nsd_target_player') || 'netease';
+            const isKugouPlayer = targetPlayer === 'kugou';
+            const supportsPeriodicLyricCalibration = targetPlayer === 'netease' || isKugouPlayer;
+            const hasConfirmedTimeline = !isKugouPlayer || kugouTimelineReady.value;
+            const now = Date.now();
+
+            // 真实时间轴每 25 秒强制校准一次，防止本地 50ms 推算因掉帧、OCR 误差或
+            // 播放器内部缓冲而逐渐偏离。切歌保护尚未完成时不能使用酷狗的时间。
+            if (supportsPeriodicLyricCalibration && hasConfirmedTimeline &&
+                currentBaseInfo.value === newTrackInfo &&
+                hasUsableSystemTimeline(positionMs, durationMs) &&
+                now - lastAutoLyricCalibrationAt >= AUTO_LYRIC_CALIBRATION_INTERVAL_MS) {
+                alignLyricPosition(positionMs, Math.abs(positionMs - localPositionMs.value) > 1500);
+                lastAutoLyricCalibrationAt = now;
+            }
 
             // WS 只推歌词、不推进度时，仍持续使用 SMTC 校准；同时支持从中段播放和拖动进度条。
-            if (!hasRecentWsProgress && hasUsableSystemTimeline(positionMs, durationMs) &&
+            if ((!isKugouPlayer || kugouTimelineReady.value) &&
+                !hasRecentWsProgress && hasUsableSystemTimeline(positionMs, durationMs) &&
                 Math.abs(positionMs - localPositionMs.value) > 800) {
                 alignLyricPosition(positionMs - (playing ? 250 : 0));
             }
@@ -946,10 +1271,17 @@ const syncMusicStatus = async () => {
             if (currentBaseInfo.value !== newTrackInfo) {
                 currentBaseInfo.value = newTrackInfo;
                 lyricUnavailable.value = false;
+                lastAutoLyricCalibrationAt = now;
 
                 // 只有 WS 自己带完整歌词时才交给它管理歌词；仅提供播放器进度的桥接仍共用网络歌词逻辑。
                 if (!hasWsLyricsTimeline) {
-                    if (hasUsableSystemTimeline(positionMs, durationMs)) {
+                    if (isKugouPlayer) {
+                        kugouTimelineReady.value = false;
+                        kugouTrackChangedAt = Date.now();
+                        alignLyricPosition(0, true);
+                        // 不采用切歌这一帧的时间：此时酷狗底栏可能仍显示上一首歌。
+                        window.setTimeout(syncMusicStatus, 700);
+                    } else if (hasUsableSystemTimeline(positionMs, durationMs)) {
                         alignLyricPosition(positionMs, true);
                     }
 
@@ -999,6 +1331,20 @@ const syncMusicStatus = async () => {
                                 setSafeTrackInfo(`${newTrackInfo} · 未找到歌词`);
                             }
                         }).catch(() => { });
+                }
+            } else if (isKugouPlayer && !kugouTimelineReady.value) {
+                const elapsedSinceTrackChange = Date.now() - kugouTrackChangedAt;
+                // 至少等待 900ms，避开旧曲底栏残留；之后第一条有效 OCR 时间即可启动。
+                if (hasUsableSystemTimeline(positionMs, durationMs) && elapsedSinceTrackChange >= 900) {
+                    alignLyricPosition(positionMs, true);
+                    kugouTimelineReady.value = true;
+                } else if (elapsedSinceTrackChange >= 5000) {
+                    // OCR 偶发识别失败不能让歌词永久停在歌名：先从开头恢复，
+                    // 后续一旦读到真实时间，常规校准会立刻纠正。
+                    alignLyricPosition(0, true);
+                    kugouTimelineReady.value = true;
+                } else {
+                    window.setTimeout(syncMusicStatus, 500);
                 }
             }
         } else {
@@ -1672,6 +2018,8 @@ const handleMouseLeave = () => {
 
 // 鼠标移入灵动岛时：取消待收缩状态并自动展开音乐控制器
 const handleMouseEnter = () => {
+    if (isPositionAdjusting.value) return;
+
     // 如果之前移出留下了收缩案底，但动画还没播完鼠标又回来了，直接取消这个案底
     isPendingCollapse = false;
 
@@ -1707,6 +2055,9 @@ const getAppIcon = (appName: string) => {
 
 onMounted(async () => {
     const appWindow = getCurrentWindow();
+    calendarRefreshTimer = window.setInterval(() => {
+        calendarNow.value = new Date();
+    }, 60_000);
 
     // 监听窗口移动并保存坐标 (带有 300ms 防抖，防止疯狂写入)
     let moveTimeout: number | null = null;
@@ -1881,6 +2232,7 @@ onMounted(async () => {
     // 监听 Rust 发来的系统级全屏状态变化
     await listen<boolean>('fullscreen-changed', async (event) => {
         const isFullscreen = event.payload;
+        isFullscreenAppActive.value = isFullscreen;
 
         // 如果没开这个功能，直接无视
         if (!isAutoHideEnabled.value) return;
@@ -2009,22 +2361,70 @@ onMounted(async () => {
     await listen<{ enabled: boolean }>('control-fps-monitor', (event) => {
         enableFps.value = event.payload.enabled;
         if (enableFps.value) {
+            startDesktopFpsSampler();
             invoke('toggle_fps_plugin', { enable: true }).catch(console.error);
         } else {
+            pluginFps.value = 0;
+            lastPluginFpsAt.value = 0;
+            stopDesktopFpsSampler();
             invoke('toggle_fps_plugin', { enable: false }).catch(console.error);
+        }
+    });
+
+    // 个性化中心的位置调整：开始时解锁，应用或顶部居中后重新固定。
+    await listen<{ action: 'start' | 'apply' | 'center' }>('adjust-island-position', async ({ payload }) => {
+        try {
+            if (payload.action === 'start') {
+                isPositionLocked.value = false;
+                isPositionAdjusting.value = true;
+                localStorage.setItem('nsd_position_locked', 'false');
+                collapseMusic();
+                animateIslandSize(300, 48);
+                await appWindow.show();
+                await appWindow.setFocus();
+                return;
+            }
+
+            if (payload.action === 'center') {
+                localStorage.removeItem('nsd_island_center_x');
+                localStorage.removeItem('nsd_island_y');
+                await adjustWindowPosition();
+            }
+
+            isPositionAdjusting.value = false;
+            isPositionLocked.value = true;
+            localStorage.setItem('nsd_position_locked', 'true');
+            const { w, h } = getBaseSize();
+            animateIslandSize(w, h);
+            showToast(payload.action === 'center' ? t('positionReset') : t('positionLocked'), 'lock');
+        } catch (error) {
+            console.error('更新灵动岛位置失败:', error);
         }
     });
 
     // 监听后端发来的高频 UDP FPS 信号
     await listen<{ fps: number }>('fps-event', (event) => {
-        currentFps.value = event.payload.fps;
+        if (Number.isFinite(event.payload.fps) && event.payload.fps > 0) {
+            pluginFps.value = Math.round(event.payload.fps);
+            lastPluginFpsAt.value = Date.now();
+        }
     });
+
+    // 本地已记住开关时，每次程序重启都必须真正重启采集器，
+    // 否则只会恢复“已开启”的界面状态，FPS 会一直停在初始值。
+    if (enableFps.value) {
+        startDesktopFpsSampler();
+        invoke('toggle_fps_plugin', { enable: true }).catch(console.error);
+    }
 
     // 在你原有的每秒刷新定时器中，顺带执行音乐同步
     // 1. 高频定时器：专门负责网速和硬件监控（每 500ms ~ 1000ms 刷新一次）
     speedTimer = setInterval(async () => {
         // 刷新网速
         fetchSpeedStats();
+
+        // 设备信息仅在展开且至少启用一张设备卡时读取；800ms 一次并防止请求重叠。
+        refreshDeviceStatus();
 
         // 实时同步给任务栏插件
         syncToTaskbar();
@@ -2122,11 +2522,17 @@ onMounted(async () => {
         lastTickTime = now;
 
         if (isPlaying.value) {
+            const shouldAdvanceKugouLyrics =
+                (localStorage.getItem('nsd_target_player') || 'netease') !== 'kugou' ||
+                kugouTimelineReady.value;
+
             // 1. 播放状态下，本地时钟疯狂往前推算
-            localPositionMs.value += delta;
+            if (shouldAdvanceKugouLyrics) {
+                localPositionMs.value += delta;
+            }
 
             // 2. 毫秒级歌词匹配与队列逻辑 (解决快节奏吞字、闪烁消失问题)
-            if (parsedLyrics.value.length > 0) {
+            if (shouldAdvanceKugouLyrics && parsedLyrics.value.length > 0) {
                 let matchedIndex = -1;
 
                 // 找出当前时间进度应该播放哪一句
@@ -2207,6 +2613,8 @@ onMounted(async () => {
 
 onUnmounted(() => {
     stopWebSocket();
+    stopDesktopFpsSampler();
+    if (calendarRefreshTimer) clearInterval(calendarRefreshTimer);
     window.removeEventListener('blur', collapseMusic);
     clearInterval(speedTimer);
     clearInterval(pingTimer);
@@ -2550,6 +2958,12 @@ onUnmounted(() => {
     height: 20px;
 }
 
+.play-btn,
+.play-btn:hover,
+.play-btn:active {
+    background: transparent !important;
+}
+
 /* 控件显隐淡入淡出动画过渡 */
 .fade-enter-active,
 .fade-leave-active {
@@ -2719,6 +3133,25 @@ onUnmounted(() => {
     padding: 0 !important;
 }
 
+.music-ctl-box.expanded::before {
+    content: '';
+    position: absolute;
+    top: 14px;
+    left: 16px;
+    right: 270px;
+    height: 118px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.025));
+    box-sizing: border-box;
+    pointer-events: none;
+}
+
+.music-ctl-box.expanded:not(.has-calendar)::before {
+    right: 16px;
+    height: 94px;
+}
+
 /* 顶部容器：取消 all 过渡，让它跟着 Rust 窗口的拉伸严丝合缝地重排 */
 .music-top-row {
     display: flex;
@@ -2731,10 +3164,11 @@ onUnmounted(() => {
 }
 
 .music-ctl-box.expanded .music-top-row {
-    height: 46px;
-    margin-top: 10px !important;
-    margin-left: 5px !important;
+    height: 62px;
+    margin-top: 22px !important;
+    margin-left: 28px !important;
     border: none;
+    z-index: 1;
 }
 
 /* 封面：覆盖掉上面的 transition: all，只保留变形和圆角的过渡 */
@@ -2743,9 +3177,9 @@ onUnmounted(() => {
 }
 
 .music-ctl-box.expanded .album-cover {
-    width: 46px !important;
-    height: 46px !important;
-    border-radius: 8px !important;
+    width: 62px !important;
+    height: 62px !important;
+    border-radius: 12px !important;
     animation: none !important;
     border: none;
     transform: translateX(0px) rotate(0deg) !important;
@@ -2764,12 +3198,16 @@ onUnmounted(() => {
 
 /* 歌曲文本遮罩：取消过渡，随窗口大小瞬间变化 */
 .music-ctl-box.expanded .music-info-mask-box {
-    left: 62px !important;
-    right: 55px !important;
+    left: 108px !important;
+    right: 290px !important;
     display: flex !important;
     align-items: center !important;
     justify-content: flex-start !important;
     transition: none !important;
+}
+
+.music-ctl-box.expanded:not(.has-calendar) .music-info-mask-box {
+    right: 70px !important;
 }
 
 /* 你的两套文字过渡逻辑非常完美，全部保留原样（因为 opacity 不影响排版） */
@@ -2811,7 +3249,7 @@ onUnmounted(() => {
 }
 
 .song-title {
-    font-size: 15px;
+    font-size: 18px;
     font-weight: 700;
     margin-bottom: 2px;
     white-space: nowrap;
@@ -2823,7 +3261,7 @@ onUnmounted(() => {
 }
 
 .song-artist {
-    font-size: 12.5px;
+    font-size: 14px;
     opacity: 0.65;
     white-space: nowrap;
     overflow: hidden;
@@ -2836,13 +3274,20 @@ onUnmounted(() => {
 /* 媒体控件与频谱 */
 .music-ctl-box.expanded .music-controls {
     position: absolute;
-    top: 62px;
-    left: 50%;
+    top: 88px;
+    left: calc((100% - 266px) / 2 + 8px);
     transform: translateX(-50%);
-    width: 100%;
+    width: calc(100% - 286px);
     display: flex;
     justify-content: center;
     gap: 34px;
+    z-index: 1;
+}
+
+.music-ctl-box.expanded:not(.has-calendar) .music-controls {
+    top: 75px;
+    left: 50%;
+    width: 100%;
 }
 
 .music-ctl-box.expanded .ctl-btn svg {
@@ -2858,24 +3303,104 @@ onUnmounted(() => {
 /* 展开媒体卡片底部的组合监控摘要 */
 .expanded-monitor-row {
     position: absolute;
-    left: 5px;
-    right: 5px;
-    bottom: 11px;
-    height: 32px;
-    display: flex;
+    left: 16px;
+    right: 16px;
+    bottom: 8px;
+    height: 47px;
+    display: grid;
     align-items: stretch;
-    gap: 6px;
+    gap: 8px;
     padding: 0;
     box-sizing: border-box;
     -webkit-app-region: no-drag;
 }
 
+.expanded-monitor-row.has-calendar {
+    right: 270px;
+}
+
+.expanded-calendar-card {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    width: 242px;
+    min-height: 230px;
+    padding: 12px 16px 10px;
+    border: 1px solid rgba(182, 224, 238, 0.15);
+    border-radius: 12px;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.045));
+    box-sizing: border-box;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    -webkit-app-region: no-drag;
+}
+
+.expanded-calendar-card.without-music {
+    top: 10px;
+    min-height: 170px;
+}
+
+.calendar-month,
+.calendar-weekday {
+    color: #b6e0ee;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.55px;
+    line-height: 1;
+}
+
+.calendar-date {
+    margin: 3px 0 2px;
+    font-size: 40px;
+    font-weight: 780;
+    letter-spacing: -1px;
+    line-height: 0.92;
+}
+
+.calendar-weekday {
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 10px;
+    letter-spacing: 0.35px;
+}
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 8px 5px;
+    margin-top: 12px;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.calendar-grid-weekday {
+    color: rgba(255, 255, 255, 0.48);
+    font-size: 9px;
+}
+
+.calendar-grid-day {
+    display: grid;
+    width: 21px;
+    height: 21px;
+    place-items: center;
+    border-radius: 50%;
+}
+
+.calendar-grid-day.is-today {
+    background: #79d8ef;
+    color: #071217;
+    box-shadow: 0 0 7px rgba(121, 216, 239, 0.42);
+}
+
 .expanded-resource-summary {
-    flex: 2 1 0;
+    grid-column: span 2;
     min-width: 0;
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: stretch;
-    gap: 6px;
+    gap: 8px;
 }
 
 .monitor-chip {
@@ -2945,7 +3470,7 @@ onUnmounted(() => {
 }
 
 .fps-pill.compact {
-    flex: 1 1 0;
+    width: 100%;
     min-width: 0;
     padding: 0 8px;
     border-radius: 9px;
@@ -2979,7 +3504,7 @@ onUnmounted(() => {
 }
 
 .telemetry-speed-card {
-    flex: 1.15 1 0;
+    width: 100%;
     padding: 4px 8px;
     border-radius: 9px;
     border: 1px solid rgba(255, 255, 255, 0.09);
@@ -2988,7 +3513,7 @@ onUnmounted(() => {
 
 .telemetry-speed-line {
     display: grid;
-    grid-template-columns: 10px minmax(0, 1fr);
+    grid-template-columns: 14px minmax(0, 1fr);
     align-items: center;
     gap: 3px;
     width: 100%;
@@ -2998,9 +3523,9 @@ onUnmounted(() => {
     line-height: 1;
 }
 
-.telemetry-speed-line b {
-    font-size: 7px;
-    opacity: 0.58;
+.speed-direction-icon {
+    justify-self: center;
+    opacity: 0.62;
 }
 
 .telemetry-speed-line em {
@@ -3011,13 +3536,171 @@ onUnmounted(() => {
     font-style: normal;
 }
 
-.audio-spectrum.expanded {
+/* 位置调整模式：在拖动时覆盖普通内容，避免鼠标移入触发灵动岛展开。 */
+.position-adjustment-box {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.position-adjustment-box svg {
+    width: 17px;
+    height: 17px;
+    flex: 0 0 17px;
+    opacity: 0.8;
+}
+
+/* 展开态设备信息：保持现有监控卡不动，仅追加第二层状态卡。 */
+.device-status-row {
     position: absolute;
-    right: 18px !important;
-    top: 27px !important;
-    transform: scale(1.3);
+    left: 16px;
+    right: 16px;
+    height: 42px;
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+    z-index: 4;
+    -webkit-app-region: no-drag;
+}
+
+.device-status-row.with-music {
+    bottom: 61px;
+    height: 47px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.device-status-row.with-music:not(.has-monitor-row) {
+    bottom: 8px;
+}
+
+.device-status-row.without-music {
+    left: 12px;
+    right: 12px;
+    bottom: 10px;
+    height: 81px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.device-status-row.has-calendar {
+    right: 270px;
+}
+
+.device-status-row.without-music.has-calendar {
+    right: 260px;
+}
+
+.device-status-card {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 9px;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.045));
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.device-status-icon {
+    width: 21px;
+    height: 21px;
+    flex: 0 0 21px;
+    opacity: 0.92;
+}
+
+.device-status-copy {
+    min-width: 0;
+    flex: 1;
+    display: grid;
+    grid-template-rows: auto auto auto;
+    align-content: center;
+    gap: 2px;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+    line-height: 1;
+}
+
+.device-status-label {
+    overflow: hidden;
+    color: currentColor;
+    font-size: 7px;
+    font-weight: 750;
+    opacity: 0.55;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.device-status-copy strong {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 9.5px;
+    font-weight: 720;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.device-status-copy small {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 7px;
+    font-weight: 580;
+    opacity: 0.55;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.device-volume-track {
+    width: 100%;
+    height: 3px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+}
+
+.device-volume-fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: #34c759;
+    transition: width 0.25s ease;
+}
+
+.device-row-fade-enter-active,
+.device-row-fade-leave-active {
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.device-row-fade-enter-from,
+.device-row-fade-leave-to {
+    opacity: 0;
+    transform: translateY(4px);
+}
+
+.music-ctl-box.expanded .audio-spectrum.embedded {
+    position: absolute;
+    right: 32px !important;
+    top: 28px !important;
+    transform: scale(1.15);
+    z-index: 3;
+    pointer-events: none;
     /* 把 all 换成具体的属性，防止抖动 */
     transition: opacity 0.3s ease, transform 0.3s ease !important;
+}
+
+.music-ctl-box.expanded.has-calendar .audio-spectrum.embedded {
+    right: 286px !important;
 }
 
 /* 强制靠左对齐，干掉原本的 align-items: center。否则长文本会向两边溢出，导致开头被裁 */
@@ -3374,13 +4057,47 @@ onUnmounted(() => {
 
 .monitor-dashboard.expanded {
     inset: 8px 5px;
+    display: grid;
     gap: 6px;
     padding: 0 4px;
     border-radius: 14px;
 }
 
+.monitor-dashboard.expanded.has-device-row {
+    inset: 10px 12px 99px;
+}
+
+.monitor-dashboard.expanded.has-calendar {
+    right: 260px;
+}
+
+.monitor-dashboard.expanded.has-calendar:not(.has-device-row) {
+    inset: 10px 260px 99px 12px;
+}
+
 .monitor-dashboard.expanded .resource-box {
+    grid-column: span 2;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
+}
+
+.monitor-dashboard.expanded .fps-pill,
+.monitor-dashboard.expanded .monitor-speed-section {
+    width: 100%;
+}
+
+.res-title,
+.fps-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+.status-card-icon {
+    flex: 0 0 auto;
+    opacity: 0.68;
 }
 
 .monitor-dashboard.expanded .res-group,
@@ -3408,7 +4125,7 @@ onUnmounted(() => {
 }
 
 .monitor-dashboard.expanded .telemetry-speed-line {
-    grid-template-columns: 10px minmax(0, 1fr);
+    grid-template-columns: 14px minmax(0, 1fr);
     gap: 5px;
     font-size: 11px;
 }
@@ -3444,6 +4161,15 @@ onUnmounted(() => {
 :deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .telemetry-speed-card {
     background: linear-gradient(145deg, rgba(0, 0, 0, 0.07), rgba(0, 0, 0, 0.035));
     border-color: rgba(0, 0, 0, 0.08);
+}
+
+:deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .device-status-card {
+    background: linear-gradient(145deg, rgba(0, 0, 0, 0.07), rgba(0, 0, 0, 0.035));
+    border-color: rgba(0, 0, 0, 0.08);
+}
+
+:deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .device-volume-track {
+    background: rgba(0, 0, 0, 0.13);
 }
 
 :deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .monitor-chip-track {

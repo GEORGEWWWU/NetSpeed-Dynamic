@@ -1,4 +1,5 @@
 mod audio_spectrum;
+mod device_status;
 mod music_controller;
 mod notification;
 mod system_events;
@@ -146,6 +147,32 @@ fn toggle_fps_plugin(enable: bool) -> Result<bool, String> {
         }
     }
     Ok(true)
+}
+
+// 读取 Windows 桌面合成器当前使用的刷新率。
+// 游戏 FPS 插件暂时没有前台 3D 帧数据时，前端使用该值作为桌面帧率回退。
+#[tauri::command]
+fn get_desktop_fps() -> Result<u32, String> {
+    use windows_sys::Win32::Graphics::Dwm::{DwmGetCompositionTimingInfo, DWM_TIMING_INFO};
+
+    let mut timing: DWM_TIMING_INFO = unsafe { std::mem::zeroed() };
+    timing.cbSize = std::mem::size_of::<DWM_TIMING_INFO>() as u32;
+
+    let result = unsafe { DwmGetCompositionTimingInfo(std::ptr::null_mut(), &mut timing) };
+    if result < 0 {
+        return Err(format!(
+            "DwmGetCompositionTimingInfo 失败: HRESULT {result:#x}"
+        ));
+    }
+    if timing.rateRefresh.uiDenominator == 0 || timing.rateRefresh.uiNumerator == 0 {
+        return Err("Windows 未返回有效的桌面刷新率".to_string());
+    }
+
+    Ok(
+        ((timing.rateRefresh.uiNumerator as f64 / timing.rateRefresh.uiDenominator as f64).round()
+            as u32)
+            .max(1),
+    )
 }
 
 // 供 Vue 调用的同步数据接口
@@ -450,6 +477,7 @@ pub fn run() {
             toggle_taskbar_plugin,
             sync_to_taskbar,
             audio_spectrum::get_audio_spectrum,
+            device_status::get_device_status,
             music_controller::set_target_player,
             music_controller::set_music_controller_enabled,
             music_controller::is_music_controller_enabled,
@@ -460,6 +488,7 @@ pub fn run() {
             music_controller::start_websocket_lyrics,
             music_controller::stop_websocket_lyrics,
             toggle_fps_plugin,
+            get_desktop_fps,
         ])
         .setup(|app| {
             audio_spectrum::start_monitor();

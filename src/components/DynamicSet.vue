@@ -97,6 +97,25 @@
                 </div>
             </div>
 
+            <div class="neo-card position-card">
+                <div class="card-header">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" class="title-icon">
+                        <path d="M12 2v20M2 12h20" />
+                        <circle cx="12" cy="12" r="4" />
+                    </svg>
+                    <span>{{ t('islandPosition') }}</span>
+                </div>
+                <div class="position-controls">
+                    <span class="position-hint">{{ t('islandPositionDesc') }}</span>
+                    <div class="position-actions">
+                        <button class="position-btn" @click="startPositionAdjustment">{{ t('adjustPosition') }}</button>
+                        <button class="position-btn position-btn-secondary" @click="centerIsland">{{ t('topCenter') }}</button>
+                        <button class="position-btn position-btn-primary" @click="applyPosition">{{ t('applyPosition') }}</button>
+                    </div>
+                </div>
+            </div>
+
         </div>
 
         <div class="list-section">
@@ -299,6 +318,18 @@ const toggleTaskbar = async () => {
     }
 };
 
+const startPositionAdjustment = async () => {
+    await emit('adjust-island-position', { action: 'start' });
+};
+
+const applyPosition = async () => {
+    await emit('adjust-island-position', { action: 'apply' });
+};
+
+const centerIsland = async () => {
+    await emit('adjust-island-position', { action: 'center' });
+};
+
 // 统一监听更新逻辑入口
 watch([baseWidth, baseHeight, musicBaseWidth, musicExpandedWidth, msgExpandedWidth, borderRadius, islandTheme, springStyle, appScale, lyricDelay], async () => {
     // 1. 写入本地缓存
@@ -361,6 +392,62 @@ watch([baseWidth, baseHeight, musicBaseWidth, musicExpandedWidth, msgExpandedWid
     display: flex;
     flex-direction: column;
     transition: transform 0.2s, border-color 0.2s;
+}
+
+.position-card {
+    grid-column: span 3;
+}
+
+.position-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.position-hint {
+    font-size: 13px;
+    color: var(--item-desc-color);
+}
+
+.position-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.position-btn {
+    min-width: 84px;
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--control-border);
+    border-radius: 9px;
+    background: var(--btn-pri-bg);
+    color: var(--btn-sec-color);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.position-btn:hover {
+    border-color: var(--btn-pri-border);
+}
+
+.position-btn:not(.position-btn-secondary) {
+    color: #fff;
+}
+
+.position-btn:not(.position-btn-secondary):hover {
+    color: #fff;
+}
+
+.position-btn-primary {
+    border-color: var(--btn-pri-border);
+    background: var(--btn-pri-bg);
+    color: #fff;
+}
+
+.position-btn-secondary {
+    background: transparent;
 }
 
 .card-header {
