@@ -222,7 +222,13 @@
                                 <div class="res-group">
                                     <div class="res-info-row">
                                         <span class="res-title">
-                                            <Cpu class="status-card-icon" theme="outline" :size="14" :stroke-width="3" />
+                                            <svg class="status-card-icon" viewBox="0 0 24 24" width="14" height="14"
+                                                fill="none" stroke="currentColor" stroke-width="2.4"
+                                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                <rect x="5" y="5" width="14" height="14" rx="2" />
+                                                <rect x="9" y="9" width="6" height="6" rx="1" />
+                                                <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" />
+                                            </svg>
                                             <span class="res-label">CPU</span>
                                         </span>
                                         <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{ cpuUsage
@@ -236,7 +242,12 @@
                                 <div class="res-group">
                                     <div class="res-info-row">
                                         <span class="res-title">
-                                            <Memory class="status-card-icon" theme="outline" :size="14" :stroke-width="3" />
+                                            <svg class="status-card-icon" viewBox="0 0 24 24" width="14" height="14"
+                                                fill="none" stroke="currentColor" stroke-width="2.4"
+                                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                <rect x="3" y="6" width="18" height="12" rx="2" />
+                                                <path d="M7 10v4M11 10v4M15 10v4M19 10v4M7 18v3M17 18v3" />
+                                            </svg>
                                             <span class="res-label">RAM</span>
                                         </span>
                                         <span class="res-value" :class="{ 'high-usage': ramUsage >= 85 }">{{ ramUsage
@@ -250,7 +261,13 @@
                             </div>
                             <div v-if="displayFps" class="fps-pill">
                                 <span class="fps-title">
-                                    <Speed class="status-card-icon" theme="outline" :size="14" :stroke-width="3" />
+                                    <svg class="status-card-icon" viewBox="0 0 24 24" width="14" height="14"
+                                        fill="none" stroke="currentColor" stroke-width="2.4"
+                                        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <path d="M4.3 18a9 9 0 1 1 15.4 0" />
+                                        <path d="m12 15 4-5" />
+                                        <circle cx="12" cy="15" r="1" fill="currentColor" stroke="none" />
+                                    </svg>
                                     <span class="fps-label">FPS</span>
                                 </span>
                                 <span class="fps-value">{{ currentFps || '—' }}</span>
@@ -259,11 +276,19 @@
                                 :class="{ 'has-divider': displayResource || displayFps }">
                                 <Transition name="speed-fade" mode="out-in">
                                     <span v-if="isShowingUpload" class="telemetry-speed-line" key="monitor-up">
-                                        <Upload class="status-card-icon speed-direction-icon" theme="outline" :size="14" :stroke-width="3" />
+                                        <svg class="status-card-icon speed-direction-icon" viewBox="0 0 24 24"
+                                            width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4"
+                                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                            <path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" />
+                                        </svg>
                                         <em>{{ uploadSpeed }}</em>
                                     </span>
                                     <span v-else class="telemetry-speed-line" key="monitor-down">
-                                        <Download class="status-card-icon speed-direction-icon" theme="outline" :size="14" :stroke-width="3" />
+                                        <svg class="status-card-icon speed-direction-icon" viewBox="0 0 24 24"
+                                            width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4"
+                                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                            <path d="M12 5v14M6.5 13.5 12 19l5.5-5.5" />
+                                        </svg>
                                         <em>{{ downloadSpeed }}</em>
                                     </span>
                                 </Transition>
@@ -401,11 +426,6 @@ import { ref, onMounted, onUnmounted, computed, watch, nextTick, type CSSPropert
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow, currentMonitor, PhysicalPosition, LogicalPosition, PhysicalSize } from '@tauri-apps/api/window'; import { Menu, MenuItem } from '@tauri-apps/api/menu';
 import { listen, emit } from '@tauri-apps/api/event';
-import Cpu from '@icon-park/vue-next/es/icons/Cpu';
-import Memory from '@icon-park/vue-next/es/icons/Memory';
-import Speed from '@icon-park/vue-next/es/icons/Speed';
-import Download from '@icon-park/vue-next/es/icons/Download';
-import Upload from '@icon-park/vue-next/es/icons/Upload';
 import { t, currentLanguage, type AppLanguage } from '../i18n';
 
 const isIslandVisible = ref(false);
