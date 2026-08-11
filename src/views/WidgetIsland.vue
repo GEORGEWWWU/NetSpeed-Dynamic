@@ -160,7 +160,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">CPU</span>
                                     <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{ cpuUsage
-                                    }}%</span>
+                                        }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: cpuUsage + '%' }"
@@ -171,7 +171,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">RAM</span>
                                     <span class="res-value" :class="{ 'high-usage': ramUsage >= 85 }">{{ ramUsage
-                                    }}%</span>
+                                        }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: ramUsage + '%' }"
@@ -215,6 +215,42 @@
                                     <span class="value">{{ currentFps }}</span>
                                 </div>
                             </div>
+                        </div>
+
+                        <div v-else-if="displayCustom" class="custom-display-box" key="custom">
+                            <template v-for="(slot, index) in customSlots" :key="'custom' + index">
+                                <div v-if="slot" class="custom-slot-item">
+
+                                    <div v-if="slot === 'speed'" class="speed-single-box custom-speed">
+                                        <div class="speed-item">
+                                            <span
+                                                :class="['label', { 'high-traffic': isHighUpload || isHighDownload }]">⇋</span>
+                                            <span class="value">{{ downloadSpeed }}</span>
+                                        </div>
+                                    </div>
+
+                                    <div v-else-if="slot === 'resource'" class="res-group custom-res">
+                                        <div class="res-info-row">
+                                            <span class="res-label">CPU</span>
+                                            <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{
+                                                cpuUsage }}%</span>
+                                        </div>
+                                        <div class="res-bar-track">
+                                            <div class="res-bar-fill" :style="{ width: cpuUsage + '%' }"
+                                                :class="{ 'high-usage': cpuUsage >= 85 }"></div>
+                                        </div>
+                                    </div>
+
+                                    <div v-else-if="slot === 'fps'" class="speed-single-box custom-fps">
+                                        <div class="speed-item">
+                                            <span class="label">FPS</span>
+                                            <span class="value">{{ currentFps }}</span>
+                                        </div>
+                                    </div>
+
+                                </div>
+                                <div v-else class="custom-slot-empty"></div>
+                            </template>
                         </div>
                     </transition>
                 </div>
@@ -676,13 +712,18 @@ const enableSysResource = ref(localStorage.getItem('nsd_sys_resource') === 'true
 const cpuUsage = ref(0);
 const ramUsage = ref(0);
 
+// 灵动岛自定义显示
+const enableCustomDisplay = ref(localStorage.getItem('nsd_custom_display') === 'true');
+const customSlots = ref<(string | null)[]>(JSON.parse(localStorage.getItem('nsd_custom_slots') || '[null, null, null]'));
+
 // 新增 FPS 判定
-const displayFps = computed(() => !isMsgActive.value && !displaySysToast.value && enableFps.value);
+const displayFps = computed(() => !enableCustomDisplay.value && !isMsgActive.value && !displaySysToast.value && enableFps.value);
 
 // 使用计算属性智能判断当前该显示谁
-const displayResource = computed(() => !isMsgActive.value && !displaySysToast.value && enableSysResource.value && !enableFps.value && (!isMusicCtlEnabled.value || !isMediaActive.value));
-const displaySpeed = computed(() => !isMsgActive.value && !displaySysToast.value && !enableSysResource.value && !enableFps.value && (!isMusicCtlEnabled.value || !isMediaActive.value));
-const displayMusic = computed(() => !isMsgActive.value && !displaySysToast.value && isMusicCtlEnabled.value && isMediaActive.value);
+const displayCustom = computed(() => !isMsgActive.value && !displaySysToast.value && enableCustomDisplay.value);
+const displayResource = computed(() => !enableCustomDisplay.value && !isMsgActive.value && !displaySysToast.value && enableSysResource.value && !enableFps.value && (!isMusicCtlEnabled.value || !isMediaActive.value));
+const displaySpeed = computed(() => !enableCustomDisplay.value && !isMsgActive.value && !displaySysToast.value && !enableSysResource.value && !enableFps.value && (!isMusicCtlEnabled.value || !isMediaActive.value));
+const displayMusic = computed(() => !isMsgActive.value && !displaySysToast.value && isMusicCtlEnabled.value && isMediaActive.value && !enableCustomDisplay.value);
 
 // 智能判断静默模式下是否该显示：有消息、有系统提示，或开启了音乐控制且正在播放
 const shouldShowInQuietMode = computed(() =>
@@ -718,7 +759,7 @@ const showCoverglassBg = computed(() => {
 // 辅助函数：获取当前状态应该拥有的默认大小
 const getBaseSize = () => {
     if (displayFps.value) return { w: nsdBaseWidth.value, h: nsdBaseHeight.value };
-    if (displayResource.value) return { w: nsdMusicBaseWidth.value, h: Math.max(nsdBaseHeight.value + 8, 42) };
+    if (displayCustom.value || displayResource.value) return { w: nsdMusicBaseWidth.value, h: Math.max(nsdBaseHeight.value + 8, 42) };
     if (displaySpeed.value) return { w: nsdBaseWidth.value, h: nsdBaseHeight.value };
     return { w: nsdMusicBaseWidth.value, h: Math.max(nsdBaseHeight.value + 8, 42) };
 };
@@ -1580,6 +1621,17 @@ onMounted(async () => {
     document.addEventListener('contextmenu', (e) => {
         e.preventDefault();
     }, { capture: true }); // 使用捕获阶段，确保先于 Tauri 底层拦截
+
+    // 接收自定义显示指令
+    await listen<{ enabled: boolean, slots: (string | null)[] }>('control-custom-display', (event) => {
+        enableCustomDisplay.value = event.payload.enabled;
+        customSlots.value = event.payload.slots;
+
+        if (!isMsgActive.value && !displaySysToast.value && !isMusicExpanded.value && !isMusicExpanding.value) {
+            const { w, h } = getBaseSize();
+            animateIslandSize(w, h);
+        }
+    });
 
     // 音乐控制器状态监听器
     await listen<{ enabled: boolean }>('control-music-ctl', (event) => {
@@ -3064,5 +3116,44 @@ onUnmounted(() => {
     border-radius: 2px;
     opacity: 0.95;
     will-change: width;
+}
+
+/* 自定义显示组合样式 */
+.custom-display-box {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding-right: 8px;
+    gap: 8px;
+    -webkit-app-region: no-drag;
+}
+
+.custom-slot-item {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-width: 0;
+    height: 100%;
+}
+
+.custom-slot-empty {
+    flex: 1;
+}
+
+.custom-speed .speed-item,
+.custom-fps .speed-item {
+    justify-content: center;
+    width: 100%;
+}
+
+.custom-res {
+    width: 100%;
+    justify-content: center;
 }
 </style>

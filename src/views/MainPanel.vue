@@ -408,6 +408,64 @@
                                         <span class="slider"></span>
                                     </label>
                                 </div>
+                                <div class="custom-display-container">
+                                    <div class="custom-sub-item top-sub-item">
+                                        <div class="set-item-meta">
+                                            <span class="set-item-title">{{ t('customDisplay') }}</span>
+                                            <span class="set-item-desc">{{ t('customDisplayDesc') }}</span>
+                                        </div>
+                                        <label class="switch mini-switch">
+                                            <input type="checkbox" v-model="enableCustomDisplay">
+                                            <span class="slider"></span>
+                                        </label>
+                                    </div>
+
+                                    <div class="custom-sub-item bottom-sub-item"
+                                        :class="{ 'is-dropdown-open': isCustomMenuOpen }">
+                                        <div class="set-item-meta">
+                                            <span class="set-item-title">{{ t('customSettings') }}</span>
+                                        </div>
+                                        <div class="custom-dropdown" :class="{ 'is-dragging': draggedItem !== null }"
+                                            tabindex="0" @blur="isCustomMenuOpen = false">
+                                            <div class="dropdown-trigger" style="width: 90px;"
+                                                @click="isCustomMenuOpen = !isCustomMenuOpen">
+                                                <div class="current-item">{{ t('clickToConfig') }}</div>
+                                                <svg viewBox="0 0 24 24" class="arrow-icon"
+                                                    :class="{ 'is-open': isCustomMenuOpen }">
+                                                    <path d="M7 10l5 5 5-5" fill="none" stroke="currentColor"
+                                                        stroke-width="2" stroke-linecap="round" />
+                                                </svg>
+                                            </div>
+
+                                            <transition name="dropdown-up">
+                                                <div class="dropdown-menu custom-dnd-menu" v-show="isCustomMenuOpen">
+                                                    <div class="dnd-row slots-row">
+                                                        <div v-for="(slot, index) in customSlots" :key="'slot' + index"
+                                                            :data-index="index" class="dnd-slot"
+                                                            :class="{ 'has-item': slot }">
+                                                            <div v-if="slot" class="dnd-item"
+                                                                @pointerdown="onPointerDown(slot, index, $event)">
+                                                                {{ getFeatureName(slot) }}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="dnd-row pool-row">
+                                                        <div v-for="feat in availableFeatures" :key="feat"
+                                                            class="dnd-item"
+                                                            @pointerdown="onPointerDown(feat, -1, $event)">
+                                                            {{ getFeatureName(feat) }}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </transition>
+
+                                            <Teleport to="body">
+                                                <div ref="dragGhostRef" class="dnd-ghost" style="display: none;"></div>
+                                            </Teleport>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                         </div>
@@ -502,6 +560,169 @@ const togglePage = () => {
 
 const isChecking = ref(false);
 const hasNewVersion = ref(false);
+
+// --- 灵动岛自定义插件布局逻辑 ---
+const enableCustomDisplay = ref(localStorage.getItem('nsd_custom_display') === 'true');
+const customSlots = ref<(string | null)[]>(JSON.parse(localStorage.getItem('nsd_custom_slots') || '[null, null, null]'));
+const isCustomMenuOpen = ref(false);
+
+const availableFeatures = computed(() => {
+    return ['speed', 'resource', 'fps'].filter(f => !customSlots.value.includes(f));
+});
+
+const getFeatureName = (feat: string) => {
+    if (feat === 'speed') return t('featSpeed');
+    if (feat === 'resource') return t('featResource');
+    if (feat === 'fps') return t('featFps');
+    return feat;
+};
+
+// --- 🛡️ 防弹级 Pointer Events 拖拽 (彻底解决卡死/锁死问题) ---
+const draggedItem = ref<string | null>(null);
+const draggedSourceIndex = ref<number | null>(null);
+const dragGhostRef = ref<HTMLElement | null>(null);
+const isDragging = ref(false);
+
+let safetyTimer: number | null = null;
+
+// 绑定到 window 的全局处理函数引用（用于后续移除）
+const handleGlobalMove = (e: PointerEvent) => {
+    if (!isDragging.value || !dragGhostRef.value) return;
+
+    // 移动幽灵
+    dragGhostRef.value.style.left = `${e.clientX}px`;
+    dragGhostRef.value.style.top = `${e.clientY}px`;
+
+    // 实时高亮
+    highlightDropTarget(e.clientX, e.clientY);
+};
+
+const handleGlobalUp = (e: PointerEvent) => {
+    if (!isDragging.value) return;
+
+    // 执行放置
+    handleDropAtPoint(e.clientX, e.clientY);
+
+    // 彻底清理
+    cleanupDrag();
+};
+
+const onPointerDown = (item: string, index: number, event: PointerEvent) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation(); // 防止触发 Tauri 的窗口拖拽
+
+    // 1. 设置状态
+    draggedItem.value = item;
+    draggedSourceIndex.value = index;
+    isDragging.value = true;
+
+    // 2. 显示幽灵
+    if (dragGhostRef.value) {
+        dragGhostRef.value.textContent = getFeatureName(item);
+        dragGhostRef.value.style.display = 'flex';
+        dragGhostRef.value.style.left = `${event.clientX}px`;
+        dragGhostRef.value.style.top = `${event.clientY}px`;
+    }
+
+    // 3. 【核心】将 move/up 绑定到 window，无视元素边界
+    window.addEventListener('pointermove', handleGlobalMove);
+    window.addEventListener('pointerup', handleGlobalUp);
+    // 兼容点取消（比如按了 Esc 或系统中断）
+    window.addEventListener('pointercancel', handleGlobalUp);
+
+    // 4. 【安全阀】5秒后如果还没结束，强制重置，防止永久卡死
+    if (safetyTimer) clearTimeout(safetyTimer);
+    safetyTimer = window.setTimeout(() => {
+        if (isDragging.value) {
+            console.warn('拖拽安全阀触发：强制重置状态');
+            cleanupDrag();
+        }
+    }, 5000);
+};
+
+// 统一的清理函数
+const cleanupDrag = () => {
+    isDragging.value = false;
+    draggedItem.value = null;
+    draggedSourceIndex.value = null;
+
+    // 移除 window 监听器
+    window.removeEventListener('pointermove', handleGlobalMove);
+    window.removeEventListener('pointerup', handleGlobalUp);
+    window.removeEventListener('pointercancel', handleGlobalUp);
+
+    // 清理安全阀
+    if (safetyTimer) {
+        clearTimeout(safetyTimer);
+        safetyTimer = null;
+    }
+
+    // 隐藏幽灵并清除高亮
+    if (dragGhostRef.value) dragGhostRef.value.style.display = 'none';
+    document.querySelectorAll('.dnd-slot').forEach(el => el.classList.remove('is-drag-over'));
+};
+
+// 精准探测放置
+const handleDropAtPoint = (x: number, y: number) => {
+    if (dragGhostRef.value) dragGhostRef.value.style.display = 'none';
+
+    const elements = document.elementsFromPoint(x, y);
+    const slotEl = elements.find(el => el.classList.contains('dnd-slot')) as HTMLElement;
+    const poolEl = elements.find(el => el.classList.contains('pool-row')) as HTMLElement;
+
+    if (slotEl) {
+        const targetIndex = Number(slotEl.dataset.index);
+        if (!isNaN(targetIndex)) executeDrop(targetIndex);
+    } else if (poolEl) {
+        executeDrop(-1);
+    }
+};
+
+const executeDrop = (targetIndex: number) => {
+    if (!draggedItem.value) return;
+    const newSlots = [...customSlots.value];
+
+    if (draggedSourceIndex.value === -1) {
+        newSlots[targetIndex] = draggedItem.value;
+    } else if (draggedSourceIndex.value !== null) {
+        if (targetIndex === -1) {
+            newSlots[draggedSourceIndex.value] = null;
+        } else {
+            const temp = newSlots[targetIndex];
+            newSlots[targetIndex] = draggedItem.value;
+            newSlots[draggedSourceIndex.value] = temp;
+        }
+    }
+    customSlots.value = newSlots;
+};
+
+const highlightDropTarget = (x: number, y: number) => {
+    document.querySelectorAll('.dnd-slot').forEach(el => el.classList.remove('is-drag-over'));
+    if (dragGhostRef.value) dragGhostRef.value.style.display = 'none';
+
+    const elements = document.elementsFromPoint(x, y);
+    const slotEl = elements.find(el => el.classList.contains('dnd-slot'));
+
+    if (dragGhostRef.value) dragGhostRef.value.style.display = 'flex';
+    if (slotEl) slotEl.classList.add('is-drag-over');
+};
+
+// 组件卸载时兜底清理
+onUnmounted(() => {
+    cleanupDrag();
+});
+
+// 监听变动并通知灵动岛
+watch(enableCustomDisplay, async (newVal) => {
+    localStorage.setItem('nsd_custom_display', String(newVal));
+    await emit('control-custom-display', { enabled: newVal, slots: customSlots.value });
+});
+
+watch(customSlots, async (newVal) => {
+    localStorage.setItem('nsd_custom_slots', JSON.stringify(newVal));
+    await emit('control-custom-display', { enabled: enableCustomDisplay.value, slots: newVal });
+}, { deep: true });
 
 const enableFps = ref(localStorage.getItem('nsd_fps_monitor') === 'true');
 
@@ -1262,6 +1483,8 @@ onMounted(async () => {
     if (savedState) {
         await emit('control-island-visibility', { show: true });
     }
+
+    emit('control-custom-display', { enabled: enableCustomDisplay.value, slots: customSlots.value }).catch(() => { });
 });
 
 onUnmounted(() => {
@@ -2527,7 +2750,8 @@ input:disabled+.slider {
     width: 100%;
     position: relative;
     z-index: 5;
-    clip-path: inset(0 0 -250px 0);
+    /* 核心修复 2：顶部由 0 改为 -200px，允许元素向上溢出不被裁切！ */
+    clip-path: inset(-200px 0 -250px 0);
 }
 
 /* 快速响应的贝塞尔曲线平滑轨道 */
@@ -2597,5 +2821,166 @@ input:disabled+.slider {
     opacity: 0.9;
     width: 12px;
     border-radius: 3px;
+}
+
+/* 自定义显示容器：修复等分挤压 */
+.custom-display-container {
+    grid-row: span 2;
+    display: flex;
+    flex-direction: column;
+    background: rgba(150, 150, 150, 0.05);
+    /* 微微的底色区分 */
+    border-radius: 16px;
+    margin: 2px 4px;
+}
+
+.custom-sub-item {
+    flex: 1;
+    /* 平均瓜分两行 145px 的高度 */
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    position: relative;
+}
+
+/* 保证打开菜单时层级最高，下拉菜单不会被盖住 */
+.custom-sub-item.is-dropdown-open {
+    z-index: 8888;
+}
+
+.top-sub-item {
+    border-bottom: 1px dashed var(--chart-border);
+}
+
+/* 修改菜单方向：使其向上弹出，彻底告别底部裁切 */
+.custom-dnd-menu {
+    width: 220px !important;
+    padding: 8px !important;
+    right: 0;
+    top: auto !important;
+    bottom: calc(100% + 6px) !important;
+    transform-origin: bottom right !important;
+}
+
+/* 核心防拦截魔法：当处于拖拽状态时，让所有子元素失去鼠标事件响应，从而保证底层的空位能100%接到 Drop 事件 */
+.custom-dropdown.is-dragging .dnd-item {
+    pointer-events: none;
+}
+
+/* 专属的向上弹出动画过渡 */
+.dropdown-up-enter-active,
+.dropdown-up-leave-active {
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    transform-origin: bottom right;
+}
+
+.dropdown-up-enter-from,
+.dropdown-up-leave-to {
+    opacity: 0;
+    /* 向上弹出时的初始位移，改为正数向下偏 */
+    transform: scaleY(0.95) translateY(4px);
+}
+
+.dnd-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    padding: 6px 0;
+}
+
+.slots-row {
+    border-bottom: 1px dashed var(--chart-border);
+    padding-bottom: 12px;
+}
+
+.pool-row {
+    padding-top: 12px;
+    min-height: 40px;
+}
+
+/* 重新补回拖拽专用的拦截器：拖拽时让功能块本身失去事件，保证 drop 100% 落在底下的槽位上 */
+.custom-dropdown.is-dragging .dnd-item {
+    pointer-events: none;
+}
+
+/* 拖拽状态下，槽位边缘高亮，提供清晰的视觉反馈 */
+.custom-dropdown.is-dragging .dnd-slot {
+    border-color: var(--slider-checked-bg);
+    background: rgba(150, 150, 150, 0.1);
+}
+
+.dnd-slot {
+    border: 1px dashed var(--item-desc-color);
+    border-radius: 6px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(150, 150, 150, 0.05);
+    transition: border-color 0.2s, background-color 0.2s;
+}
+
+/* 当槽位内有功能块时，隐藏虚线边框和底色 */
+.dnd-slot.has-item {
+    border-color: transparent;
+    background-color: transparent;
+}
+
+.dnd-item {
+    background: var(--btn-sec-bg);
+    color: var(--text-body);
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 4px;
+    cursor: grab;
+    width: 100%;
+    box-sizing: border-box;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+    transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+    user-select: none;
+    -webkit-user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 24px;
+}
+
+.dnd-item:active {
+    cursor: grabbing;
+    /* 恢复抓紧手势 */
+    transform: scale(0.92);
+}
+
+/* 拖拽幽灵样式 */
+.dnd-ghost {
+    position: fixed;
+    z-index: 99999;
+    pointer-events: none;
+    /* 极其重要：让鼠标事件穿透幽灵，才能检测到下方的槽位 */
+    background: var(--btn-pri-bg);
+    color: var(--btn-pri-color);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    transform: translate(-50%, -50%);
+    /* 让鼠标位于幽灵中心 */
+    white-space: nowrap;
+}
+
+/* 拖拽悬停时的槽位高亮 */
+.dnd-slot.is-drag-over {
+    border-color: var(--slider-checked-bg) !important;
+    background: rgba(150, 150, 150, 0.2) !important;
+    transform: scale(1.05);
+}
+
+/* 拖拽中的源元素变半透明 */
+.dnd-item {
+    touch-action: none;
+    /* 防止移动端滚动干扰 */
+    cursor: grab;
 }
 </style>

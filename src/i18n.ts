@@ -143,6 +143,13 @@ const messages = {
         taskbarComponent: '任务栏组件',
         pluginMissingTitle: '组件缺失提示',
         pluginMissingDesc: '未检测到任务栏组件，请重启软件，或确保插件已放置在软件根目录下。是否立即前往 GitHub 下载？',
+        customDisplay: '自定义显示',
+        customDisplayDesc: '开启多组件自由组合模式',
+        customSettings: '组合设置',
+        clickToConfig: '点击配置',
+        featSpeed: '网速',
+        featResource: '资源',
+        featFps: 'FPS',
     },
     'en-US': {
         appSubtitle: 'NSD desktop Dynamic Island widget',
@@ -280,6 +287,13 @@ const messages = {
         taskbarComponent: 'Taskbar Component',
         pluginMissingTitle: 'Component Missing',
         pluginMissingDesc: 'Taskbar component not found. Please restart the app or ensure the plugin is in the root directory. Download from GitHub now?',
+        customDisplay: 'Custom Display',
+        customDisplayDesc: 'Free combination mode',
+        customSettings: 'Layout Settings',
+        clickToConfig: 'Click to Config',
+        featSpeed: 'Speed',
+        featResource: 'Resource',
+        featFps: 'FPS',
     },
 };
 
