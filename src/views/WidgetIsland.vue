@@ -221,32 +221,38 @@
                             <template v-for="(slot, index) in customSlots" :key="'custom' + index">
                                 <div v-if="slot" class="custom-slot-item">
 
-                                    <div v-if="slot === 'speed'" class="speed-single-box custom-speed">
-                                        <div class="speed-item">
-                                            <span
-                                                :class="['label', { 'high-traffic': isHighUpload || isHighDownload }]">⇋</span>
-                                            <span class="value">{{ downloadSpeed }}</span>
+                                    <template v-if="slot === 'speed'">
+                                        <div class="custom-data-row">
+                                            <span :class="['custom-label', { 'high-traffic': isHighUpload }]">⬆</span>
+                                            <span class="custom-value">{{ uploadSpeed }}</span>
                                         </div>
-                                    </div>
+                                        <div class="custom-data-row">
+                                            <span :class="['custom-label', { 'high-traffic': isHighDownload }]">⬇</span>
+                                            <span class="custom-value">{{ downloadSpeed }}</span>
+                                        </div>
+                                    </template>
 
-                                    <div v-else-if="slot === 'resource'" class="res-group custom-res">
-                                        <div class="res-info-row">
-                                            <span class="res-label">CPU</span>
-                                            <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{
+                                    <template v-else-if="slot === 'resource'">
+                                        <div class="custom-data-row">
+                                            <span class="custom-label">CPU</span>
+                                            <span class="custom-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{
                                                 cpuUsage }}%</span>
                                         </div>
-                                        <div class="res-bar-track">
-                                            <div class="res-bar-fill" :style="{ width: cpuUsage + '%' }"
-                                                :class="{ 'high-usage': cpuUsage >= 85 }"></div>
+                                        <div class="custom-data-row">
+                                            <span class="custom-label">RAM</span>
+                                            <span class="custom-value" :class="{ 'high-usage': ramUsage >= 85 }">{{
+                                                ramUsage }}%</span>
                                         </div>
-                                    </div>
+                                    </template>
 
-                                    <div v-else-if="slot === 'fps'" class="speed-single-box custom-fps">
-                                        <div class="speed-item">
-                                            <span class="label">FPS</span>
-                                            <span class="value">{{ currentFps }}</span>
+                                    <template v-else-if="slot === 'fps'">
+                                        <div class="custom-data-row justify-center">
+                                            <span class="custom-label">FPS</span>
                                         </div>
-                                    </div>
+                                        <div class="custom-data-row justify-center">
+                                            <span class="custom-value fps-large">{{ currentFps }}</span>
+                                        </div>
+                                    </template>
 
                                 </div>
                                 <div v-else class="custom-slot-empty"></div>
@@ -3118,7 +3124,7 @@ onUnmounted(() => {
     will-change: width;
 }
 
-/* 自定义显示组合样式 */
+/* 自定义显示组合样式（重构版） */
 .custom-display-box {
     position: absolute;
     left: 0;
@@ -3127,18 +3133,23 @@ onUnmounted(() => {
     height: 100%;
     display: flex;
     align-items: center;
-    justify-content: space-around;
-    padding-right: 8px;
-    gap: 8px;
+    justify-content: space-between;
+    padding: 0 2px;
+    gap: 10px;
+    box-sizing: border-box;
     -webkit-app-region: no-drag;
 }
 
 .custom-slot-item {
     flex: 1;
+    /* 平分空间 */
     display: flex;
+    flex-direction: column;
     justify-content: center;
-    align-items: center;
+    gap: 2px;
+    /* 上下行间距 */
     min-width: 0;
+    /* 核心防挤压魔法：允许内容溢出被截断，不撑破 Flex 容器 */
     height: 100%;
 }
 
@@ -3146,14 +3157,49 @@ onUnmounted(() => {
     flex: 1;
 }
 
-.custom-speed .speed-item,
-.custom-fps .speed-item {
-    justify-content: center;
+/* 统一双行内联样式 */
+.custom-data-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     width: 100%;
 }
 
-.custom-res {
-    width: 100%;
+.custom-data-row.justify-center {
     justify-content: center;
+}
+
+/* 统一的小标签风格 (类似 ⬆, CPU, FPS) */
+.custom-label {
+    font-size: 8px;
+    font-weight: 800;
+    opacity: 0.75;
+    color: currentColor;
+    background: rgba(150, 150, 150, 0.15);
+    padding: 1px 2px;
+    border-radius: 2px;
+    line-height: 1;
+    flex-shrink: 0;
+    /* 防止标签被挤变形 */
+}
+
+/* 统一的数值风格 */
+.custom-value {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    /* 超过长度自动打点，绝对不撑破 */
+    text-align: right;
+    transform: translateY(-0.5px);
+}
+
+/* FPS 底部数字专属微调 */
+.fps-large {
+    font-size: 14px;
+    letter-spacing: 0.5px;
 }
 </style>
