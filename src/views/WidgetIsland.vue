@@ -160,7 +160,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">CPU</span>
                                     <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{ cpuUsage
-                                        }}%</span>
+                                    }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: cpuUsage + '%' }"
@@ -171,7 +171,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">RAM</span>
                                     <span class="res-value" :class="{ 'high-usage': ramUsage >= 85 }">{{ ramUsage
-                                        }}%</span>
+                                    }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: ramUsage + '%' }"
@@ -219,7 +219,7 @@
 
                         <div v-else-if="displayCustom" class="custom-display-box" key="custom">
                             <template v-for="(slot, index) in customSlots" :key="'custom' + index">
-                                <div v-if="slot" class="custom-slot-item">
+                                <div v-if="slot" :class="['custom-slot-item', `is-${slot}`]">
 
                                     <template v-if="slot === 'speed'">
                                         <div class="custom-data-row">
@@ -576,6 +576,13 @@ const bakeBlurImage = (url: string): Promise<string> => {
 // 实时FPS功能相关
 const enableFps = ref(localStorage.getItem('nsd_fps_monitor') === 'true');
 const currentFps = ref(0);
+
+// 智能判断并按需启停后端的 FPS 采集插件
+const checkAndToggleFpsPlugin = () => {
+    // 只要开启了独立 FPS 开关，或者“自定义显示”开启且槽位中包含 'fps'，就激活后端采集
+    const needFps = enableFps.value || (enableCustomDisplay.value && customSlots.value.includes('fps'));
+    invoke('toggle_fps_plugin', { enable: needFps }).catch(console.error);
+};
 
 // 记录最后一次接收到真实 WS 歌词的时间
 let lastWsLyricTime = 0;
@@ -1628,10 +1635,13 @@ onMounted(async () => {
         e.preventDefault();
     }, { capture: true }); // 使用捕获阶段，确保先于 Tauri 底层拦截
 
-    // 接收自定义显示指令
+    // 接收自定义显示配置指令
     await listen<{ enabled: boolean, slots: (string | null)[] }>('control-custom-display', (event) => {
         enableCustomDisplay.value = event.payload.enabled;
         customSlots.value = event.payload.slots;
+
+        // 检查自定义槽位中是否有 fps，如果有则自动唤醒采集
+        checkAndToggleFpsPlugin();
 
         if (!isMsgActive.value && !displaySysToast.value && !isMusicExpanded.value && !isMusicExpanding.value) {
             const { w, h } = getBaseSize();
@@ -1899,16 +1909,15 @@ onMounted(async () => {
         }
     };
 
-    // 接收来自控制台的 FPS 指令
+    // 接收来自控制台的独立 FPS 开关指令
     await listen<{ enabled: boolean }>('control-fps-monitor', (event) => {
         enableFps.value = event.payload.enabled;
         if (enableFps.value) {
             isMusicCtlEnabled.value = false;
             enableSysResource.value = false;
-            invoke('toggle_fps_plugin', { enable: true }).catch(console.error);
-        } else {
-            invoke('toggle_fps_plugin', { enable: false }).catch(console.error);
         }
+        // 统一交由调度函数决定是否关闭后端插件
+        checkAndToggleFpsPlugin();
     });
 
     // 监听后端发来的高频 UDP FPS 信号
@@ -2081,6 +2090,9 @@ onMounted(async () => {
     if (isMusicCtlEnabled.value) {
         initWebSocket();
     }
+
+    // 组件挂载时检查一次是否需要开启 FPS 采集
+    checkAndToggleFpsPlugin();
 
     // 初始化时触发一次计算
     setTimeout(() => {
@@ -3124,7 +3136,7 @@ onUnmounted(() => {
     will-change: width;
 }
 
-/* 自定义显示组合样式（重构版） */
+/* 自定义显示组合样式 */
 .custom-display-box {
     position: absolute;
     left: 0;
@@ -3134,7 +3146,7 @@ onUnmounted(() => {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 2px;
+    padding-right: 8px;
     gap: 10px;
     box-sizing: border-box;
     -webkit-app-region: no-drag;
@@ -3142,15 +3154,25 @@ onUnmounted(() => {
 
 .custom-slot-item {
     flex: 1;
-    /* 平分空间 */
+    /* 基础默认值 */
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 2px;
-    /* 上下行间距 */
+    gap: 4px;
     min-width: 0;
-    /* 核心防挤压魔法：允许内容溢出被截断，不撑破 Flex 容器 */
     height: 100%;
+}
+
+/* 给 FPS 分配更窄的宽度占比 */
+.custom-slot-item.is-fps {
+    flex: 0.65;
+}
+
+/* 把省出来的宽度补充给网速和资源 */
+.custom-slot-item.is-speed,
+.custom-slot-item.is-resource {
+    flex: 1.12;
+    /* 放大占比 */
 }
 
 .custom-slot-empty {
