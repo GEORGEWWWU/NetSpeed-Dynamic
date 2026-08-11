@@ -119,26 +119,38 @@
                                 </div>
                             </div>
                             <transition name="fade">
-                                <div class="music-controls" v-show="isMusicExpanded">
-                                    <button class="ctl-btn" @click.stop="prevTrack">
-                                        <svg viewBox="0 0 24 24" fill="currentColor">
-                                            <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
-                                        </svg>
-                                    </button>
-                                    <button class="ctl-btn play-btn" @click.stop="togglePlay">
-                                        <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor">
-                                            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-                                        </svg>
-                                        <svg v-else viewBox="0 0 24 24" fill="currentColor"
-                                            style="transform: translateX(1px);">
-                                            <path d="M8 5v14l11-7z" />
-                                        </svg>
-                                    </button>
-                                    <button class="ctl-btn" @click.stop="nextTrack">
-                                        <svg viewBox="0 0 24 24" fill="currentColor">
-                                            <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
-                                        </svg>
-                                    </button>
+                                <div class="music-expanded-bottom" v-show="isMusicExpanded">
+
+                                    <div class="progress-container">
+                                        <span class="time-text">{{ formattedCurrentTime }}</span>
+                                        <div class="progress-track">
+                                            <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
+                                        </div>
+                                        <span class="time-text">{{ formattedTotalTime }}</span>
+                                    </div>
+
+                                    <div class="music-controls">
+                                        <button class="ctl-btn" @click.stop="prevTrack">
+                                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+                                            </svg>
+                                        </button>
+                                        <button class="ctl-btn play-btn" @click.stop="togglePlay">
+                                            <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                                            </svg>
+                                            <svg v-else viewBox="0 0 24 24" fill="currentColor"
+                                                style="transform: translateX(1px);">
+                                                <path d="M8 5v14l11-7z" />
+                                            </svg>
+                                        </button>
+                                        <button class="ctl-btn" @click.stop="nextTrack">
+                                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+                                            </svg>
+                                        </button>
+                                    </div>
+
                                 </div>
                             </transition>
                         </div>
@@ -434,6 +446,23 @@ const currentBaseInfo = ref(''); // 用于在没有歌词时兜底显示 "歌名
 // 歌词时间推算专用变量
 const localPositionMs = ref(0);
 let lastTickTime = performance.now();
+const currentDurationMs = ref(0);
+// 将毫秒转换为 mm:ss 格式
+const formatTime = (ms: number) => {
+    if (!ms || ms < 0) return '00:00';
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+};
+// 进度条百分比 (限制在 0-100 之间)
+const progressPercent = computed(() => {
+    if (currentDurationMs.value <= 0) return 0;
+    const percent = (localPositionMs.value / currentDurationMs.value) * 100;
+    return Math.min(Math.max(percent, 0), 100);
+});
+const formattedCurrentTime = computed(() => formatTime(localPositionMs.value));
+const formattedTotalTime = computed(() => formatTime(currentDurationMs.value));
 // 歌词防吞字与队列控制
 const lyricQueue = ref<string[]>([]);
 let lastLyricChangeTime = 0;
@@ -749,6 +778,15 @@ const syncMusicStatus = async () => {
             isFirstMediaCheck = false;
             isNewlyEnabled = false;
 
+            // 拦截无效的时长，并智能利用歌词反推
+            if (durationMs > 0) {
+                currentDurationMs.value = durationMs; // 系统给的准，直接用
+            } else if (parsedLyrics.value.length > 0) {
+                // 系统没给时长，但我们有歌词！直接拿最后一句歌词时间 + 8秒尾奏
+                const lastLyric = parsedLyrics.value[parsedLyrics.value.length - 1];
+                currentDurationMs.value = lastLyric.time + 8000;
+            }
+
             currentSongName.value = song;
             currentArtistName.value = artist || t('unknownArtist');
             const newTrackInfo = artist ? `${song} - ${artist}` : song;
@@ -795,6 +833,11 @@ const syncMusicStatus = async () => {
                             if (Date.now() - lastWsLyricTime > 3000) {
                                 if (lrc) {
                                     parsedLyrics.value = parseLrc(lrc);
+                                    // 刚拉到歌词时，如果发现时长还是 0，立刻补救
+                                    if (currentDurationMs.value <= 0 && parsedLyrics.value.length > 0) {
+                                        const lastLyric = parsedLyrics.value[parsedLyrics.value.length - 1];
+                                        currentDurationMs.value = lastLyric.time + 8000;
+                                    }
                                 }
                             }
                         }).catch(() => { });
@@ -1449,7 +1492,7 @@ const expandMusic = (e: MouseEvent) => {
     musicExpandAnimTimer = window.setTimeout(() => {
         isMusicExpanded.value = true;
         isMusicExpanding.value = false;
-        animateIslandSize(nsdMusicExpandedWidth.value, 115);
+        animateIslandSize(nsdMusicExpandedWidth.value, 135);
 
         // 3. 根据 Rust 端的弹簧衰减频率，约 400ms 后动画彻底结束，此时解锁
         setTimeout(() => {
@@ -1579,7 +1622,7 @@ onMounted(async () => {
         // 如果缩放比例被用户拖动改变了，强制刷新当前展现的尺寸
         if (oldScale !== appScale.value) {
             if (isMusicExpanded.value) {
-                animateIslandSize(nsdMusicExpandedWidth.value, 115);
+                animateIslandSize(nsdMusicExpandedWidth.value, 135);
             } else if (isMsgActive.value) {
                 animateIslandSize(nsdMsgExpandedWidth.value, 65);
             } else {
@@ -2347,7 +2390,7 @@ onUnmounted(() => {
 .music-info-mask-box {
     position: absolute;
     left: 30px;
-    right: 18px;
+    right: 10px;
     height: 100%;
     display: flex;
     align-items: center;
@@ -2950,5 +2993,75 @@ onUnmounted(() => {
     display: flex;
     align-items: center;
     width: 100%;
+}
+
+/* --- 媒体控制器展开底部布局 --- */
+.music-expanded-bottom {
+    position: absolute;
+    top: 70px;
+    left: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 8px;
+    box-sizing: border-box;
+}
+
+/* 覆盖掉原有的按钮容器绝对定位，改为由父元素流式排版 */
+.music-ctl-box.expanded .music-controls {
+    position: relative;
+    transform: none !important;
+    top: 0 !important;
+    left: 0;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+}
+
+/* 进度条容器 */
+.progress-container {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    gap: 10px;
+}
+
+/* 两侧的时间文本 */
+.time-text {
+    font-size: 10.5px;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+    opacity: 0.7;
+    font-variant-numeric: tabular-nums;
+    width: 32px;
+    /* 固定宽度防止抖动 */
+    text-align: center;
+    flex-shrink: 0;
+}
+
+/* 进度条底轨 */
+.progress-track {
+    flex-grow: 1;
+    height: 5px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+    cursor: default;
+}
+
+/* 亮色主题适配进度条底轨 */
+:deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .progress-track {
+    background: rgba(0, 0, 0, 0.15);
+}
+
+/* 进度条填充：这里坚决不加 transition，因为你的 localPositionMs 每 50ms 更新，原生刷新最丝滑 */
+.progress-fill {
+    height: 100%;
+    background: currentColor;
+    border-radius: 2px;
+    opacity: 0.95;
+    will-change: width;
 }
 </style>
