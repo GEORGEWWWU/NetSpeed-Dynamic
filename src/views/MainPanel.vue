@@ -414,7 +414,7 @@
                                             <span class="set-item-title">{{ t('customDisplay') }}</span>
                                             <span class="set-item-desc">{{ t('customDisplayDesc') }}</span>
                                         </div>
-                                        <label class="switch mini-switch">
+                                        <label class="switch">
                                             <input type="checkbox" v-model="enableCustomDisplay">
                                             <span class="slider"></span>
                                         </label>
@@ -2395,13 +2395,6 @@ input:checked+.slider:before {
     color: var(--control-border);
     font-size: 14px;
     opacity: 0.8;
-}
-
-/* 缩小的迷你开关，靠左对齐紧贴着标题 */
-.mini-switch {
-    transform: scale(0.65);
-    transform-origin: left center;
-    margin: 0;
 }
 
 input:disabled+.slider {
