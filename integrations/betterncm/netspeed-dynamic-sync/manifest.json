@@ -1,0 +1,16 @@
+{
+  "manifest_version": 1,
+  "name": "NetSpeed Dynamic Sync",
+  "version": "1.0.0",
+  "author": "NetSpeed Dynamic",
+  "description": "把网易云音乐的真实播放进度同步到 NetSpeed Dynamic 的统一歌词时间轴。",
+  "betterncm_version": ">=1.0.0",
+  "ncm3-compatible": true,
+  "injects": {
+    "Main": [
+      {
+        "file": "index.js"
+      }
+    ]
+  }
+}

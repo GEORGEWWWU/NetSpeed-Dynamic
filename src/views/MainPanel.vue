@@ -391,8 +391,8 @@
                                 <!--第二页设置项-->
                                 <div class="set-item">
                                     <div class="set-item-meta">
-                                        <span class="set-item-title">系统资源监控</span>
-                                        <span class="set-item-desc">在灵动岛显示 CPU 与 RAM 占用</span>
+                                        <span class="set-item-title">{{ t('systemResourceMonitor') }}</span>
+                                        <span class="set-item-desc">{{ t('systemResourceMonitorDesc') }}</span>
                                     </div>
                                     <label class="switch">
                                         <input type="checkbox" v-model="enableSysResource" @change="toggleSysResource">
@@ -401,13 +401,87 @@
                                 </div>
                                 <div class="set-item">
                                     <div class="set-item-meta">
-                                        <span class="set-item-title">实时 FPS 显示</span>
-                                        <span class="set-item-desc">在灵动岛显示系统当前帧率</span>
+                                        <span class="set-item-title">{{ t('fpsMonitor') }}</span>
+                                        <span class="set-item-desc">{{ t('fpsMonitorDesc') }}</span>
                                     </div>
                                     <label class="switch">
                                         <input type="checkbox" v-model="enableFps" @change="toggleFps">
                                         <span class="slider"></span>
                                     </label>
+                                </div>
+                                <div class="set-item display-pref-item"
+                                    :class="{ 'is-dropdown-open': isDisplayPreferencesOpen }">
+                                    <div class="set-item-meta">
+                                        <span class="set-item-title">{{ t('displayContent') }}</span>
+                                        <span class="set-item-desc">{{ t('displayContentDesc') }}</span>
+                                    </div>
+                                    <div class="custom-dropdown" tabindex="0"
+                                        @focusout="handleDisplayPreferencesFocusOut">
+                                        <div class="dropdown-trigger display-pref-trigger"
+                                            @click="isDisplayPreferencesOpen = !isDisplayPreferencesOpen">
+                                            <div class="current-item">{{ t('configure') }}</div>
+                                            <svg viewBox="0 0 24 24" class="arrow-icon"
+                                                :class="{ 'is-open': isDisplayPreferencesOpen }">
+                                                <path d="M7 10l5 5 5-5" fill="none" stroke="currentColor"
+                                                    stroke-width="2" stroke-linecap="round" />
+                                            </svg>
+                                        </div>
+                                        <transition name="dropdown">
+                                            <div v-if="isDisplayPreferencesOpen" class="dropdown-menu display-pref-menu">
+                                                <div class="display-pref-group">
+                                                    <span class="display-pref-heading">{{ t('collapsedState') }}</span>
+                                                    <div class="display-pref-options">
+                                                        <label class="display-pref-option">
+                                                            <input type="checkbox" v-model="displayPreferences.collapsed.music"
+                                                                @change="updateDisplayPreferences">
+                                                            <span>{{ t('mediaShort') }}</span>
+                                                        </label>
+                                                        <label class="display-pref-option">
+                                                            <input type="checkbox" v-model="displayPreferences.collapsed.resource"
+                                                                @change="updateDisplayPreferences">
+                                                            <span>{{ t('resourceShort') }}</span>
+                                                        </label>
+                                                        <label class="display-pref-option">
+                                                            <input type="checkbox" v-model="displayPreferences.collapsed.fps"
+                                                                @change="updateDisplayPreferences">
+                                                            <span>{{ t('fpsShort') }}</span>
+                                                        </label>
+                                                        <label class="display-pref-option">
+                                                            <input type="checkbox" v-model="displayPreferences.collapsed.speed"
+                                                                @change="updateDisplayPreferences">
+                                                            <span>{{ t('speedShort') }}</span>
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div class="display-pref-divider"></div>
+                                                <div class="display-pref-group">
+                                                    <span class="display-pref-heading">{{ t('expandedState') }}</span>
+                                                    <div class="display-pref-options">
+                                                        <label class="display-pref-option">
+                                                            <input type="checkbox" v-model="displayPreferences.expanded.music"
+                                                                @change="updateDisplayPreferences">
+                                                            <span>{{ t('mediaShort') }}</span>
+                                                        </label>
+                                                        <label class="display-pref-option">
+                                                            <input type="checkbox" v-model="displayPreferences.expanded.resource"
+                                                                @change="updateDisplayPreferences">
+                                                            <span>{{ t('resourceShort') }}</span>
+                                                        </label>
+                                                        <label class="display-pref-option">
+                                                            <input type="checkbox" v-model="displayPreferences.expanded.fps"
+                                                                @change="updateDisplayPreferences">
+                                                            <span>{{ t('fpsShort') }}</span>
+                                                        </label>
+                                                        <label class="display-pref-option">
+                                                            <input type="checkbox" v-model="displayPreferences.expanded.speed"
+                                                                @change="updateDisplayPreferences">
+                                                            <span>{{ t('speedShort') }}</span>
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </transition>
+                                    </div>
                                 </div>
                             </div>
 
@@ -510,20 +584,6 @@ const enableFps = ref(localStorage.getItem('nsd_fps_monitor') === 'true');
 const toggleFps = async () => {
     localStorage.setItem('nsd_fps_monitor', String(enableFps.value));
     await emit('control-fps-monitor', { enabled: enableFps.value });
-
-    // 互斥逻辑：开启 FPS 时，强制关闭音乐和资源监控
-    if (enableFps.value) {
-        if (enableMusicCtrl.value) {
-            enableMusicCtrl.value = false;
-            localStorage.setItem('nsd_music_ctrl', 'false');
-            await emit('control-music-ctl', { enabled: false });
-        }
-        if (enableSysResource.value) {
-            enableSysResource.value = false;
-            localStorage.setItem('nsd_sys_resource', 'false');
-            await emit('control-sys-resource', { enabled: false });
-        }
-    }
 };
 
 // 音乐控制平台切换功能
@@ -672,25 +732,64 @@ const enableMsgNotify = ref(localStorage.getItem('nsd_msg_notify') === 'true');
 const msgModeEnabled = ref(localStorage.getItem('nsd_msg_mode') === 'true');
 const autoHideFullscreen = ref(localStorage.getItem('nsd_autohide_fs') === 'true');
 const enableSysResource = ref(localStorage.getItem('nsd_sys_resource') === 'true');
+const isDisplayPreferencesOpen = ref(false);
+
+const handleDisplayPreferencesFocusOut = (event: FocusEvent) => {
+    const container = event.currentTarget as HTMLElement;
+    const nextTarget = event.relatedTarget as Node | null;
+    if (!nextTarget || !container.contains(nextTarget)) {
+        isDisplayPreferencesOpen.value = false;
+    }
+};
+
+type DisplayPreferenceGroup = {
+    music: boolean;
+    resource: boolean;
+    fps: boolean;
+    speed: boolean;
+};
+
+type DisplayPreferences = {
+    collapsed: DisplayPreferenceGroup;
+    expanded: DisplayPreferenceGroup;
+};
+
+const readDisplayPreference = (key: string) => localStorage.getItem(key) !== 'false';
+const displayPreferences = ref<DisplayPreferences>({
+    collapsed: {
+        music: readDisplayPreference('nsd_display_collapsed_music'),
+        resource: readDisplayPreference('nsd_display_collapsed_resource'),
+        fps: readDisplayPreference('nsd_display_collapsed_fps'),
+        speed: readDisplayPreference('nsd_display_collapsed_speed'),
+    },
+    expanded: {
+        music: readDisplayPreference('nsd_display_expanded_music'),
+        resource: readDisplayPreference('nsd_display_expanded_resource'),
+        fps: readDisplayPreference('nsd_display_expanded_fps'),
+        speed: readDisplayPreference('nsd_display_expanded_speed'),
+    },
+});
+
+const updateDisplayPreferences = async () => {
+    const preferences: DisplayPreferences = {
+        collapsed: { ...displayPreferences.value.collapsed },
+        expanded: { ...displayPreferences.value.expanded },
+    };
+
+    Object.entries(preferences.collapsed).forEach(([feature, enabled]) => {
+        localStorage.setItem(`nsd_display_collapsed_${feature}`, String(enabled));
+    });
+    Object.entries(preferences.expanded).forEach(([feature, enabled]) => {
+        localStorage.setItem(`nsd_display_expanded_${feature}`, String(enabled));
+    });
+
+    await emit('control-display-preferences', preferences);
+};
 
 // 切换系统资源监控
 const toggleSysResource = async () => {
     localStorage.setItem('nsd_sys_resource', String(enableSysResource.value));
     await emit('control-sys-resource', { enabled: enableSysResource.value });
-
-    // 互斥逻辑：开启系统资源监控时，自动关闭媒体控制器 和 FPS
-    if (enableSysResource.value) {
-        if (enableMusicCtrl.value) {
-            enableMusicCtrl.value = false;
-            localStorage.setItem('nsd_music_ctrl', 'false');
-            await emit('control-music-ctl', { enabled: false });
-        }
-        if (enableFps.value) {
-            enableFps.value = false;
-            localStorage.setItem('nsd_fps_monitor', 'false');
-            await emit('control-fps-monitor', { enabled: false });
-        }
-    }
 };
 
 // 切换消息模式
@@ -1186,27 +1285,17 @@ watch(opacity, async (newVal) => {
 // 添加监听器，将状态同步给灵动岛
 watch(enableMusicCtrl, async (newVal) => {
     localStorage.setItem('nsd_music_ctrl', newVal.toString());
+    await invoke('set_music_controller_enabled', { enabled: newVal });
     await emit('control-music-ctl', { enabled: newVal });
     console.log('音乐控制器状态切换为:', newVal);
-
-    // 互斥逻辑：开启媒体控制器时，自动关闭系统资源监控 和 FPS
-    if (newVal) {
-        if (enableSysResource.value) {
-            enableSysResource.value = false;
-            localStorage.setItem('nsd_sys_resource', 'false');
-            await emit('control-sys-resource', { enabled: false });
-        }
-        if (enableFps.value) {
-            enableFps.value = false;
-            localStorage.setItem('nsd_fps_monitor', 'false');
-            await emit('control-fps-monitor', { enabled: false });
-        }
-    }
 });
 
 onMounted(async () => {
     // 告诉 Rust 上次绑定的目标是谁
     await invoke('set_target_player', { player: targetPlayer.value }).catch(() => { });
+    await invoke('set_music_controller_enabled', { enabled: enableMusicCtrl.value }).catch(() => { });
+    // 预览或应用重启后主动同步开关状态，避免灵动岛遗漏首次事件。
+    await emit('control-music-ctl', { enabled: enableMusicCtrl.value });
 
     // 启动时检测并恢复任务栏组件的状态，实现自动启动
     if (localStorage.getItem('nsd_taskbar_plugin') === 'true') {
@@ -2285,6 +2374,81 @@ input:disabled+.slider {
     gap: 2px;
     max-height: 140px;
     overflow-y: auto;
+}
+
+.display-pref-trigger {
+    width: 82px;
+}
+
+.display-pref-menu {
+    width: 300px;
+    max-height: none;
+    padding: 10px;
+    gap: 9px;
+    overflow: visible;
+}
+
+.display-pref-group {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+.display-pref-heading {
+    color: var(--item-desc-color);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+}
+
+.display-pref-options {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+}
+
+.display-pref-option {
+    position: relative;
+    cursor: pointer;
+}
+
+.display-pref-option input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.display-pref-option span {
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 7px;
+    border-radius: 8px;
+    border: 1px solid var(--select-border);
+    background: var(--select-bg);
+    color: var(--item-desc-color);
+    font-size: 11px;
+    font-weight: 650;
+    transition: all 0.18s ease;
+    box-sizing: border-box;
+}
+
+.display-pref-option:hover span {
+    border-color: var(--slider-checked-bg);
+}
+
+.display-pref-option input:checked + span {
+    color: var(--btn-pri-color);
+    background: var(--btn-pri-bg);
+    border-color: var(--btn-pri-border);
+    box-shadow: 0 2px 7px var(--btn-pri-shadow-hover);
+}
+
+.display-pref-divider {
+    height: 1px;
+    background: var(--control-border);
+    opacity: 0.7;
 }
 
 /* 隐藏原生粗糙的滚动条，替换为你主题风格的细线条 */

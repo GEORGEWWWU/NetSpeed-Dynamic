@@ -1,7 +1,34 @@
-use futures_util::StreamExt;
-use std::sync::Mutex;
+use futures_util::{SinkExt, StreamExt};
+use serde::Deserialize;
+use std::{
+    process::Command,
+    sync::{atomic::{AtomicBool, Ordering}, Mutex},
+    time::{Duration, Instant},
+};
 use tauri::{command, AppHandle, Emitter};
-use tokio_tungstenite::connect_async;
+use tokio::{net::TcpListener, time::timeout};
+use tokio_tungstenite::{accept_async, connect_async, tungstenite::Message};
+
+#[cfg(target_os = "windows")]
+use std::{collections::HashSet, mem::zeroed};
+
+#[cfg(target_os = "windows")]
+fn send_windows_media_key(action: &str) -> bool {
+    use winapi::um::winuser::keybd_event;
+
+    let virtual_key = match action {
+        "next" => 0xB0,
+        "prev" => 0xB1,
+        "play_pause" => 0xB3,
+        _ => return false,
+    };
+
+    unsafe {
+        keybd_event(virtual_key, 0, 0, 0);
+        keybd_event(virtual_key, 0, 0x0002, 0);
+    }
+    true
+}
 
 // --- 引入 SMTC 需要的模块 ---
 use windows::Media::Control::{
@@ -11,6 +38,385 @@ use windows::Media::Control::{
 
 // 全局记录当前选中的平台（默认空，由前端传来）
 static TARGET_PLAYER: Mutex<String> = Mutex::new(String::new());
+static MUSIC_CONTROLLER_ENABLED: AtomicBool = AtomicBool::new(false);
+static KUGOU_TIMELINE_REPORTED: AtomicBool = AtomicBool::new(false);
+
+#[derive(Clone)]
+struct NeteaseBridgeState {
+    song: String,
+    artist: String,
+    playing: bool,
+    position_ms: i64,
+    duration_ms: i64,
+    updated_at: Instant,
+}
+
+#[derive(Deserialize)]
+struct NeteaseBridgePayload {
+    #[serde(rename = "type")]
+    message_type: String,
+    source: String,
+    song: String,
+    #[serde(default)]
+    artist: String,
+    playing: bool,
+    position: i64,
+    duration: i64,
+}
+
+lazy_static::lazy_static! {
+    static ref NETEASE_BRIDGE_STATE: Mutex<Option<NeteaseBridgeState>> = Mutex::new(None);
+}
+
+fn get_fresh_netease_bridge_state() -> Option<NeteaseBridgeState> {
+    let state = NETEASE_BRIDGE_STATE.lock().ok()?.clone()?;
+    (state.updated_at.elapsed() <= Duration::from_secs(3)).then_some(state)
+}
+
+/// 可选的本机 Chromium 调试桥接；默认不启动，仅用于兼容性诊断。
+#[allow(dead_code)]
+pub async fn run_netease_cdp_bridge(app: AppHandle) {
+    const TARGETS_URL: &str = "http://127.0.0.1:47393/json";
+    const PLAYER_EXPRESSION: &str = r#"(()=>{const ranges=Array.from(document.querySelectorAll('input[type=range]'));const slider=ranges.find(e=>Number(e.max)>30&&e.closest('[aria-label]')?.querySelector('.thumb'));const song=document.querySelector('.cmd-space.info-wrapper .main-title,.cmd-space.info-wrapper .vinly-title')?.innerText?.trim()??'';const artist=document.querySelector('.cmd-space.info-wrapper .author')?.innerText?.trim()??'';const position=Number(slider?.value);const duration=Number(slider?.max);return JSON.stringify({type:'player-state',source:'netease',song,artist,playing:Boolean(document.querySelector('[data-testid=tid_playbar_play_btn] .cmd-icon-pause,#btn_pc_minibar_play .cmd-icon-pause')),position:Math.max(0,Math.round(position*1000)),duration:Math.max(0,Math.round(duration*1000))})})()"#;
+
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+    {
+        Ok(client) => client,
+        Err(error) => {
+            eprintln!("[网易云同步] 无法创建本地调试客户端: {error}");
+            return;
+        }
+    };
+
+    loop {
+        let debugger_url = async {
+            let targets = client
+                .get(TARGETS_URL)
+                .send()
+                .await
+                .ok()?
+                .json::<serde_json::Value>()
+                .await
+                .ok()?;
+            targets
+                .as_array()?
+                .iter()
+                .find(|target| target.get("type").and_then(|value| value.as_str()) == Some("page"))?
+                .get("webSocketDebuggerUrl")?
+                .as_str()
+                .map(str::to_string)
+        }
+        .await;
+
+        let Some(debugger_url) = debugger_url else {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            continue;
+        };
+
+        let Ok((mut websocket, _)) = connect_async(&debugger_url).await else {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            continue;
+        };
+
+        println!("[网易云同步] 已连接网易云真实播放器页面");
+        let mut request_id: u64 = 1;
+        let mut reported_first_state = false;
+        loop {
+            let command = serde_json::json!({
+                "id": request_id,
+                "method": "Runtime.evaluate",
+                "params": {
+                    "expression": PLAYER_EXPRESSION,
+                    "returnByValue": true
+                }
+            });
+            if websocket
+                .send(Message::Text(command.to_string()))
+                .await
+                .is_err()
+            {
+                break;
+            }
+
+            let response = loop {
+                match timeout(Duration::from_secs(2), websocket.next()).await {
+                    Ok(Some(Ok(message))) => {
+                        let Ok(text) = message.to_text() else { continue };
+                        let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else {
+                            continue;
+                        };
+                        if value.get("id").and_then(|value| value.as_u64()) == Some(request_id) {
+                            break Some(value);
+                        }
+                    }
+                    _ => break None,
+                }
+            };
+
+            let Some(response) = response else { break };
+            let snapshot_json = response
+                .pointer("/result/result/value")
+                .and_then(|value| value.as_str());
+            let Some(snapshot_json) = snapshot_json else {
+                tokio::time::sleep(Duration::from_millis(250)).await;
+                request_id += 1;
+                continue;
+            };
+            let Ok(payload) = serde_json::from_str::<NeteaseBridgePayload>(snapshot_json) else {
+                tokio::time::sleep(Duration::from_millis(250)).await;
+                request_id += 1;
+                continue;
+            };
+
+            if payload.message_type == "player-state"
+                && payload.source == "netease"
+                && !payload.song.trim().is_empty()
+                && payload.position >= 0
+                && payload.duration > 0
+                && payload.position <= payload.duration + 30_000
+            {
+                let state = NeteaseBridgeState {
+                    song: payload.song.trim().to_string(),
+                    artist: payload.artist.trim().to_string(),
+                    playing: payload.playing,
+                    position_ms: payload.position,
+                    duration_ms: payload.duration,
+                    updated_at: Instant::now(),
+                };
+                if !reported_first_state {
+                    println!(
+                        "[网易云同步] 已读取真实播放进度: {} - {}，{} ms / {} ms",
+                        state.song, state.artist, state.position_ms, state.duration_ms
+                    );
+                    reported_first_state = true;
+                }
+                if let Ok(mut cached) = NETEASE_BRIDGE_STATE.lock() {
+                    *cached = Some(state.clone());
+                }
+                let _ = app.emit(
+                    "websocket-lyrics",
+                    serde_json::json!({ "type": "progress", "position": state.position_ms }),
+                );
+                let _ = app.emit(
+                    "websocket-lyrics",
+                    serde_json::json!({
+                        "type": "playback",
+                        "status": if state.playing { "playing" } else { "paused" }
+                    }),
+                );
+            }
+
+            request_id += 1;
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+
+        println!("[网易云同步] 播放器页面连接中断，等待自动重连");
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
+
+/// 网易云 3.x 主动连接这个仅限本机的桥接端口，把内部真实进度转换成统一播放器时间轴。
+pub fn start_netease_bridge(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let listener = match TcpListener::bind("127.0.0.1:47391").await {
+            Ok(listener) => listener,
+            Err(error) => {
+                eprintln!("[网易云同步] 无法监听 127.0.0.1:47391: {error}");
+                return;
+            }
+        };
+
+        println!("[本地播放器桥接] 进度桥接已启动: ws://127.0.0.1:47391");
+        loop {
+            let (stream, peer) = match listener.accept().await {
+                Ok(connection) => connection,
+                Err(error) => {
+                    eprintln!("[网易云同步] 接收连接失败: {error}");
+                    continue;
+                }
+            };
+
+            if !peer.ip().is_loopback() {
+                continue;
+            }
+
+            let mut websocket = match accept_async(stream).await {
+                Ok(websocket) => websocket,
+                Err(error) => {
+                    eprintln!("[网易云同步] WebSocket 握手失败: {error}");
+                    continue;
+                }
+            };
+
+            println!("[网易云同步] 网易云进度插件已连接");
+            let mut reported_first_state = false;
+            let mut reported_nonzero_state = false;
+            let mut reported_diagnostic = false;
+            while let Ok(Some(message)) = timeout(Duration::from_secs(15), websocket.next()).await {
+                let Ok(message) = message else { break };
+                let Ok(text) = message.to_text() else { continue };
+                let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else {
+                    continue;
+                };
+                if value.get("type").and_then(|value| value.as_str()) == Some("bridge-heartbeat") {
+                    if !reported_diagnostic {
+                        println!("[网易云同步] 插件诊断: {value}");
+                        reported_diagnostic = true;
+                    }
+                    continue;
+                }
+                let Ok(payload) = serde_json::from_value::<NeteaseBridgePayload>(value) else {
+                    continue;
+                };
+
+                if payload.message_type != "player-state"
+                    || payload.source != "netease"
+                    || payload.song.trim().is_empty()
+                    || payload.position < 0
+                    || payload.duration < 0
+                    || (payload.duration > 0 && payload.position > payload.duration + 30_000)
+                {
+                    continue;
+                }
+
+                let state = NeteaseBridgeState {
+                    song: payload.song.trim().to_string(),
+                    artist: payload.artist.trim().to_string(),
+                    playing: payload.playing,
+                    position_ms: payload.position,
+                    duration_ms: payload.duration,
+                    updated_at: Instant::now(),
+                };
+                if !reported_first_state {
+                    println!(
+                        "[网易云同步] 已收到真实播放器状态: {} - {}，位置 {} ms / {} ms，播放={}",
+                        state.song,
+                        state.artist,
+                        state.position_ms,
+                        state.duration_ms,
+                        state.playing
+                    );
+                    reported_first_state = true;
+                }
+                if state.position_ms > 0 && !reported_nonzero_state {
+                    println!(
+                        "[网易云同步] 进度已开始推进: {} ms / {} ms",
+                        state.position_ms, state.duration_ms
+                    );
+                    reported_nonzero_state = true;
+                }
+                if let Ok(mut cached) = NETEASE_BRIDGE_STATE.lock() {
+                    *cached = Some(state.clone());
+                }
+
+                let _ = app.emit(
+                    "websocket-lyrics",
+                    serde_json::json!({ "type": "progress", "position": state.position_ms }),
+                );
+                let _ = app.emit(
+                    "websocket-lyrics",
+                    serde_json::json!({
+                        "type": "playback",
+                        "status": if state.playing { "playing" } else { "paused" }
+                    }),
+                );
+            }
+
+            println!("[网易云同步] 网易云进度插件已断开，等待自动重连");
+            if let Ok(mut cached) = NETEASE_BRIDGE_STATE.lock() {
+                *cached = None;
+            }
+        }
+    });
+}
+
+#[cfg(target_os = "windows")]
+struct NeteaseWindowSearch {
+    process_ids: HashSet<u32>,
+    title: Option<String>,
+}
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn find_netease_window(
+    hwnd: winapi::shared::windef::HWND,
+    lparam: winapi::shared::minwindef::LPARAM,
+) -> winapi::shared::minwindef::BOOL {
+    use std::os::windows::ffi::OsStringExt;
+    use winapi::um::winuser::{GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible};
+
+    let search = &mut *(lparam as *mut NeteaseWindowSearch);
+    if IsWindowVisible(hwnd) == 0 {
+        return 1;
+    }
+
+    let mut process_id = 0;
+    GetWindowThreadProcessId(hwnd, &mut process_id);
+    if !search.process_ids.contains(&process_id) {
+        return 1;
+    }
+
+    let text_len = GetWindowTextLengthW(hwnd);
+    if text_len <= 0 {
+        return 1;
+    }
+
+    let mut buffer = vec![0u16; text_len as usize + 1];
+    let copied = GetWindowTextW(hwnd, buffer.as_mut_ptr(), buffer.len() as i32);
+    if copied > 0 {
+        let title = std::ffi::OsString::from_wide(&buffer[..copied as usize])
+            .to_string_lossy()
+            .trim()
+            .to_string();
+        if title.contains(" - ") {
+            search.title = Some(title);
+            return 0;
+        }
+    }
+
+    1
+}
+
+#[cfg(target_os = "windows")]
+fn get_netease_window_info() -> Option<(String, String)> {
+    use winapi::um::{handleapi::CloseHandle, tlhelp32::{CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS}};
+
+    let mut process_ids = HashSet::new();
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        let mut entry: PROCESSENTRY32W = zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+
+        if Process32FirstW(snapshot, &mut entry) != 0 {
+            loop {
+                let name_end = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len());
+                let process_name = String::from_utf16_lossy(&entry.szExeFile[..name_end]);
+                if process_name.eq_ignore_ascii_case("cloudmusic.exe") {
+                    process_ids.insert(entry.th32ProcessID);
+                }
+                if Process32NextW(snapshot, &mut entry) == 0 {
+                    break;
+                }
+            }
+        }
+        CloseHandle(snapshot);
+    }
+
+    if process_ids.is_empty() {
+        return None;
+    }
+
+    let mut search = NeteaseWindowSearch { process_ids, title: None };
+    unsafe {
+        winapi::um::winuser::EnumWindows(Some(find_netease_window), &mut search as *mut _ as isize);
+    }
+    let title = search.title?;
+    let (song, artist) = title.split_once(" - ")?;
+    let song = song.trim().to_string();
+    let artist = artist.trim().to_string();
+    (!song.is_empty()).then_some((song, artist))
+}
 
 // 给前端调用的切换接口
 #[command]
@@ -18,6 +424,16 @@ pub fn set_target_player(player: String) {
     if let Ok(mut target) = TARGET_PLAYER.lock() {
         *target = player;
     }
+}
+
+#[command]
+pub fn set_music_controller_enabled(enabled: bool) {
+    MUSIC_CONTROLLER_ENABLED.store(enabled, Ordering::SeqCst);
+}
+
+#[command]
+pub fn is_music_controller_enabled() -> bool {
+    MUSIC_CONTROLLER_ENABLED.load(Ordering::SeqCst)
 }
 
 // 自动匹配你选择的软件
@@ -60,7 +476,6 @@ fn get_target_media_session() -> Option<GlobalSystemMediaTransportControlsSessio
     for session in sessions {
         if let Ok(app_id) = session.SourceAppUserModelId() {
             let app_id_str = app_id.to_string().to_lowercase();
-
             // 网易云特殊一点，包名可能叫 cloudmusic 或 netease
             if target == "netease"
                 && (app_id_str.contains("cloudmusic") || app_id_str.contains("netease"))
@@ -76,12 +491,66 @@ fn get_target_media_session() -> Option<GlobalSystemMediaTransportControlsSessio
     None
 }
 
+/// 酷狗的 SMTC 会话不提供 TimelineProperties。它的底栏却始终展示真实的“已播放/总时长”；
+/// 使用 Windows 内置 OCR 读取该小区域，专门处理拖动进度条后的实时定位。
+#[cfg(target_os = "windows")]
+fn get_kugou_screen_position() -> Option<i64> {
+    const SCRIPT: &str = include_str!("../../integrations/kugou/read-position.ps1");
+    let utf16le: Vec<u8> = SCRIPT
+        .encode_utf16()
+        .flat_map(|unit| unit.to_le_bytes())
+        .collect();
+    let encoded_script = inline_base64_encode(&utf16le);
+    let output = Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-EncodedCommand",
+            &encoded_script,
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse::<i64>()
+        .ok()
+        .filter(|position| *position >= 0)
+}
+
 #[command]
 pub async fn fetch_netease_music_info() -> Result<Option<(String, String, bool, i64, i64)>, String>
 {
+    let target = TARGET_PLAYER
+        .lock()
+        .map(|value| value.clone())
+        .unwrap_or_default();
+    if target.is_empty() || target == "netease" {
+        if let Some(state) = get_fresh_netease_bridge_state() {
+            return Ok(Some((
+                state.song,
+                state.artist,
+                state.playing,
+                state.position_ms,
+                state.duration_ms,
+            )));
+        }
+    }
+
     let session = match get_target_media_session() {
         Some(s) => s,
-        None => return Ok(None),
+        None => {
+            if target == "netease" {
+                if let Some((song, artist)) = get_netease_window_info() {
+                    return Ok(Some((song, artist, true, 0, 0)));
+                }
+            }
+            return Ok(None);
+        }
     };
 
     let is_playing = if let Ok(playback_info) = session.GetPlaybackInfo() {
@@ -138,6 +607,15 @@ pub async fn fetch_netease_music_info() -> Result<Option<(String, String, bool, 
         }
     }
 
+    if target == "kugou" && position_ms == 0 && duration_ms == 0 {
+        if let Some(screen_position) = get_kugou_screen_position() {
+            position_ms = screen_position;
+            if !KUGOU_TIMELINE_REPORTED.swap(true, Ordering::SeqCst) {
+                println!("[酷狗同步] 已启用播放器界面真实进度读取");
+            }
+        }
+    }
+
     // 返回值增加了一个 duration_ms 参数
     Ok(Some((title, artist, is_playing, position_ms, duration_ms)))
 }
@@ -156,6 +634,20 @@ pub async fn control_system_media(action: String) -> Result<(), String> {
                 let _ = session.TrySkipPreviousAsync();
             }
             _ => {}
+        }
+        return Ok(());
+    }
+
+    // 网易云 3.x 主动关闭了 Windows SMTC；使用同一组标准媒体键作为控制适配层。
+    // 这与键盘上的上一首/播放暂停/下一首完全等价，不依赖界面坐标或按钮选择器。
+    let target = TARGET_PLAYER
+        .lock()
+        .map(|value| value.clone())
+        .unwrap_or_default();
+    if target.is_empty() || target == "netease" {
+        #[cfg(target_os = "windows")]
+        if send_windows_media_key(&action) {
+            return Ok(());
         }
     }
     Ok(())
@@ -622,9 +1114,12 @@ pub async fn start_websocket_lyrics(
     let app_err = app.clone();
     let handle = tokio::spawn(async move {
         if let Err(e) = run_websocket_lyrics(ws_url, app_clone).await {
-            eprintln!("WebSocket 歌词任务出错: {}", e);
-            let _ = app_err.emit("websocket-error", e);
-            // 连接失败时，确保前端置灰状态
+            // JustSolo 服务没有启动时属于正常降级，不在终端制造“任务出错”噪音。
+            // 其他连接错误才通知前端，方便真正的外部歌词服务排障。
+            if !e.contains("os error 10061") {
+                eprintln!("WebSocket 歌词服务异常: {}", e);
+                let _ = app_err.emit("websocket-error", e);
+            }
             let _ = app_err.emit("websocket-status", false);
         }
     });

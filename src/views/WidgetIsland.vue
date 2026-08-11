@@ -114,7 +114,7 @@
                                     </div>
                                     <div class="music-info-text double-line" :class="{ 'fade-in': isMusicExpanded }">
                                         <div class="song-title">{{ currentSongName }}</div>
-                                        <div class="song-artist">{{ currentArtistName }}</div>
+                                        <div class="song-artist">{{ displayedArtistName }}</div>
                                     </div>
                                 </div>
                             </div>
@@ -141,30 +141,81 @@
                                     </button>
                                 </div>
                             </transition>
-                        </div>
 
-                        <div v-else-if="displayResource" class="resource-box" key="resource">
-                            <div class="res-group">
-                                <div class="res-info-row">
-                                    <span class="res-label">CPU</span>
-                                    <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{ cpuUsage
-                                    }}%</span>
+                            <div v-if="isMusicExpanded && hasExpandedDetails" class="expanded-monitor-row">
+                                <div v-if="showExpandedResource" class="expanded-resource-summary">
+                                    <div class="monitor-chip">
+                                        <span class="monitor-chip-label">CPU</span>
+                                        <span :class="['monitor-chip-value', { 'high-usage': cpuUsage >= 85 }]">{{ cpuUsage }}%</span>
+                                        <span class="monitor-chip-track"><span class="monitor-chip-fill"
+                                                :class="{ 'high-usage-bg': cpuUsage >= 85 }"
+                                                :style="{ width: cpuUsage + '%' }"></span></span>
+                                    </div>
+                                    <div class="monitor-chip">
+                                        <span class="monitor-chip-label">RAM</span>
+                                        <span :class="['monitor-chip-value', { 'high-usage': ramUsage >= 85 }]">{{ ramUsage }}%</span>
+                                        <span class="monitor-chip-track"><span class="monitor-chip-fill"
+                                                :class="{ 'high-usage-bg': ramUsage >= 85 }"
+                                                :style="{ width: ramUsage + '%' }"></span></span>
+                                    </div>
                                 </div>
-                                <div class="res-bar-track">
-                                    <div class="res-bar-fill" :style="{ width: cpuUsage + '%' }"
-                                        :class="{ 'high-usage': cpuUsage >= 85 }"></div>
+                                <div v-if="showExpandedFps" class="fps-pill compact">
+                                    <span class="fps-label">FPS</span>
+                                    <span class="fps-value">{{ currentFps }}</span>
+                                </div>
+                                <div v-if="showExpandedSpeed" class="telemetry-speed-card">
+                                    <Transition name="speed-fade" mode="out-in">
+                                        <span v-if="isShowingUpload" class="telemetry-speed-line" key="expanded-up">
+                                            <b>↑</b><em>{{ uploadSpeed }}</em>
+                                        </span>
+                                        <span v-else class="telemetry-speed-line" key="expanded-down">
+                                            <b>↓</b><em>{{ downloadSpeed }}</em>
+                                        </span>
+                                    </Transition>
                                 </div>
                             </div>
-                            <div class="res-group">
-                                <div class="res-info-row">
-                                    <span class="res-label">RAM</span>
-                                    <span class="res-value" :class="{ 'high-usage': ramUsage >= 85 }">{{ ramUsage
-                                    }}%</span>
+                        </div>
+
+                        <div v-else-if="displayMonitors" class="monitor-dashboard"
+                            :class="{ 'expanded': isMusicExpanded }" key="monitors">
+                            <div v-if="displayResource" class="resource-box">
+                                <div class="res-group">
+                                    <div class="res-info-row">
+                                        <span class="res-label">CPU</span>
+                                        <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{ cpuUsage
+                                        }}%</span>
+                                    </div>
+                                    <div class="res-bar-track">
+                                        <div class="res-bar-fill" :style="{ width: cpuUsage + '%' }"
+                                            :class="{ 'high-usage-bg': cpuUsage >= 85 }"></div>
+                                    </div>
                                 </div>
-                                <div class="res-bar-track">
-                                    <div class="res-bar-fill" :style="{ width: ramUsage + '%' }"
-                                        :class="{ 'high-usage': ramUsage >= 85 }"></div>
+                                <div class="res-group">
+                                    <div class="res-info-row">
+                                        <span class="res-label">RAM</span>
+                                        <span class="res-value" :class="{ 'high-usage': ramUsage >= 85 }">{{ ramUsage
+                                        }}%</span>
+                                    </div>
+                                    <div class="res-bar-track">
+                                        <div class="res-bar-fill" :style="{ width: ramUsage + '%' }"
+                                            :class="{ 'high-usage-bg': ramUsage >= 85 }"></div>
+                                    </div>
                                 </div>
+                            </div>
+                            <div v-if="displayFps" class="fps-pill">
+                                <span class="fps-label">FPS</span>
+                                <span class="fps-value">{{ currentFps }}</span>
+                            </div>
+                            <div v-if="displayMonitorSpeed" class="monitor-speed-section"
+                                :class="{ 'has-divider': displayResource || displayFps }">
+                                <Transition name="speed-fade" mode="out-in">
+                                    <span v-if="isShowingUpload" class="telemetry-speed-line" key="monitor-up">
+                                        <b>↑</b><em>{{ uploadSpeed }}</em>
+                                    </span>
+                                    <span v-else class="telemetry-speed-line" key="monitor-down">
+                                        <b>↓</b><em>{{ downloadSpeed }}</em>
+                                    </span>
+                                </Transition>
                             </div>
                         </div>
 
@@ -196,14 +247,6 @@
                             </Transition>
                         </div>
 
-                        <div v-else-if="displayFps" class="speed-box" key="fps">
-                            <div class="speed-single-box">
-                                <div class="speed-item">
-                                    <span class="label">FPS</span>
-                                    <span class="value">{{ currentFps }}</span>
-                                </div>
-                            </div>
-                        </div>
                     </transition>
                 </div>
 
@@ -439,6 +482,24 @@ const lyricQueue = ref<string[]>([]);
 let lastLyricChangeTime = 0;
 let currentMatchedIndex = -1;
 
+// 对齐播放器进度，并在检测到明显跳播时丢弃旧歌词队列。
+const alignLyricPosition = (positionMs: number, forceQueueReset = false) => {
+    if (!Number.isFinite(positionMs)) return;
+
+    const nextPosition = Math.max(0, positionMs);
+    const isSeek = Math.abs(nextPosition - localPositionMs.value) > 1500;
+    localPositionMs.value = nextPosition;
+
+    if (forceQueueReset || isSeek) {
+        lyricQueue.value = [];
+        currentMatchedIndex = -1;
+        lastLyricChangeTime = 0;
+    }
+};
+
+const hasUsableSystemTimeline = (positionMs: number, durationMs: number) =>
+    Number.isFinite(positionMs) && positionMs >= 0 && (durationMs > 0 || positionMs > 0);
+
 // 简单的 LRC 解析器
 const parseLrc = (lrcStr: string) => {
     const lines = lrcStr.split('\n');
@@ -508,6 +569,9 @@ const currentFps = ref(0);
 
 // 记录最后一次接收到真实 WS 歌词的时间
 let lastWsLyricTime = 0;
+// 进度与播放状态分别记时，不能让普通歌词消息阻止系统播放器校准时间轴。
+let lastWsProgressTime = 0;
+let lastWsPlaybackTime = 0;
 
 // WebSocket 状态管理
 const isWsConnected = ref(false);
@@ -543,6 +607,7 @@ const initWebSocket = async () => {
                     // 1. 收到完整歌词列表 (init)
                     if (payload.type === 'init' && Array.isArray(payload.lyrics)) {
                         lastWsLyricTime = Date.now();
+                        lyricUnavailable.value = false;
                         isMediaActive.value = true; // 强制激活音乐卡片展示
                         isPlaying.value = true;     // 强制启动 50ms 歌词比对定时器
 
@@ -554,6 +619,25 @@ const initWebSocket = async () => {
                         currentMatchedIndex = -1;
                         lastLyricChangeTime = 0; // 重置时间锁，允许立刻显示第一句歌词
 
+                        // 有些歌词服务会在 init 中直接附带当前进度，优先立即对齐。
+                        if (typeof payload.position === 'number') {
+                            lastWsProgressTime = Date.now();
+                            alignLyricPosition(payload.position, true);
+                        } else {
+                            // init 没有进度时，立即向 Windows 媒体会话读取当前位置。
+                            // 不能等待普通的 2 秒轮询，否则歌词会先从第 1 句开始跑。
+                            const initReceivedAt = Date.now();
+                            invoke<[string, string, boolean, number, number] | null>('fetch_netease_music_info')
+                                .then((mediaInfo) => {
+                                    if (!mediaInfo || lastWsProgressTime > initReceivedAt) return;
+                                    const [, , , positionMs, durationMs] = mediaInfo;
+                                    if (hasUsableSystemTimeline(positionMs, durationMs)) {
+                                        alignLyricPosition(positionMs, true);
+                                    }
+                                })
+                                .catch((err) => console.error('歌词初始进度同步失败:', err));
+                        }
+
                         return;
                     }
 
@@ -563,10 +647,11 @@ const initWebSocket = async () => {
                         isMediaActive.value = true; // 心跳保活
 
                         if (typeof payload.position === 'number') {
+                            lastWsProgressTime = Date.now();
                             // 修正：绝不能无脑覆盖，而是跟 HTTP 逻辑一样，误差大于 500ms 时才校准
                             // 这样才能让 50ms 定时器里的 `localPositionMs.value += delta` 完美发挥顺滑推算的作用！
                             if (Math.abs(payload.position - localPositionMs.value) > 500) {
-                                localPositionMs.value = payload.position;
+                                alignLyricPosition(payload.position);
                             }
                         }
                         return;
@@ -575,6 +660,7 @@ const initWebSocket = async () => {
                     // 收到播放状态 (playback)
                     if (payload.type === 'playback') {
                         lastWsLyricTime = Date.now();
+                        lastWsPlaybackTime = Date.now();
                         if (payload.status === 'playing') {
                             isPlaying.value = true;
                             isMediaActive.value = true;
@@ -602,6 +688,7 @@ const initWebSocket = async () => {
 
                 if (lyricText && lyricText.trim() !== "") {
                     lastWsLyricTime = Date.now();
+                    lyricUnavailable.value = false;
                     isMediaActive.value = true;
                     isPlaying.value = true;
                     parsedLyrics.value = [];
@@ -611,8 +698,11 @@ const initWebSocket = async () => {
             });
         }
 
-        // 监听器就绪后，再发车连接
-        await invoke('start_websocket_lyrics', { url: "ws://127.0.0.1:47290/" });
+        // 47290 仅属于 JustSolo 等外部歌词服务器。网易云已有本机真实进度桥接，
+        // 不应在未安装 JustSolo 时制造“歌词任务出错”的无效连接。
+        if ((localStorage.getItem('nsd_target_player') || 'netease') === 'other') {
+            await invoke('start_websocket_lyrics', { url: "ws://127.0.0.1:47290/" });
+        }
 
     } catch (err) {
         console.error("WebSocket 启动失败:", err);
@@ -647,13 +737,70 @@ const enableSysResource = ref(localStorage.getItem('nsd_sys_resource') === 'true
 const cpuUsage = ref(0);
 const ramUsage = ref(0);
 
-// 新增 FPS 判定
-const displayFps = computed(() => !isMsgActive.value && !displaySysToast.value && enableFps.value);
+type DisplayPreferenceGroup = {
+    music: boolean;
+    resource: boolean;
+    fps: boolean;
+    speed: boolean;
+};
 
-// 使用计算属性智能判断当前该显示谁
-const displayResource = computed(() => !isMsgActive.value && !displaySysToast.value && enableSysResource.value && !enableFps.value && (!isMusicCtlEnabled.value || !isMediaActive.value));
-const displaySpeed = computed(() => !isMsgActive.value && !displaySysToast.value && !enableSysResource.value && !enableFps.value && (!isMusicCtlEnabled.value || !isMediaActive.value));
-const displayMusic = computed(() => !isMsgActive.value && !displaySysToast.value && isMusicCtlEnabled.value && isMediaActive.value);
+type DisplayPreferences = {
+    collapsed: DisplayPreferenceGroup;
+    expanded: DisplayPreferenceGroup;
+};
+
+const readDisplayPreference = (key: string) => localStorage.getItem(key) !== 'false';
+const displayPreferences = ref<DisplayPreferences>({
+    collapsed: {
+        music: readDisplayPreference('nsd_display_collapsed_music'),
+        resource: readDisplayPreference('nsd_display_collapsed_resource'),
+        fps: readDisplayPreference('nsd_display_collapsed_fps'),
+        speed: readDisplayPreference('nsd_display_collapsed_speed'),
+    },
+    expanded: {
+        music: readDisplayPreference('nsd_display_expanded_music'),
+        resource: readDisplayPreference('nsd_display_expanded_resource'),
+        fps: readDisplayPreference('nsd_display_expanded_fps'),
+        speed: readDisplayPreference('nsd_display_expanded_speed'),
+    },
+});
+
+// 功能开关只负责采集数据；显示偏好独立决定收起和展开时的内容。
+const canShowPrimaryContent = computed(() => !isMsgActive.value && !displaySysToast.value);
+const isMusicAvailable = computed(() => isMusicCtlEnabled.value && isMediaActive.value);
+const showCollapsedResource = computed(() => enableSysResource.value && displayPreferences.value.collapsed.resource);
+const showCollapsedFps = computed(() => enableFps.value && displayPreferences.value.collapsed.fps);
+const showCollapsedSpeed = computed(() => displayPreferences.value.collapsed.speed);
+const showCollapsedMusic = computed(() =>
+    isMusicAvailable.value && displayPreferences.value.collapsed.music
+);
+const showExpandedMusic = computed(() => isMusicAvailable.value && displayPreferences.value.expanded.music);
+const showExpandedResource = computed(() => enableSysResource.value && displayPreferences.value.expanded.resource);
+const showExpandedFps = computed(() => enableFps.value && displayPreferences.value.expanded.fps);
+const showExpandedSpeed = computed(() => displayPreferences.value.expanded.speed);
+const hasExpandedMonitors = computed(() => showExpandedResource.value || showExpandedFps.value);
+const hasExpandedDetails = computed(() => hasExpandedMonitors.value || showExpandedSpeed.value);
+const canExpandCard = computed(() => canShowPrimaryContent.value &&
+    (showExpandedMusic.value || showExpandedResource.value || showExpandedFps.value || showExpandedSpeed.value));
+
+const displayMusic = computed(() => canShowPrimaryContent.value &&
+    (isMusicExpanded.value ? showExpandedMusic.value : showCollapsedMusic.value));
+const selectedResourceForState = computed(() =>
+    isMusicExpanded.value ? showExpandedResource.value : showCollapsedResource.value
+);
+const selectedFpsForState = computed(() =>
+    isMusicExpanded.value ? showExpandedFps.value : showCollapsedFps.value
+);
+const selectedSpeedForState = computed(() =>
+    isMusicExpanded.value ? showExpandedSpeed.value : showCollapsedSpeed.value
+);
+const displayResource = computed(() => canShowPrimaryContent.value && !displayMusic.value && selectedResourceForState.value);
+const displayFps = computed(() => canShowPrimaryContent.value && !displayMusic.value && selectedFpsForState.value);
+const displayMonitorSpeed = computed(() => canShowPrimaryContent.value && !displayMusic.value &&
+    selectedSpeedForState.value && (displayResource.value || displayFps.value));
+const displayMonitors = computed(() => displayResource.value || displayFps.value || displayMonitorSpeed.value);
+const displaySpeed = computed(() => canShowPrimaryContent.value && !displayMusic.value &&
+    selectedSpeedForState.value && !displayResource.value && !displayFps.value);
 
 // 智能判断静默模式下是否该显示：有消息、有系统提示，或开启了音乐控制且正在播放
 const shouldShowInQuietMode = computed(() =>
@@ -680,22 +827,44 @@ watch(shouldShowInQuietMode, async (newVal) => {
 // 只要媒体活跃且没被“消息弹窗(Msg)”霸占，背景就一直存在，即使此时正在显示系统通知(Toast)
 const showCoverglassBg = computed(() => {
     return islandTheme.value === 'coverglass' &&
-        isMusicCtlEnabled.value &&
-        isMediaActive.value &&
+        displayMusic.value &&
         !isMsgActive.value &&
         blurredCoverUrl.value;
 });
 
 // 辅助函数：获取当前状态应该拥有的默认大小
 const getBaseSize = () => {
-    if (displayFps.value) return { w: nsdBaseWidth.value, h: nsdBaseHeight.value };
-    if (displayResource.value) return { w: nsdMusicBaseWidth.value, h: Math.max(nsdBaseHeight.value + 8, 42) };
+    if (displayMusic.value) return { w: nsdMusicBaseWidth.value, h: Math.max(nsdBaseHeight.value + 8, 42) };
+    if (displayMonitors.value) {
+        const visibleSegmentUnits = Number(displayResource.value) * 2 +
+            Number(displayFps.value) + Number(displayMonitorSpeed.value) * 1.15;
+        const monitorWidth = Math.max(nsdBaseWidth.value, 50 + visibleSegmentUnits * 80);
+        return { w: monitorWidth, h: Math.max(nsdBaseHeight.value + 8, 42) };
+    }
     if (displaySpeed.value) return { w: nsdBaseWidth.value, h: nsdBaseHeight.value };
     return { w: nsdMusicBaseWidth.value, h: Math.max(nsdBaseHeight.value + 8, 42) };
 };
 
+const getExpandedSize = () => {
+    if (showExpandedMusic.value) {
+        const detailSegmentUnits = Number(showExpandedResource.value) * 2 +
+            Number(showExpandedFps.value) + Number(showExpandedSpeed.value) * 1.15;
+        return {
+            w: Math.max(nsdMusicExpandedWidth.value, 110 + detailSegmentUnits * 70),
+            h: hasExpandedDetails.value ? 158 : 115,
+        };
+    }
+
+    const visibleSegmentUnits = Number(showExpandedResource.value) * 2 +
+        Number(showExpandedFps.value) + Number(showExpandedSpeed.value) * 1.15;
+    return {
+        w: Math.max(nsdBaseWidth.value, 60 + visibleSegmentUnits * 90),
+        h: Math.max(nsdBaseHeight.value + 30, 72),
+    };
+};
+
 // 监听内容切换，触发丝滑动画过渡
-watch([displaySpeed, displayMusic, displayResource, displayFps], () => {
+watch([displaySpeed, displayMusic, displayResource, displayFps, displayMonitorSpeed, displayMonitors], () => {
     // 只有在没有被临时弹窗（消息、音乐展开）霸占时，才执行基础大小切换
     if (!isMsgActive.value && !displaySysToast.value && !isMusicExpanded.value && !isMusicExpanding.value) {
         const { w, h } = getBaseSize();
@@ -703,9 +872,20 @@ watch([displaySpeed, displayMusic, displayResource, displayFps], () => {
     }
 });
 
+watch([showExpandedMusic, showExpandedResource, showExpandedFps, showExpandedSpeed], () => {
+    if (isMusicExpanded.value) {
+        if (!canExpandCard.value) {
+            collapseMusic();
+            return;
+        }
+        const { w, h } = getExpandedSize();
+        animateIslandSize(w, h);
+    }
+});
+
 // 专门用于控制右侧常驻指示灯的独立计算属性（完全不受消息通知打断）
 const showSpectrumIndicator = computed(() => {
-    return isMusicCtlEnabled.value && isMediaActive.value;
+    return displayMusic.value;
 });
 
 const togglePlay = async () => {
@@ -737,12 +917,16 @@ const syncMusicStatus = async () => {
 
         // 判定过去 3 秒内是否有活跃的本地 WebSocket 推送
         const isWsActive = (Date.now() - lastWsLyricTime < 3000);
+        const hasRecentWsProgress = (Date.now() - lastWsProgressTime < 3000);
+        const hasRecentWsPlayback = (Date.now() - lastWsPlaybackTime < 3000);
+        const hasWsLyricsTimeline = isWsConnected.value && parsedLyrics.value.length > 0;
 
         if (res) {
             const [song, artist, playing, positionMs, durationMs] = res;
 
-            // 仅在 WS 不活跃时，使用 SMTC 的播放状态
-            if (!isWsActive) {
+            // 完整 WS 歌词时间轴存在时，不能让不兼容播放器返回的 false 覆盖歌词服务状态。
+            // 暂停/恢复仍由 WS 的 playback 消息负责；没有 WS 歌词时才回退到 SMTC。
+            if (!hasRecentWsPlayback && !hasWsLyricsTimeline && !isWsActive) {
                 isPlaying.value = playing;
             }
             if (!isMediaActive.value) isMediaActive.value = true;
@@ -753,12 +937,21 @@ const syncMusicStatus = async () => {
             currentArtistName.value = artist || t('unknownArtist');
             const newTrackInfo = artist ? `${song} - ${artist}` : song;
 
+            // WS 只推歌词、不推进度时，仍持续使用 SMTC 校准；同时支持从中段播放和拖动进度条。
+            if (!hasRecentWsProgress && hasUsableSystemTimeline(positionMs, durationMs) &&
+                Math.abs(positionMs - localPositionMs.value) > 800) {
+                alignLyricPosition(positionMs - (playing ? 250 : 0));
+            }
+
             if (currentBaseInfo.value !== newTrackInfo) {
                 currentBaseInfo.value = newTrackInfo;
+                lyricUnavailable.value = false;
 
-                // 切歌时，第一时间重置本地时间轴！
-                if (!isWsActive) {
-                    localPositionMs.value = positionMs; // 必须补上这行，否则新歌会继承老歌的时间！
+                // 只有 WS 自己带完整歌词时才交给它管理歌词；仅提供播放器进度的桥接仍共用网络歌词逻辑。
+                if (!hasWsLyricsTimeline) {
+                    if (hasUsableSystemTimeline(positionMs, durationMs)) {
+                        alignLyricPosition(positionMs, true);
+                    }
 
                     setSafeTrackInfo(newTrackInfo);
                     parsedLyrics.value = [];
@@ -788,21 +981,24 @@ const syncMusicStatus = async () => {
                         });
                 }
 
-                // 仅在 WS 不活跃时，发起 HTTP 网络歌词兜底
-                if (!isWsActive) {
+                // WS 只有完整歌词列表时才跳过网络歌词；播放器进度桥接不能阻止歌词加载。
+                if (!hasWsLyricsTimeline) {
                     invoke<string>('fetch_netease_lyrics', { songName: song, artistName: artist, durationMs })
                         .then(lrc => {
-                            if (Date.now() - lastWsLyricTime > 3000) {
-                                if (lrc) {
-                                    parsedLyrics.value = parseLrc(lrc);
-                                }
+                            if (currentBaseInfo.value !== newTrackInfo ||
+                                (isWsConnected.value && parsedLyrics.value.length > 0)) {
+                                return;
+                            }
+
+                            const lyrics = lrc ? parseLrc(lrc) : [];
+                            if (lyrics.length > 0) {
+                                lyricUnavailable.value = false;
+                                parsedLyrics.value = lyrics;
+                            } else {
+                                lyricUnavailable.value = true;
+                                setSafeTrackInfo(`${newTrackInfo} · 未找到歌词`);
                             }
                         }).catch(() => { });
-                }
-            } else {
-                // 同一首歌，仅在 WS 不活跃时使用 SMTC 进度校准
-                if (!isWsActive && positionMs > 1000 && Math.abs(positionMs - localPositionMs.value) > 800) {
-                    localPositionMs.value = positionMs - 250;
                 }
             }
         } else {
@@ -854,6 +1050,10 @@ const musicBoxKey = ref(0);
 const currentSongName = ref(t('noSongPlaying'));
 const currentArtistName = ref(getPlayerName());
 const currentTrackInfo = ref(`${t('noSongPlaying')} - ${getPlayerName()}`);
+const lyricUnavailable = ref(false);
+const displayedArtistName = computed(() => lyricUnavailable.value
+    ? `${currentArtistName.value} · 未找到歌词`
+    : currentArtistName.value);
 
 watch(currentLanguage, () => {
     if (!displayMusic.value || currentSongName.value === t('noSongPlaying')) {
@@ -1446,7 +1646,8 @@ const expandMusic = () => {
     musicExpandAnimTimer = window.setTimeout(() => {
         isMusicExpanded.value = true;
         isMusicExpanding.value = false;
-        animateIslandSize(nsdMusicExpandedWidth.value, 115);
+        const { w, h } = getExpandedSize();
+        animateIslandSize(w, h);
 
         // 3. 根据 Rust 端的弹簧衰减频率，约 400ms 后动画彻底结束，此时解锁
         setTimeout(() => {
@@ -1474,16 +1675,10 @@ const handleMouseEnter = () => {
     // 如果之前移出留下了收缩案底，但动画还没播完鼠标又回来了，直接取消这个案底
     isPendingCollapse = false;
 
-    if (displayMusic.value) {
+    if (canExpandCard.value) {
         expandMusic();
     }
 };
-
-watch(displayMusic, (newVal: boolean) => {
-    if (!newVal) {
-        collapseMusic(); // 一旦音乐岛被隐藏（不管是因为轮换还是手动关了），立刻收缩
-    }
-});
 
 // 引入你的默认图标作为兜底
 import defaultLogo from '../assets/logo.png';
@@ -1544,7 +1739,6 @@ onMounted(async () => {
         const isEnabled = event.payload.enabled;
         isMusicCtlEnabled.value = isEnabled;
         if (isEnabled) {
-            enableSysResource.value = false; // 开启音乐，关资源监控
             initWebSocket();
             if (localStorage.getItem('nsd_glow_border') === null) {
                 isGlowBorderEnabled.value = true;
@@ -1580,7 +1774,8 @@ onMounted(async () => {
         // 如果缩放比例被用户拖动改变了，强制刷新当前展现的尺寸
         if (oldScale !== appScale.value) {
             if (isMusicExpanded.value) {
-                animateIslandSize(nsdMusicExpandedWidth.value, 115);
+                const { w, h } = getExpandedSize();
+                animateIslandSize(w, h);
             } else if (isMsgActive.value) {
                 animateIslandSize(nsdMsgExpandedWidth.value, 65);
             } else {
@@ -1600,10 +1795,20 @@ onMounted(async () => {
     await listen<{ enabled: boolean }>('control-sys-resource', (event) => {
         const isEnabled = event.payload.enabled;
         enableSysResource.value = isEnabled;
-        if (isEnabled) {
-            isMusicCtlEnabled.value = false; // 开启资源监控，关音乐控制器
-            stopWebSocket();
-        }
+    });
+
+    await listen<DisplayPreferences>('control-display-preferences', (event) => {
+        displayPreferences.value = {
+            collapsed: { ...event.payload.collapsed },
+            expanded: { ...event.payload.expanded },
+        };
+
+        Object.entries(event.payload.collapsed).forEach(([feature, enabled]) => {
+            localStorage.setItem(`nsd_display_collapsed_${feature}`, String(enabled));
+        });
+        Object.entries(event.payload.expanded).forEach(([feature, enabled]) => {
+            localStorage.setItem(`nsd_display_expanded_${feature}`, String(enabled));
+        });
     });
 
     // 监听 Rust 底层发来的硬核资源数据
@@ -1760,8 +1965,9 @@ onMounted(async () => {
 
     // 启动网速和硬件显示轮换定时器 (每 5 秒切换一次)
     speedCycleTimer = window.setInterval(() => {
-        // 仅在宽度小于 240px 时才进行上下行网速轮换
-        if (displaySpeed.value && nsdBaseWidth.value < 240) {
+        const isCompactSpeedVisible = displayMonitorSpeed.value ||
+            (isMusicExpanded.value && displayMusic.value && showExpandedSpeed.value);
+        if (isCompactSpeedVisible || (displaySpeed.value && nsdBaseWidth.value < 240)) {
             isShowingUpload.value = !isShowingUpload.value;
         }
     }, 5000);
@@ -1803,8 +2009,6 @@ onMounted(async () => {
     await listen<{ enabled: boolean }>('control-fps-monitor', (event) => {
         enableFps.value = event.payload.enabled;
         if (enableFps.value) {
-            isMusicCtlEnabled.value = false;
-            enableSysResource.value = false;
             invoke('toggle_fps_plugin', { enable: true }).catch(console.error);
         } else {
             invoke('toggle_fps_plugin', { enable: false }).catch(console.error);
@@ -1829,10 +2033,23 @@ onMounted(async () => {
 
     // 2. 中频定时器：专门负责音乐状态同步（每 2000ms 刷新一次即可）
     musicTimer = setInterval(() => {
-        if (isMusicCtlEnabled.value) {
-            syncMusicStatus();
-        }
+        invoke<boolean>('is_music_controller_enabled')
+            .then((enabled) => {
+                isMusicCtlEnabled.value = enabled;
+                if (enabled) {
+                    syncMusicStatus();
+                }
+            })
+            .catch(console.error);
     }, 2000);
+
+    // 启动后立即读取一次当前媒体会话，避免等待下一轮定时器或错过首次同步事件。
+    invoke<boolean>('is_music_controller_enabled')
+        .then((enabled) => {
+            isMusicCtlEnabled.value = enabled;
+            if (enabled) syncMusicStatus();
+        })
+        .catch(console.error);
 
 
     // 3. 低频定时器：专门轮询系统通知（通知不需要抢时间，2.5秒换来极低的资源占用）
@@ -2514,8 +2731,8 @@ onUnmounted(() => {
 }
 
 .music-ctl-box.expanded .music-top-row {
-    height: 40px;
-    margin-top: 14px !important;
+    height: 46px;
+    margin-top: 10px !important;
     margin-left: 5px !important;
     border: none;
 }
@@ -2526,9 +2743,9 @@ onUnmounted(() => {
 }
 
 .music-ctl-box.expanded .album-cover {
-    width: 40px !important;
-    height: 40px !important;
-    border-radius: 6px !important;
+    width: 46px !important;
+    height: 46px !important;
+    border-radius: 8px !important;
     animation: none !important;
     border: none;
     transform: translateX(0px) rotate(0deg) !important;
@@ -2547,7 +2764,7 @@ onUnmounted(() => {
 
 /* 歌曲文本遮罩：取消过渡，随窗口大小瞬间变化 */
 .music-ctl-box.expanded .music-info-mask-box {
-    left: 60px !important;
+    left: 62px !important;
     right: 55px !important;
     display: flex !important;
     align-items: center !important;
@@ -2619,12 +2836,13 @@ onUnmounted(() => {
 /* 媒体控件与频谱 */
 .music-ctl-box.expanded .music-controls {
     position: absolute;
+    top: 62px;
     left: 50%;
-    transform: translateX(-50%) translateY(5px);
+    transform: translateX(-50%);
     width: 100%;
     display: flex;
     justify-content: center;
-    gap: 20px;
+    gap: 34px;
 }
 
 .music-ctl-box.expanded .ctl-btn svg {
@@ -2635,6 +2853,162 @@ onUnmounted(() => {
 .music-ctl-box.expanded .play-btn svg {
     width: 28px;
     height: 28px;
+}
+
+/* 展开媒体卡片底部的组合监控摘要 */
+.expanded-monitor-row {
+    position: absolute;
+    left: 5px;
+    right: 5px;
+    bottom: 11px;
+    height: 32px;
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-app-region: no-drag;
+}
+
+.expanded-resource-summary {
+    flex: 2 1 0;
+    min-width: 0;
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+}
+
+.monitor-chip {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto auto;
+    grid-template-rows: auto 3px;
+    align-items: center;
+    column-gap: 4px;
+    row-gap: 4px;
+    padding: 5px 8px;
+    border-radius: 9px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.045));
+    box-sizing: border-box;
+}
+
+.monitor-chip-label,
+.monitor-chip-value,
+.fps-label,
+.fps-value {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.monitor-chip-label {
+    font-size: 9px;
+    font-weight: 800;
+    opacity: 0.62;
+}
+
+.monitor-chip-value {
+    justify-self: end;
+    font-size: 12px;
+    font-weight: 750;
+}
+
+.monitor-chip-track {
+    grid-column: 1 / -1;
+    height: 3px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+}
+
+.monitor-chip-fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: currentColor;
+    transition: width 0.35s ease;
+}
+
+.fps-pill {
+    flex: 0 0 auto;
+    min-width: 58px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 9px;
+    border-radius: 9px;
+    background: rgba(150, 150, 150, 0.16);
+    box-sizing: border-box;
+}
+
+.fps-pill.compact {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0 8px;
+    border-radius: 9px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.045));
+}
+
+.fps-label {
+    font-size: 9px;
+    font-weight: 800;
+    opacity: 0.62;
+    letter-spacing: 0.3px;
+}
+
+.fps-value {
+    font-size: 13px;
+    font-weight: 780;
+}
+
+.telemetry-speed-card,
+.monitor-speed-section {
+    min-width: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    box-sizing: border-box;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+    font-variant-numeric: tabular-nums;
+}
+
+.telemetry-speed-card {
+    flex: 1.15 1 0;
+    padding: 4px 8px;
+    border-radius: 9px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.045));
+}
+
+.telemetry-speed-line {
+    display: grid;
+    grid-template-columns: 10px minmax(0, 1fr);
+    align-items: center;
+    gap: 3px;
+    width: 100%;
+    max-width: 100%;
+    font-size: 9px;
+    font-weight: 650;
+    line-height: 1;
+}
+
+.telemetry-speed-line b {
+    font-size: 7px;
+    opacity: 0.58;
+}
+
+.telemetry-speed-line em {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-style: normal;
 }
 
 .audio-spectrum.expanded {
@@ -2839,6 +3213,53 @@ onUnmounted(() => {
 }
 
 /* 系统资源监控 */
+.monitor-dashboard {
+    position: absolute;
+    inset: 3px 2px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 3px;
+    border-radius: 14px;
+    border: none;
+    background: transparent;
+    box-sizing: border-box;
+    -webkit-app-region: no-drag;
+    overflow: hidden;
+}
+
+.monitor-dashboard .fps-pill:only-child {
+    flex: 1;
+    margin: 0;
+}
+
+.monitor-dashboard .fps-pill {
+    flex: 0.9 1 0;
+    min-width: 0;
+    height: 100%;
+    padding: 0 8px;
+    border: 1px solid rgba(255, 255, 255, 0.065);
+    border-radius: 12px;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.035));
+}
+
+.monitor-dashboard .resource-box + .fps-pill {
+    border-left: 1px solid rgba(255, 255, 255, 0.065);
+}
+
+.monitor-dashboard .monitor-speed-section {
+    flex: 1.28 1 0;
+    height: 100%;
+    padding: 0 9px;
+    border: 1px solid rgba(255, 255, 255, 0.065);
+    border-radius: 12px;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.035));
+}
+
+.monitor-dashboard .monitor-speed-section.has-divider {
+    border-left: 1px solid rgba(255, 255, 255, 0.065);
+}
+
 .resource-box {
     position: absolute;
     left: 0;
@@ -2856,6 +3277,14 @@ onUnmounted(() => {
     overflow: hidden;
 }
 
+.monitor-dashboard .resource-box {
+    position: relative;
+    flex: 2 1 0;
+    min-width: 0;
+    padding-right: 0;
+    gap: 5px;
+}
+
 /* 单个资源组 (CPU/RAM) */
 .res-group {
     flex: 1 1 0%;
@@ -2864,8 +3293,21 @@ onUnmounted(() => {
     flex-direction: column;
     /* 改为纵向两行布局 */
     justify-content: center;
-    gap: 6px;
+    gap: 5px;
     /* 上下排间距 */
+}
+
+.monitor-dashboard .res-group {
+    height: 100%;
+    padding: 5px 9px;
+    border: 1px solid rgba(255, 255, 255, 0.065);
+    border-radius: 12px;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.035));
+    box-sizing: border-box;
+}
+
+.monitor-dashboard .res-group + .res-group {
+    border-left: 1px solid rgba(255, 255, 255, 0.065);
 }
 
 /* 第一行的文字容器 (标签 + 数值) */
@@ -2873,6 +3315,7 @@ onUnmounted(() => {
     display: flex;
     justify-content: space-between;
     align-items: flex-end;
+    gap: 8px;
     /* 底部对齐，让文字重心更稳 */
     width: 100%;
 }
@@ -2880,21 +3323,22 @@ onUnmounted(() => {
 /* 标签 (CPU/RAM) */
 .res-label {
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 800;
     opacity: 0.75;
     color: currentColor;
-    background: rgba(150, 150, 150, 0.15);
-    padding: 2px 5px;
-    border-radius: 4px;
+    background: transparent;
+    padding: 0;
     line-height: 1;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 /* 进度条轨道 */
 .res-bar-track {
     width: 100%;
     /* 占满下面一整行 */
-    height: 4px;
+    height: 3px;
     /* 压低进度条高度，把空间留给上层文字 */
     background: rgba(150, 150, 150, 0.2);
     border-radius: 2px;
@@ -2924,6 +3368,53 @@ onUnmounted(() => {
     font-variant-numeric: tabular-nums;
     line-height: 1;
     transform: translateY(-1px);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.monitor-dashboard.expanded {
+    inset: 8px 5px;
+    gap: 6px;
+    padding: 0 4px;
+    border-radius: 14px;
+}
+
+.monitor-dashboard.expanded .resource-box {
+    gap: 6px;
+}
+
+.monitor-dashboard.expanded .res-group,
+.monitor-dashboard.expanded .fps-pill,
+.monitor-dashboard.expanded .monitor-speed-section {
+    height: 100%;
+    padding: 7px 8px;
+    border-radius: 11px;
+    border-color: rgba(255, 255, 255, 0.085);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.035));
+}
+
+.monitor-dashboard.expanded .res-info-row {
+    gap: 4px;
+}
+
+.monitor-dashboard.expanded .res-label,
+.monitor-dashboard.expanded .fps-label {
+    font-size: 10px;
+}
+
+.monitor-dashboard.expanded .res-value,
+.monitor-dashboard.expanded .fps-value {
+    font-size: 15px;
+}
+
+.monitor-dashboard.expanded .telemetry-speed-line {
+    grid-template-columns: 10px minmax(0, 1fr);
+    gap: 5px;
+    font-size: 11px;
+}
+
+.monitor-dashboard.expanded .telemetry-speed-line b {
+    font-size: 8px;
 }
 
 /* 高负载告警态 (>=85%) */
@@ -2931,13 +3422,44 @@ onUnmounted(() => {
     color: #b6170f !important;
 }
 
+.high-usage-bg {
+    background: #b6170f !important;
+}
+
 /* 亮色主题适配 (可选，如果全局 currentColor 处理得当可省略) */
 :deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .res-label {
-    background: rgba(0, 0, 0, 0.08);
+    background: transparent;
 }
 
 :deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .res-bar-track {
     background: rgba(0, 0, 0, 0.1);
+}
+
+:deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .expanded-monitor-row {
+    background: transparent;
+}
+
+:deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .monitor-chip,
+:deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .fps-pill.compact,
+:deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .telemetry-speed-card {
+    background: linear-gradient(145deg, rgba(0, 0, 0, 0.07), rgba(0, 0, 0, 0.035));
+    border-color: rgba(0, 0, 0, 0.08);
+}
+
+:deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .monitor-chip-track {
+    background: rgba(0, 0, 0, 0.13);
+}
+
+:deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .monitor-dashboard {
+    background: rgba(0, 0, 0, 0.035);
+    border-color: rgba(0, 0, 0, 0.08);
+}
+
+:deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .monitor-dashboard .res-group,
+:deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .monitor-dashboard .fps-pill,
+:deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .monitor-dashboard .monitor-speed-section {
+    background: transparent;
+    border-color: rgba(0, 0, 0, 0.1);
 }
 
 .speed-dual-box {

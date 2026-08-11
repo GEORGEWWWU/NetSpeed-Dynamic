@@ -58,7 +58,7 @@ pub async fn fetch_latest_notification() -> Result<Option<ToastData>, String> {
         LAST_NOTIFICATION_ID.store(max_id, Ordering::SeqCst);
 
         if let Some(notif) = latest_notif {
-            let app_name = notif.AppInfo()
+            let mut app_name = notif.AppInfo()
                 .and_then(|info| info.DisplayInfo())
                 .and_then(|dinfo| dinfo.DisplayName())
                 .map(|name| name.to_string())
@@ -69,33 +69,36 @@ pub async fn fetch_latest_notification() -> Result<Option<ToastData>, String> {
                 .map(|id| id.to_string())
                 .unwrap_or_default();
 
-            if let Ok(toast_binding) = notif
-                .Notification()
-                .and_then(|n| n.Visual())
-                .and_then(|v| v.GetBinding(&windows::core::HSTRING::from("ToastGeneric")))
-            {
-                if let Ok(text_elements) = toast_binding.GetTextElements() {
-                    let mut text_list = Vec::new();
-                    for elem in text_elements {
-                        if let Ok(text) = elem.Text() {
-                            text_list.push(text.to_string());
+            // 手机连接同步的微信通知以 com.tencent.mm 标识；按微信本身展示图标和名称。
+            if aumid.to_lowercase().contains("com.tencent.mm") {
+                app_name = "微信".to_string();
+            }
+
+            if let Ok(notification) = notif.Notification() {
+                if let Ok(visual) = notification.Visual() {
+                    // QQ 使用 ToastGeneric，微信可能使用其他 Windows 通知模板；统一读取全部模板。
+                    if let Ok(bindings) = visual.Bindings() {
+                        for toast_binding in bindings {
+                            if let Ok(text_elements) = toast_binding.GetTextElements() {
+                                let mut text_list = Vec::new();
+                                for elem in text_elements {
+                                    if let Ok(text) = elem.Text() {
+                                        text_list.push(text.to_string());
+                                    }
+                                }
+
+                                if !text_list.is_empty() {
+                                    let title = text_list.first().cloned().unwrap_or_default();
+                                    let body = if text_list.len() > 1 {
+                                        text_list[1..].join(" ")
+                                    } else {
+                                        String::new()
+                                    };
+
+                                    return Ok(Some(ToastData { app_name, title, body, aumid }));
+                                }
+                            }
                         }
-                    }
-
-                    if !text_list.is_empty() {
-                        let title = text_list.first().cloned().unwrap_or_default();
-                        let body = if text_list.len() > 1 {
-                            text_list[1..].join(" ")
-                        } else {
-                            String::new()
-                        };
-
-                        // 过滤微信通知
-                        if title.contains("微信") || title.contains("WeChat") || body.contains("微信") || body.contains("WeChat") {
-                            return Ok(None);
-                        }
-
-                        return Ok(Some(ToastData { app_name, title, body, aumid }));
                     }
                 }
             }

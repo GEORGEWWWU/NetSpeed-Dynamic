@@ -451,6 +451,8 @@ pub fn run() {
             sync_to_taskbar,
             audio_spectrum::get_audio_spectrum,
             music_controller::set_target_player,
+            music_controller::set_music_controller_enabled,
+            music_controller::is_music_controller_enabled,
             music_controller::fetch_netease_music_info,
             music_controller::control_system_media,
             music_controller::get_random_cover_url,
@@ -462,6 +464,7 @@ pub fn run() {
         .setup(|app| {
             audio_spectrum::start_monitor();
             system_events::start_monitor(app.handle().clone());
+            music_controller::start_netease_bridge(app.handle().clone());
 
             // 启动超轻量 UDP 监听器，专用于接收 FPS 数据 (监听 47292 端口)
             let app_handle_for_fps = app.handle().clone();
