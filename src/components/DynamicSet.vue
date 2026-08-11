@@ -240,7 +240,7 @@
                         <span class="row-desc">{{ t('globalScaleDesc') }}</span>
                     </div>
                     <div class="row-action">
-                        <input type="range" min="1" max="1.75" step="0.25" v-model.number="appScale"
+                        <input type="range" min="0.75" max="1.75" step="0.25" v-model.number="appScale"
                             class="track-slider highlight-slider" />
                         <div class="value-box">{{ Math.round(appScale * 100) }}<span class="unit">%</span></div>
                         <button class="reset-btn" @click="appScale = 1.0" :title="t('restoreDefault')">
