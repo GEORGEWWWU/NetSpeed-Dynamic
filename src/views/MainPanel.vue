@@ -1694,7 +1694,8 @@ const closeWindow = async () => {
     color: inherit;
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
     user-select: none;
-    -webkit-font-smoothing: antialiased;
+    -webkit-font-smoothing: subpixel-antialiased;
+    text-rendering: optimizeLegibility;
 }
 
 .panel-container {

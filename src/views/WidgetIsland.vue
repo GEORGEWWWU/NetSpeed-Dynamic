@@ -2216,6 +2216,8 @@ onUnmounted(() => {
     border: none !important;
     width: 100%;
     height: 100%;
+    -webkit-font-smoothing: subpixel-antialiased;
+    text-rendering: optimizeLegibility;
 }
 
 :global(#app) {
@@ -2271,7 +2273,6 @@ onUnmounted(() => {
     width: 100%;
     height: 100%;
     border-radius: 98px;
-    transform: translateZ(0);
     display: flex;
     align-items: center;
     justify-content: space-between;
