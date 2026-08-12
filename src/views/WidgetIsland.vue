@@ -402,6 +402,9 @@ const nsdBorderRadius = ref(Number(localStorage.getItem('nsd_border_radius')) ||
 const nsdSpringStyle = ref(localStorage.getItem('nsd_spring_style') || 'bouncy');
 const nsdLyricDelay = ref(Number(localStorage.getItem('nsd_lyric_delay')) || 0);
 
+// WS 歌词专属额外延迟（毫秒），调谐时只改这里
+const WS_LYRIC_DELAY_MS = 500;
+
 // 1. 瞬间判定当前是否处于大窗口状态
 const isExpandedSize = computed(() => isMusicExpanded.value || isMsgActive.value);
 
@@ -599,6 +602,9 @@ let lastWsLyricTime = 0;
 
 // WebSocket 状态管理
 const isWsConnected = ref(false);
+const isWsConnecting = ref(false);
+let lastWsAttemptTime = 0;
+const WS_RETRY_BACKOFF_MS = 10000;
 let unlistenWsStatus: (() => void) | null = null;
 
 // WebSocket 实时歌词监听
@@ -606,11 +612,15 @@ let unlistenWs: (() => void) | null = null;
 
 const initWebSocket = async () => {
     try {
+        // 防重入：已连上或正在连就不再调
+        if (isWsConnected.value || isWsConnecting.value) return;
+
         // 必须先挂载监听器，再去呼叫 Rust 连接！
         // 因为本地 WS 连接是毫秒级的，如果先 invoke 再 listen，Vue 会完美错过连接成功的初始信号！
         if (!unlistenWsStatus) {
             unlistenWsStatus = await listen('websocket-status', (event: any) => {
                 isWsConnected.value = event.payload;
+                isWsConnecting.value = false;
                 if (isWsConnected.value) {
                     parsedLyrics.value = []; // 连上 WS 后，立刻清空可能残存的网络歌词，防止打架
                 }
@@ -700,10 +710,13 @@ const initWebSocket = async () => {
         }
 
         // 监听器就绪后，再发车连接
+        isWsConnecting.value = true;
+        lastWsAttemptTime = Date.now();
         await invoke('start_websocket_lyrics', { url: "ws://127.0.0.1:47290/" });
 
     } catch (err) {
         console.error("WebSocket 启动失败:", err);
+        isWsConnecting.value = false;
     }
 };
 
@@ -720,6 +733,7 @@ const stopWebSocket = async () => {
             unlistenWsStatus = null;
         }
         isWsConnected.value = false;
+        isWsConnecting.value = false;
     } catch (err) {
         console.error("WebSocket 停止失败:", err);
     }
@@ -826,13 +840,33 @@ const nextTrack = async () => {
 // 核心同步函数：负责获取状态并智能降级
 const syncMusicStatus = async () => {
     try {
-        const res = await invoke<[string, string, boolean, number, number] | null>('fetch_netease_music_info');
+        const res = await invoke<[string, string, boolean, number, number, string] | null>('fetch_netease_music_info');
 
         // 判定过去 3 秒内是否有活跃的本地 WebSocket 推送
         const isWsActive = (Date.now() - lastWsLyricTime < 3000);
 
         if (res) {
-            const [song, artist, playing, positionMs, durationMs] = res;
+            const [song, artist, playing, positionMs, durationMs, app_id_str] = res;
+
+            // 通用媒体模式：检测到正在播放但 WS 未连上时，自动尝试连接（带退避）
+            if (localStorage.getItem('nsd_target_player') === 'other'
+                && playing && !isWsActive && !isWsConnected.value && !isWsConnecting.value) {
+                if (Date.now() - lastWsAttemptTime >= WS_RETRY_BACKOFF_MS) {
+                    initWebSocket();
+                }
+            }
+            
+            if (app_id_str.includes("bilibili")) {
+                coverUrl.value = 'src/assets/bilibili-logo.png';
+            }
+
+            if (app_id_str.includes("edge")) {
+                coverUrl.value = 'src/assets/edge-logo.png';
+            }
+            
+            if (app_id_str.includes("chrome")) {
+                coverUrl.value = 'src/assets/chrome-logo.png';
+            }
 
             // 仅在 WS 不活跃时，使用 SMTC 的播放状态
             if (!isWsActive) {
@@ -868,26 +902,28 @@ const syncMusicStatus = async () => {
                     currentMatchedIndex = -1;
                     lastLyricChangeTime = performance.now() + 2000;
                 }
-
-                if (coverCache.has(newTrackInfo)) {
-                    coverUrl.value = coverCache.get(newTrackInfo)!;
-                    blurredCoverUrl.value = blurredCoverCache.get(newTrackInfo) || '';
-                } else {
-                    invoke<string>('get_random_cover_url', { songName: song, artistName: artist })
-                        .then(async url => {
-                            coverUrl.value = url;
-                            if (coverCache.size > 50) {
-                                coverCache.clear();
-                                blurredCoverCache.clear();
-                            }
-                            coverCache.set(newTrackInfo, url);
-                            const bakedImage = await bakeBlurImage(url);
-                            blurredCoverUrl.value = bakedImage;
-                            blurredCoverCache.set(newTrackInfo, bakedImage);
-                        }).catch(() => {
-                            coverUrl.value = '';
-                            blurredCoverUrl.value = '';
-                        });
+                
+                if (!app_id_str.includes("bilibili") && !app_id_str.includes("edge") && !app_id_str.includes("chrome")) {
+                    if (coverCache.has(newTrackInfo)) {
+                        coverUrl.value = coverCache.get(newTrackInfo)!;
+                        blurredCoverUrl.value = blurredCoverCache.get(newTrackInfo) || '';
+                    } else {
+                        invoke<string>('get_random_cover_url', { songName: song, artistName: artist })
+                            .then(async url => {
+                                coverUrl.value = url;
+                                if (coverCache.size > 50) {
+                                    coverCache.clear();
+                                    blurredCoverCache.clear();
+                                }
+                                coverCache.set(newTrackInfo, url);
+                                const bakedImage = await bakeBlurImage(url);
+                                blurredCoverUrl.value = bakedImage;
+                                blurredCoverCache.set(newTrackInfo, bakedImage);
+                            }).catch(() => {
+                                coverUrl.value = '';
+                                blurredCoverUrl.value = '';
+                            });
+                    }
                 }
 
                 // 仅在 WS 不活跃时，发起 HTTP 网络歌词兜底
@@ -2132,9 +2168,12 @@ onMounted(async () => {
                 let matchedIndex = -1;
 
                 // 找出当前时间进度应该播放哪一句
+                // 仅当 3 秒内有 WS 推送（即当前歌词源是 WS）时才附加专属延迟，不影响 HTTP 歌词
+                const wsDelayMs = (Date.now() - lastWsLyricTime < 3000) ? WS_LYRIC_DELAY_MS : 0;
                 for (let i = 0; i < parsedLyrics.value.length; i++) {
                     // 抢跑 550ms：完美抵消 150ms 叠化动画 + 100ms 滤镜模糊 + 听觉视觉生理时差
-                    if (parsedLyrics.value[i].time <= localPositionMs.value + 550 - (nsdLyricDelay.value * 1000)) {
+                    // 再额外减去 WS 专属延迟，让 WS 歌词整体晚 WS_LYRIC_DELAY_MS 毫秒显示
+                    if (parsedLyrics.value[i].time <= localPositionMs.value + 550 - (nsdLyricDelay.value * 1000) - wsDelayMs) {
                         matchedIndex = i;
                     } else {
                         break;
