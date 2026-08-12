@@ -160,7 +160,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">CPU</span>
                                     <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{ cpuUsage
-                                    }}%</span>
+                                        }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: cpuUsage + '%' }"
@@ -171,7 +171,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">RAM</span>
                                     <span class="res-value" :class="{ 'high-usage': ramUsage >= 85 }">{{ ramUsage
-                                    }}%</span>
+                                        }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: ramUsage + '%' }"
@@ -3147,20 +3147,28 @@ onUnmounted(() => {
     align-items: center;
     justify-content: space-between;
     padding-right: 8px;
-    gap: 10px;
+    gap: 4px;
     box-sizing: border-box;
     -webkit-app-region: no-drag;
 }
 
 .custom-slot-item {
     flex: 1;
-    /* 基础默认值 */
     display: flex;
     flex-direction: column;
     justify-content: center;
     gap: 4px;
+    height: 95%;
     min-width: 0;
-    height: 100%;
+    background: rgba(128, 128, 128, 0.1);
+    box-shadow: 0 2px 4px inset #3e3e3e42;
+    border-radius: 4px;
+    padding: 2px 4px;
+}
+
+/* (可选) 针对亮色主题的独立优化，让亮色下的模块边框更干净 */
+:deep(.island-container[style*="background-color: rgba(255, 255, 255"]) .custom-slot-item {
+    background: rgba(0, 0, 0, 0.05);
 }
 
 /* 给 FPS 分配更窄的宽度占比 */
