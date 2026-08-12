@@ -254,6 +254,11 @@
                                         </div>
                                     </template>
 
+                                    <template v-else-if="slot === 'cover'">
+                                        <div class="custom-cover-inner"
+                                            :style="coverUrl ? { backgroundImage: `url(${coverUrl})` } : {}"></div>
+                                    </template>
+
                                 </div>
                                 <div v-else class="custom-slot-empty"></div>
                             </template>
@@ -3204,7 +3209,7 @@ onUnmounted(() => {
 
 /* 统一的小标签风格 (类似 ⬆, CPU, FPS) */
 .custom-label {
-    font-size: 8px;
+    font-size: 10px;
     font-weight: 800;
     opacity: 0.75;
     color: currentColor;
@@ -3234,5 +3239,30 @@ onUnmounted(() => {
 .fps-large {
     font-size: 14px;
     letter-spacing: 0.5px;
+}
+
+/* 给歌曲封面分配极窄的 flex 宽度，仅保留空间即可 */
+.custom-slot-item.is-cover {
+    flex: 0.45;
+    padding: 0;
+    margin-right: 2px;
+    margin-left: 2px;
+    background: transparent;
+    box-shadow: none;
+    align-items: center;
+    /* 保证居中 */
+}
+
+/* 静态封面本体：方形、小圆角 */
+.custom-cover-inner {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    background-color: rgba(150, 150, 150, 0.15);
+    box-shadow: 0 2px 4px inset #3e3e3e42;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    flex-shrink: 0;
 }
 </style>

@@ -150,6 +150,8 @@ const messages = {
         featSpeed: '网速',
         featResource: '资源',
         featFps: 'FPS',
+        featCover: '封面',
+        dragHereToDisable: '拖放到此处关闭',
     },
     'en-US': {
         appSubtitle: 'NSD desktop Dynamic Island widget',
@@ -294,6 +296,8 @@ const messages = {
         featSpeed: 'Speed',
         featResource: 'Resource',
         featFps: 'FPS',
+        featCover: 'Cover',
+        dragHereToDisable: 'Drag here to disable',
     },
 };
 

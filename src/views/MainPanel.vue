@@ -104,7 +104,7 @@
                                     <template v-if="themeMode === 'light'">{{ t('lightMode') }}</template>
                                     <template v-else-if="themeMode === 'dark'">{{ t('darkMode') }}</template>
                                     <template v-else-if="themeMode === 'coverglass'">{{ t('coverglassMode')
-                                        }}</template>
+                                    }}</template>
                                     <template v-else-if="themeMode === 'system'">{{ t('systemMode') }}</template>
                                 </div>
                                 <svg viewBox="0 0 24 24" class="arrow-icon"
@@ -445,15 +445,23 @@
                                                             :class="{ 'has-item': slot }">
                                                             <div v-if="slot" class="dnd-item"
                                                                 @pointerdown="onPointerDown(slot, index, $event)">
+                                                                <span class="dnd-icon"
+                                                                    v-html="getFeatureIcon(slot)"></span>
                                                                 {{ getFeatureName(slot) }}
                                                             </div>
                                                         </div>
                                                     </div>
 
                                                     <div class="dnd-row pool-row">
+                                                        <div v-if="availableFeatures.length === 0"
+                                                            class="pool-empty-hint">
+                                                            {{ t('dragHereToDisable') }}
+                                                        </div>
+
                                                         <div v-for="feat in availableFeatures" :key="feat"
                                                             class="dnd-item"
                                                             @pointerdown="onPointerDown(feat, -1, $event)">
+                                                            <span class="dnd-icon" v-html="getFeatureIcon(feat)"></span>
                                                             {{ getFeatureName(feat) }}
                                                         </div>
                                                     </div>
@@ -512,7 +520,7 @@
                     </div>
                     <div class="modal-footer">
                         <button v-if="dialog.isConfirm" class="btn btn-secondary" @click="closeDialog">{{ t('cancel')
-                            }}</button>
+                        }}</button>
                         <button class="btn btn-primary" @click="handleDialogConfirm">{{ t('confirm') }}</button>
                     </div>
                 </div>
@@ -561,23 +569,36 @@ const togglePage = () => {
 const isChecking = ref(false);
 const hasNewVersion = ref(false);
 
-// --- 灵动岛自定义插件布局逻辑 ---
+// 灵动岛自定义插件布局逻辑
 const enableCustomDisplay = ref(localStorage.getItem('nsd_custom_display') === 'true');
 const customSlots = ref<(string | null)[]>(JSON.parse(localStorage.getItem('nsd_custom_slots') || '[null, null, null]'));
 const isCustomMenuOpen = ref(false);
 
 const availableFeatures = computed(() => {
-    return ['speed', 'resource', 'fps'].filter(f => !customSlots.value.includes(f));
+    return ['speed', 'resource', 'fps', 'cover'].filter(f => !customSlots.value.includes(f));
 });
 
+// 自定义显示功能
 const getFeatureName = (feat: string) => {
     if (feat === 'speed') return t('featSpeed');
     if (feat === 'resource') return t('featResource');
     if (feat === 'fps') return t('featFps');
+    if (feat === 'cover') return t('featCover');
     return feat;
 };
 
-// --- 🛡️ 防弹级 Pointer Events 拖拽 (彻底解决卡死/锁死问题) ---
+// 拖拽功能图标映射
+const getFeatureIcon = (feat: string) => {
+    const icons: Record<string, string> = {
+        speed: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg>`,
+        resource: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>`,
+        fps: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>`,
+        cover: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`
+    };
+    return icons[feat] || '';
+};
+
+// 防弹级 Pointer Events 拖拽
 const draggedItem = ref<string | null>(null);
 const draggedSourceIndex = ref<number | null>(null);
 const dragGhostRef = ref<HTMLElement | null>(null);
@@ -619,7 +640,8 @@ const onPointerDown = (item: string, index: number, event: PointerEvent) => {
 
     // 2. 显示幽灵
     if (dragGhostRef.value) {
-        dragGhostRef.value.textContent = getFeatureName(item);
+        // 使用 innerHTML 植入图标和文本
+        dragGhostRef.value.innerHTML = `<span class="dnd-icon">${getFeatureIcon(item)}</span>${getFeatureName(item)}`;
         dragGhostRef.value.style.display = 'flex';
         dragGhostRef.value.style.left = `${event.clientX}px`;
         dragGhostRef.value.style.top = `${event.clientY}px`;
@@ -2921,6 +2943,21 @@ input:disabled+.slider {
     min-height: 40px;
 }
 
+/* 当下方池子为空时的提示文字 */
+.pool-empty-hint {
+    grid-column: 1 / -1;
+    /* 跨越所有网格列以实现绝对居中 */
+    text-align: center;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--item-desc-color);
+    line-height: 24px;
+    user-select: none;
+    pointer-events: none;
+    /* 防止干扰拖拽放置事件 */
+    letter-spacing: 0.5px;
+}
+
 /* 重新补回拖拽专用的拦截器：拖拽时让功能块本身失去事件，保证 drop 100% 落在底下的槽位上 */
 .custom-dropdown.is-dragging .dnd-item {
     pointer-events: none;
@@ -2966,6 +3003,7 @@ input:disabled+.slider {
     align-items: center;
     justify-content: center;
     height: 24px;
+    gap: 4px;
 }
 
 .dnd-item:active {
@@ -2979,7 +3017,6 @@ input:disabled+.slider {
     position: fixed;
     z-index: 99999;
     pointer-events: none;
-    /* 极其重要：让鼠标事件穿透幽灵，才能检测到下方的槽位 */
     background: var(--btn-pri-bg);
     color: var(--btn-pri-color);
     padding: 6px 12px;
@@ -2988,8 +3025,9 @@ input:disabled+.slider {
     font-weight: 700;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
     transform: translate(-50%, -50%);
-    /* 让鼠标位于幽灵中心 */
     white-space: nowrap;
+    align-items: center;
+    gap: 4px;
 }
 
 /* 拖拽悬停时的槽位高亮 */
@@ -3004,5 +3042,12 @@ input:disabled+.slider {
     touch-action: none;
     /* 防止移动端滚动干扰 */
     cursor: grab;
+}
+
+.dnd-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.8;
 }
 </style>
