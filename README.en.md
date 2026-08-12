@@ -155,6 +155,28 @@ MIT License
 
 Copyright (c) 2026 Ryen (GEORGEWU)
 
+## Contributors & Star History
+
+Thank you to all the developers who have contributed to this project!
+
+<div align="left">
+  <a href="https://github.com/GEORGEWWWU/NetSpeed-Dynamic/graphs/contributors">
+    <img src="https://contrib.rocks/image?repo=GEORGEWWWU/NetSpeed-Dynamic" alt="Contributors" />
+  </a>
+</div>
+
+### Star History Trend
+
+<div align="center">
+  <a href="https://star-history.com/#GEORGEWWWU/NetSpeed-Dynamic&Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=GEORGEWWWU/NetSpeed-Dynamic&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=GEORGEWWWU/NetSpeed-Dynamic&type=Date" />
+      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=GEORGEWWWU/NetSpeed-Dynamic&type=Date" />
+    </picture>
+  </a>
+</div>
+
 ## Support and Donation
 
 If this project helps you, feel free to support the author:
