@@ -569,6 +569,9 @@ const togglePage = () => {
 const isChecking = ref(false);
 const hasNewVersion = ref(false);
 
+// 监听状态，一旦改变立刻通知托盘打勾/取消打勾
+watch(isWidgetVisible, (val) => invoke('sync_tray_menu', { island: val }));
+
 // 灵动岛自定义插件布局逻辑
 const enableCustomDisplay = ref(localStorage.getItem('nsd_custom_display') === 'true');
 const customSlots = ref<(string | null)[]>(JSON.parse(localStorage.getItem('nsd_custom_slots') || '[null, null, null]'));
@@ -914,6 +917,7 @@ const enableMsgNotify = ref(localStorage.getItem('nsd_msg_notify') === 'true');
 const msgModeEnabled = ref(localStorage.getItem('nsd_msg_mode') === 'true');
 const autoHideFullscreen = ref(localStorage.getItem('nsd_autohide_fs') === 'true');
 const enableSysResource = ref(localStorage.getItem('nsd_sys_resource') === 'true');
+watch(msgModeEnabled, (val) => invoke('sync_tray_menu', { quiet: val }));
 
 // 切换系统资源监控
 const toggleSysResource = async () => {
@@ -1535,6 +1539,23 @@ onMounted(async () => {
                 openUrl('https://github.com/GEORGEWWWU/NetSpeed-Dynamic/releases/latest');
             }
         );
+    });
+
+    // 启动时初始化同步一次托盘菜单状态
+    invoke('sync_tray_menu', {
+        island: isWidgetVisible.value,
+        quiet: msgModeEnabled.value
+    });
+
+    // 监听托盘发来的 灵动岛 开关信号
+    await listen('tray-toggle-island', () => {
+        toggleWidget();
+    });
+
+    // 监听托盘发来的 静默模式 开关信号
+    await listen('tray-toggle-quiet', async () => {
+        msgModeEnabled.value = !msgModeEnabled.value;
+        await toggleMsgMode();
     });
 });
 
