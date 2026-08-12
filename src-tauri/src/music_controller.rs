@@ -1,4 +1,4 @@
-use futures_util::StreamExt;
+use futures_util::{SinkExt, StreamExt};
 use std::sync::Mutex;
 use tauri::{command, AppHandle, Emitter};
 use tokio_tungstenite::connect_async;
@@ -21,7 +21,7 @@ pub fn set_target_player(player: String) {
 }
 
 // 自动匹配你选择的软件
-fn get_target_media_session() -> Option<GlobalSystemMediaTransportControlsSession> {
+fn get_target_media_session() -> Option<(GlobalSystemMediaTransportControlsSession, String)> {
     let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
         .ok()?
         .get()
@@ -44,14 +44,20 @@ fn get_target_media_session() -> Option<GlobalSystemMediaTransportControlsSessio
         // 第一轮遍历：优先寻找 JustSolo.JustSolo
         for session in manager.GetSessions().ok()? {
             if let Ok(app_id) = session.SourceAppUserModelId() {
-                if app_id.to_string().to_lowercase().contains("justsolo") {
-                    return Some(session);
+                let app_id_str = app_id.to_string().to_lowercase();
+                if app_id_str.contains("douyin") {
+                    return None;
+                }
+                if app_id_str.contains("justsolo") {
+                    return Some((session, app_id_str));
                 }
             }
         }
         // 第二轮遍历：如果没有找到 JustSolo，回退到原逻辑，直接返回第一个有效媒体会话
         for session in manager.GetSessions().ok()? {
-            return Some(session);
+            if let Ok(app_id) = session.SourceAppUserModelId() {
+                return Some((session, app_id.to_string().to_lowercase()));
+            }
         }
         return None;
     }
@@ -61,15 +67,19 @@ fn get_target_media_session() -> Option<GlobalSystemMediaTransportControlsSessio
         if let Ok(app_id) = session.SourceAppUserModelId() {
             let app_id_str = app_id.to_string().to_lowercase();
 
+            if app_id_str.contains("douyin") {
+                return None;
+            }
+
             // 网易云特殊一点，包名可能叫 cloudmusic 或 netease
             if target == "netease"
                 && (app_id_str.contains("cloudmusic") || app_id_str.contains("netease"))
             {
-                return Some(session);
+                return Some((session, app_id_str));
             }
             // 其他软件直接用名字去系统进程列表里撞
             else if target != "netease" && app_id_str.contains(&target) {
-                return Some(session);
+                return Some((session, app_id_str));
             }
         }
     }
@@ -77,9 +87,9 @@ fn get_target_media_session() -> Option<GlobalSystemMediaTransportControlsSessio
 }
 
 #[command]
-pub async fn fetch_netease_music_info() -> Result<Option<(String, String, bool, i64, i64)>, String>
+pub async fn fetch_netease_music_info() -> Result<Option<(String, String, bool, i64, i64, String)>, String>
 {
-    let session = match get_target_media_session() {
+    let (session, app_id_str) = match get_target_media_session() {
         Some(s) => s,
         None => return Ok(None),
     };
@@ -138,13 +148,22 @@ pub async fn fetch_netease_music_info() -> Result<Option<(String, String, bool, 
         }
     }
 
+    if app_id_str.contains("bilibili") { // 识别到哔哩哔哩
+        return Ok(Some((title, "bilibili".to_string(), is_playing, position_ms, duration_ms, app_id_str)));
+    }
+    
+    if app_id_str.contains("edge") { // 识别到 Edge 浏览器
+        return Ok(Some((title, "edge".to_string(), is_playing, position_ms, duration_ms, app_id_str)));
+    }
+
     // 返回值增加了一个 duration_ms 参数
-    Ok(Some((title, artist, is_playing, position_ms, duration_ms)))
+    // 标题、歌手、是否播放、当前位置、总时长、应用包名
+    Ok(Some((title, artist, is_playing, position_ms, duration_ms, app_id_str)))
 }
 
 #[command]
 pub async fn control_system_media(action: String) -> Result<(), String> {
-    if let Some(session) = get_target_media_session() {
+    if let Some((session, _)) = get_target_media_session() {
         match action.as_str() {
             "play_pause" => {
                 let _ = session.TryTogglePlayPauseAsync();
@@ -195,7 +214,7 @@ fn inline_base64_encode(input: &[u8]) -> String {
 fn get_smtc_thumbnail() -> Option<String> {
     use windows::Storage::Streams::{Buffer, DataReader, InputStreamOptions};
 
-    let session = get_target_media_session()?;
+    let (session, _) = get_target_media_session()?;
     let properties = session.TryGetMediaPropertiesAsync().ok()?.get().ok()?;
     let thumbnail_ref = properties.Thumbnail().ok()?;
     let stream = thumbnail_ref.OpenReadAsync().ok()?.get().ok()?;
@@ -585,7 +604,18 @@ async fn run_websocket_lyrics(url: String, app: AppHandle) -> Result<(), String>
     println!("[WebSocket 调试] 连接成功！开始实时接收歌词推送...");
     let _ = app.emit("websocket-status", true);
 
-    let (_sender, mut receiver) = ws_stream.split();
+    let (mut sender, mut receiver) = ws_stream.split();
+
+    // 协议 v1.1.0+：连接建立后发送 hello 消息声明客户端名称
+    let hello = r#"{"type":"hello","client":"NetSpeed Dynamic Pro"}"#;
+    if let Err(e) = sender
+        .send(tokio_tungstenite::tungstenite::Message::Text(hello.to_string()))
+        .await
+    {
+        println!("[WebSocket 调试] 发送 hello 失败: {}", e);
+    } else {
+        println!("[WebSocket 调试] 已发送 hello 声明客户端名称");
+    }
 
     while let Some(Ok(msg)) = receiver.next().await {
         if let Ok(text) = msg.to_text() {
