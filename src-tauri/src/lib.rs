@@ -32,9 +32,8 @@ static FPS_PLUGIN_PROCESS: Mutex<Option<Child>> = Mutex::new(None);
 static TASKBAR_WS_SENDER: OnceLock<broadcast::Sender<String>> = OnceLock::new();
 
 // 智能获取插件路径（全方位无死角兼容开发与生产环境）
-fn get_plugin_path() -> Result<PathBuf, String> {
-    let exe_name = "NSD_Taskbar_Plugin.exe";
-
+fn get_plugin_path(exe_name: &str) -> Result<PathBuf, String> {
+    // 👈 增加参数
     // 1. 生产环境：优先尝试与主程序相同的绝对目录
     if let Ok(mut exe_path) = std::env::current_exe() {
         exe_path.pop();
@@ -47,9 +46,9 @@ fn get_plugin_path() -> Result<PathBuf, String> {
     // 2. 开发环境：暴力穷举所有可能的工作目录
     if let Ok(cwd) = std::env::current_dir() {
         let paths_to_try = vec![
-            cwd.join("src-tauri").join(exe_name), // 你的截图位置
-            cwd.join(exe_name),                   // 根目录
-            cwd.join("..").join(exe_name),        // 诡异启动时的上级目录
+            cwd.join("src-tauri").join(exe_name),
+            cwd.join(exe_name),
+            cwd.join("..").join(exe_name),
         ];
 
         for path in paths_to_try {
@@ -101,7 +100,7 @@ fn toggle_taskbar_plugin(enable: bool) -> Result<bool, String> {
 
     if enable {
         if process_guard.is_none() {
-            let exe_path = get_plugin_path()?;
+            let exe_path = get_plugin_path("NSD_Taskbar_Plugin.exe")?;
             // 启动插件
             match Command::new(exe_path).spawn() {
                 Ok(child) => {
@@ -128,9 +127,7 @@ fn toggle_fps_plugin(enable: bool) -> Result<bool, String> {
 
     if enable {
         if process_guard.is_none() {
-            // 借用你写好的 get_plugin_path 方法，替换一下文件名
-            let mut exe_path = get_plugin_path()?;
-            exe_path.set_file_name("NSD_Fps_Plugin.exe");
+            let exe_path = get_plugin_path("NSD_Fps_Plugin.exe")?;
 
             match Command::new(exe_path).spawn() {
                 Ok(child) => {

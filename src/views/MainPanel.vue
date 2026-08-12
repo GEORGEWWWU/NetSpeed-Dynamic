@@ -1485,6 +1485,35 @@ onMounted(async () => {
     }
 
     emit('control-custom-display', { enabled: enableCustomDisplay.value, slots: customSlots.value }).catch(() => { });
+
+    // 监听来自灵动岛的 FPS 插件缺失信号
+    await listen('fps-plugin-missing', () => {
+        // 1. 强行回退“独立 FPS 监控”的开关状态
+        enableFps.value = false;
+        localStorage.setItem('nsd_fps_monitor', 'false');
+
+        // 2. 如果用户是在“自定义显示”里把 FPS 拖进去了，把它抠出来弹回下方池子
+        if (customSlots.value.includes('fps')) {
+            const newSlots = [...customSlots.value];
+            const index = newSlots.indexOf('fps');
+            if (index !== -1) {
+                newSlots[index] = null;
+                customSlots.value = newSlots;
+                // 修改 customSlots 会自动触发 watch，同步清理灵动岛里的显示，非常完美
+            }
+        }
+
+        // 3. 呼出下载弹窗
+        showDialog(
+            t('pluginMissingTitle'),
+            t('pluginMissingDesc'),
+            true, // 显示确认/取消双按钮
+            () => {
+                // 点击确定，打开 Github 最新版下载页
+                openUrl('https://github.com/GEORGEWWWU/NetSpeed-Dynamic/releases/latest');
+            }
+        );
+    });
 });
 
 onUnmounted(() => {

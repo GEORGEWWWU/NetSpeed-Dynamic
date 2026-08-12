@@ -160,7 +160,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">CPU</span>
                                     <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{ cpuUsage
-                                        }}%</span>
+                                    }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: cpuUsage + '%' }"
@@ -171,7 +171,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">RAM</span>
                                     <span class="res-value" :class="{ 'high-usage': ramUsage >= 85 }">{{ ramUsage
-                                        }}%</span>
+                                    }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: ramUsage + '%' }"
@@ -579,9 +579,12 @@ const currentFps = ref(0);
 
 // 智能判断并按需启停后端的 FPS 采集插件
 const checkAndToggleFpsPlugin = () => {
-    // 只要开启了独立 FPS 开关，或者“自定义显示”开启且槽位中包含 'fps'，就激活后端采集
     const needFps = enableFps.value || (enableCustomDisplay.value && customSlots.value.includes('fps'));
-    invoke('toggle_fps_plugin', { enable: needFps }).catch(console.error);
+    invoke('toggle_fps_plugin', { enable: needFps }).catch((err) => {
+        console.error('FPS 插件启动失败:', err);
+        // 👈 当 Rust 报错说找不到插件时，发送全局求救信号给控制台主窗口
+        emit('fps-plugin-missing');
+    });
 };
 
 // 记录最后一次接收到真实 WS 歌词的时间
