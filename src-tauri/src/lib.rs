@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use sysinfo::Networks;
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager, State};
 use tauri_plugin_autostart::MacosLauncher;
@@ -380,6 +380,35 @@ async fn start_island_animation(
 pub struct AppState {
     pub networks: Mutex<Networks>,
     pub ws_task: TokioMutex<Option<tokio::task::JoinHandle<()>>>,
+    // 换成专业的原生复选菜单项引用
+    pub tray_items: Mutex<
+        Option<(
+            CheckMenuItem<tauri::Wry>,
+            CheckMenuItem<tauri::Wry>,
+            CheckMenuItem<tauri::Wry>,
+        )>,
+    >,
+}
+
+#[tauri::command]
+fn sync_tray_menu(
+    state: State<'_, AppState>,
+    island: Option<bool>,
+    quiet: Option<bool>,
+    glow: Option<bool>,
+) {
+    // 接收到 Vue 发来的状态，直接调用原生 API 改变打勾状态，不再拼接野路子字符串
+    if let Some((island_item, quiet_item, glow_item)) = &*state.tray_items.lock().unwrap() {
+        if let Some(v) = island {
+            let _ = island_item.set_checked(v);
+        }
+        if let Some(v) = quiet {
+            let _ = quiet_item.set_checked(v);
+        }
+        if let Some(v) = glow {
+            let _ = glow_item.set_checked(v);
+        }
+    }
 }
 
 #[tauri::command]
@@ -435,6 +464,7 @@ pub fn run() {
         .manage(AppState {
             networks: Mutex::new(networks),
             ws_task: TokioMutex::new(None),
+            tray_items: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             get_network_stats,
@@ -455,6 +485,7 @@ pub fn run() {
             music_controller::start_websocket_lyrics,
             music_controller::stop_websocket_lyrics,
             toggle_fps_plugin,
+            sync_tray_menu,
         ])
         .setup(|app| {
             audio_spectrum::start_monitor();
@@ -604,28 +635,98 @@ pub fn run() {
                 }
             }
 
-            let quit_item = MenuItem::with_id(app, "quit", "强制退出", true, None::<&str>)?;
-            let tray_menu = Menu::with_items(app, &[&quit_item])?;
+            // 1. 构建全新结构的托盘菜单
+            let version = app.package_info().version.to_string();
+            let title_item = MenuItem::with_id(
+                app,
+                "title",
+                format!("NSDPRO v{}", version),
+                false,
+                None::<&str>,
+            )?;
+            let sep1 = PredefinedMenuItem::separator(app)?;
+
+            // 【核心专业改法】：使用原生的 CheckMenuItem
+            // 操作系统会自动把勾选框放在左侧的隐藏图标列，右侧文本天然完美对齐
+            let island_item =
+                CheckMenuItem::with_id(app, "toggle_island", "灵动岛", true, true, None::<&str>)?;
+            let quiet_item =
+                CheckMenuItem::with_id(app, "toggle_quiet", "静默模式", true, true, None::<&str>)?;
+            let glow_item =
+                CheckMenuItem::with_id(app, "toggle_glow", "流光边框", true, true, None::<&str>)?;
+
+            let sep2 = PredefinedMenuItem::separator(app)?;
+            // 下方常规按钮（文字会自动与上方的“灵动岛”对齐）
+            let console_item =
+                MenuItem::with_id(app, "open_console", "打开控制台", true, None::<&str>)?;
+            let reset_item =
+                MenuItem::with_id(app, "reset_pos", "重置灵动岛位置", true, None::<&str>)?;
+            let sep3 = PredefinedMenuItem::separator(app)?;
+            let quit_item = MenuItem::with_id(app, "quit", "✕ 强制退出", true, None::<&str>)?;
+
+            // 2. 存入引用
+            {
+                *app.state::<AppState>().tray_items.lock().unwrap() =
+                    Some((island_item.clone(), quiet_item.clone(), glow_item.clone()));
+            }
+
+            // 3. 构建菜单
+            let tray_menu = Menu::with_items(
+                app,
+                &[
+                    &title_item,
+                    &sep1,
+                    &island_item,
+                    &quiet_item,
+                    &glow_item,
+                    &sep2,
+                    &console_item,
+                    &reset_item,
+                    &sep3,
+                    &quit_item,
+                ],
+            )?;
 
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("NetSpeed Dynamic Pro")
                 .menu(&tray_menu)
                 .on_menu_event(move |app_handle, event| {
-                    if event.id == "quit" {
-                        // 强制退出前先掐死任务栏组件子进程
-                        if let Ok(mut process_guard) = TASKBAR_PLUGIN_PROCESS.lock() {
-                            if let Some(mut child) = process_guard.take() {
-                                let _ = child.kill();
+                    match event.id().as_ref() {
+                        "quit" => {
+                            if let Ok(mut process_guard) = TASKBAR_PLUGIN_PROCESS.lock() {
+                                if let Some(mut child) = process_guard.take() {
+                                    let _ = child.kill();
+                                }
+                            }
+                            if let Ok(mut process_guard) = FPS_PLUGIN_PROCESS.lock() {
+                                if let Some(mut child) = process_guard.take() {
+                                    let _ = child.kill();
+                                }
+                            }
+                            app_handle.exit(0);
+                        }
+                        "open_console" => {
+                            if let Some(main_window) = app_handle.get_webview_window("main") {
+                                let _ = main_window.show();
+                                let _ = main_window.unminimize();
+                                let _ = main_window.set_focus();
                             }
                         }
-                        if let Ok(mut process_guard) = FPS_PLUGIN_PROCESS.lock() {
-                            if let Some(mut child) = process_guard.take() {
-                                let _ = child.kill();
-                            }
+                        // 抛出事件给前端
+                        "toggle_island" => {
+                            let _ = app_handle.emit("tray-toggle-island", ());
                         }
-                        // 使用 app_handle 优雅退出，而不是 std::process::exit
-                        app_handle.exit(0);
+                        "toggle_quiet" => {
+                            let _ = app_handle.emit("tray-toggle-quiet", ());
+                        }
+                        "toggle_glow" => {
+                            let _ = app_handle.emit("tray-toggle-glow", ());
+                        }
+                        "reset_pos" => {
+                            let _ = app_handle.emit("tray-reset-pos", ());
+                        }
+                        _ => {}
                     }
                 })
                 .on_tray_icon_event(|tray, event| {

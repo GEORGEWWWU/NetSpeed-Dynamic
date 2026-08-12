@@ -160,7 +160,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">CPU</span>
                                     <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{ cpuUsage
-                                        }}%</span>
+                                    }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: cpuUsage + '%' }"
@@ -171,7 +171,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">RAM</span>
                                     <span class="res-value" :class="{ 'high-usage': ramUsage >= 85 }">{{ ramUsage
-                                        }}%</span>
+                                    }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: ramUsage + '%' }"
@@ -547,6 +547,8 @@ const parseLrc = (lrcStr: string) => {
 
 // 流光边框默认状态完全镜像音乐控制器（只要音乐控制器开着它就开，关了就一起关）
 const isGlowBorderEnabled = ref(localStorage.getItem('nsd_glow_border') === 'true');
+// 监听流光边框状态，改变立刻通知托盘
+watch(isGlowBorderEnabled, (val) => invoke('sync_tray_menu', { glow: val }));
 
 // 律动频谱
 const spectrumData = ref([0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35]);
@@ -2040,6 +2042,33 @@ onMounted(async () => {
     // 监听后端发来的高频 UDP FPS 信号
     await listen<{ fps: number }>('fps-event', (event) => {
         currentFps.value = event.payload.fps;
+    });
+
+    // 启动时初始化同步一次托盘流光状态
+    invoke('sync_tray_menu', { glow: isGlowBorderEnabled.value });
+
+    // 监听托盘发来的 流光边框 开关信号
+    await listen('tray-toggle-glow', () => {
+        isGlowBorderEnabled.value = !isGlowBorderEnabled.value;
+        localStorage.setItem('nsd_glow_border', String(isGlowBorderEnabled.value));
+        showToast(isGlowBorderEnabled.value ? t('glowBorderEnabled') : t('glowBorderDisabled'));
+    });
+
+    // 监听托盘发来的 重置位置 信号
+    await listen('tray-reset-pos', async () => {
+        try {
+            // 清理本地坐标缓存
+            localStorage.removeItem('nsd_island_log_x');
+            localStorage.removeItem('nsd_island_log_y');
+            localStorage.removeItem('nsd_island_center_x');
+            localStorage.removeItem('nsd_island_y');
+            localStorage.removeItem('nsd_island_x');
+
+            await adjustWindowPosition();
+            showToast(t('positionReset'), 'sys');
+        } catch (error) {
+            console.error(error);
+        }
     });
 
     // 在你原有的每秒刷新定时器中，顺带执行音乐同步
