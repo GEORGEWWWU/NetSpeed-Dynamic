@@ -160,7 +160,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">CPU</span>
                                     <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{ cpuUsage
-                                    }}%</span>
+                                        }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: cpuUsage + '%' }"
@@ -171,7 +171,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">RAM</span>
                                     <span class="res-value" :class="{ 'high-usage': ramUsage >= 85 }">{{ ramUsage
-                                    }}%</span>
+                                        }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: ramUsage + '%' }"
@@ -1158,29 +1158,36 @@ watch(networkStatus, (newStatus, oldStatus) => {
 const adjustWindowPosition = async () => {
     try {
         const appWindow = getCurrentWindow();
-        await new Promise((resolve) => setTimeout(resolve, 150));
+        // 增加等待时间，确保打包环境下窗口句柄稳定
+        await new Promise((resolve) => setTimeout(resolve, 200));
+
         const monitor = await currentMonitor();
+        if (!monitor) return;
 
-        if (monitor) {
-            const scaleFactor = window.devicePixelRatio;
+        const scaleFactor = monitor.scaleFactor;
 
-            const WINDOW_INIT_WIDTH = currentWidth.value;   // 默认 260
-            const WINDOW_INIT_HEIGHT = currentHeight.value; // 默认 42
-            await appWindow.setSize(new PhysicalSize(Math.ceil(WINDOW_INIT_WIDTH * scaleFactor), Math.ceil(WINDOW_INIT_HEIGHT * scaleFactor)));
+        // 【关键】实时计算当前应有的尺寸，不使用外部 ref 变量
+        const { w, h } = getBaseSize();
+        const finalW = w * appScale.value;
+        const finalH = h * appScale.value;
 
-            const monitorWidthPhysical = monitor.size.width;
-            const monitorLeftPhysical = monitor.position.x;
-            const monitorTopPhysical = monitor.position.y;
+        await appWindow.setSize(new PhysicalSize(
+            Math.ceil(finalW * scaleFactor),
+            Math.ceil(finalH * scaleFactor)
+        ));
 
-            // 2. 重新获取设定后的真实物理尺寸，用于精准居中
-            const windowSize = await appWindow.innerSize();
-            const windowWidthPhysical = windowSize.width;
+        // 重新获取设定后的真实物理尺寸，用于精准居中
+        const windowSize = await appWindow.innerSize();
+        const windowWidthPhysical = windowSize.width;
 
-            const x = monitorLeftPhysical + (monitorWidthPhysical - windowWidthPhysical) / 2;
-            const y = monitorTopPhysical + (12 * scaleFactor);
+        const monitorWidthPhysical = monitor.size.width;
+        const monitorLeftPhysical = monitor.position.x;
+        const monitorTopPhysical = monitor.position.y;
 
-            await appWindow.setPosition(new PhysicalPosition(Math.round(x), Math.round(y)));
-        }
+        const x = monitorLeftPhysical + (monitorWidthPhysical - windowWidthPhysical) / 2;
+        const y = monitorTopPhysical + (12 * scaleFactor);
+
+        await appWindow.setPosition(new PhysicalPosition(Math.round(x), Math.round(y)));
     } catch (error) {
         console.error('调整窗口位置失败:', error);
     } finally {
@@ -1357,10 +1364,12 @@ const handleRightClick = async (event: MouseEvent) => {
         id: 'reset_position',
         action: async () => {
             try {
-                // 清空记忆坐标，让它下次启动时重新计算默认居中
-                localStorage.removeItem('nsd_island_center_x'); // 更新为新键名
+                // 清除所有新旧格式的坐标缓存
+                localStorage.removeItem('nsd_island_log_x');
+                localStorage.removeItem('nsd_island_log_y');
+                localStorage.removeItem('nsd_island_center_x');
                 localStorage.removeItem('nsd_island_y');
-                localStorage.removeItem('nsd_island_x'); // 顺手抹掉旧版本的残留
+                localStorage.removeItem('nsd_island_x');
 
                 await adjustWindowPosition();
                 showToast(t('positionReset'));
@@ -1617,24 +1626,47 @@ const getAppIcon = (appName: string) => {
 onMounted(async () => {
     const appWindow = getCurrentWindow();
 
-    // 监听窗口移动并保存坐标 (带有 300ms 防抖，防止疯狂写入)
+    // 记录当前实例的启动时间戳
+    const bootTime = Date.now();
+
+    // 监听窗口移动并保存坐标
     let moveTimeout: number | null = null;
-    await appWindow.onMoved(({ payload }) => {
+
+    await appWindow.onMoved(() => {
         if (moveTimeout) clearTimeout(moveTimeout);
-        // 注意这里加上了 async，因为要等待获取真实尺寸
+
         moveTimeout = window.setTimeout(async () => {
             try {
-                // 核心修复：获取当前窗口的真实宽度，计算出中心点 X 坐标
-                const size = await appWindow.innerSize();
-                const centerX = payload.x + (size.width / 2);
+                if (Date.now() - bootTime < 3000) return;
+                if (isSizeAnimating || isMusicExpanding.value) return;
 
-                // 存入专用的 center_x 键中
-                localStorage.setItem('nsd_island_center_x', centerX.toString());
-                localStorage.setItem('nsd_island_y', payload.y.toString());
+                // 获取物理坐标和当前显示器的缩放比例
+                const physPos = await appWindow.outerPosition();
+                const monitor = await currentMonitor();
+                if (!monitor) return;
+
+                const scaleFactor = monitor.scaleFactor;
+
+                // 拦截幽灵坐标
+                if (physPos.x < -10000 || physPos.y < -10000) return;
+                if (physPos.x === 0 && physPos.y === 0) return;
+
+                // ✅ 核心修复：手动将物理坐标转换为逻辑坐标并保存
+                // 这样无论打包环境 DPI 怎么抖动，存下来的永远是稳定的逻辑坐标
+                const logX = Math.round(physPos.x / scaleFactor);
+                const logY = Math.round(physPos.y / scaleFactor);
+
+                localStorage.setItem('nsd_island_log_x', logX.toString());
+                localStorage.setItem('nsd_island_log_y', logY.toString());
+
+                // 兼容清理旧版物理坐标缓存
+                localStorage.removeItem('nsd_island_center_x');
+                localStorage.removeItem('nsd_island_y');
+                localStorage.removeItem('nsd_island_x');
             } catch (e) {
                 console.error('保存坐标失败:', e);
             }
-        }, 300);
+        }, 600);
     });
 
     window.addEventListener('blur', collapseMusic);
@@ -1829,40 +1861,81 @@ onMounted(async () => {
         await appWindow.innerPosition();
     } catch (e) { }
 
-    // 在启动调整位置前，根据当前的实际状态，校准初始宽高
+    // 在启动调整位置前，先校准初始宽高变量（仅用于首次渲染，不参与坐标计算）
     const { w, h } = getBaseSize();
     currentWidth.value = w * appScale.value;
     currentHeight.value = h * appScale.value;
 
-    // 优先读取本地缓存的自定义坐标
-    const savedCenterX = localStorage.getItem('nsd_island_center_x');
-    const savedY = localStorage.getItem('nsd_island_y');
-
-    // 兼容处理：清理旧版有缺陷的 x 坐标，防止干扰
-    if (!savedCenterX && localStorage.getItem('nsd_island_x')) {
-        localStorage.removeItem('nsd_island_x');
-        await adjustWindowPosition();
-    } else if (savedCenterX !== null && savedY !== null) {
+    // 【终极修复】用逻辑坐标恢复，彻底免疫 DPI 时序问题
+    const safeRestorePosition = async () => {
         try {
-            const scaleFactor = window.devicePixelRatio;
-            const targetPhysicalWidth = Math.ceil(currentWidth.value * scaleFactor);
-            const targetPhysicalHeight = Math.ceil(currentHeight.value * scaleFactor);
+            await new Promise(resolve => setTimeout(resolve, 250));
 
-            // 必须先设置高宽，再移动位置，防止形变抖动
-            await appWindow.setSize(new PhysicalSize(targetPhysicalWidth, targetPhysicalHeight));
+            const appWindow = getCurrentWindow();
+            const monitor = await currentMonitor();
+            if (!monitor) {
+                console.warn('无法获取显示器信息，执行默认居中');
+                await adjustWindowPosition();
+                return;
+            }
 
-            // 核心还原算法：中心点 X 坐标 - (当前物理宽度 / 2) = 真正的左上角 X 坐标
-            const restoreX = Math.round(parseFloat(savedCenterX) - (targetPhysicalWidth / 2));
-            const restoreY = parseInt(savedY, 10);
+            // 先确保窗口尺寸正确（尺寸仍然需要物理坐标，因为 setSize 只接受 PhysicalSize）
+            const scaleFactor = monitor.scaleFactor;
+            const { w: realW, h: realH } = getBaseSize();
+            const finalW = realW * appScale.value;
+            const finalH = realH * appScale.value;
+            await appWindow.setSize(new PhysicalSize(
+                Math.ceil(finalW * scaleFactor),
+                Math.ceil(finalH * scaleFactor)
+            ));
 
-            await appWindow.setPosition(new PhysicalPosition(restoreX, restoreY));
+            // ✅ 优先读取新版逻辑坐标
+            const savedLogX = localStorage.getItem('nsd_island_log_x');
+            const savedLogY = localStorage.getItem('nsd_island_log_y');
+
+            if (savedLogX !== null && savedLogY !== null) {
+                const lx = parseFloat(savedLogX);
+                const ly = parseFloat(savedLogY);
+
+                if (!isNaN(lx) && !isNaN(ly) && lx > -10000 && ly > -10000) {
+                    // 🎯 直接用 LogicalPosition 设置位置，Tauri 底层自动处理 DPI
+                    await appWindow.setPosition(new LogicalPosition(Math.round(lx), Math.round(ly)));
+                    console.log(`✅ 逻辑坐标恢复成功: x=${lx}, y=${ly}`);
+                    return;
+                }
+            }
+
+            // 兜底：尝试读取旧版物理坐标缓存（向后兼容）
+            const savedCenterX = localStorage.getItem('nsd_island_center_x');
+            const savedY = localStorage.getItem('nsd_island_y');
+            if (savedCenterX !== null && savedY !== null) {
+                const cx = parseFloat(savedCenterX);
+                const cy = parseInt(savedY, 10);
+                if (!isNaN(cx) && !isNaN(cy) && cx > -10000 && cy > -10000) {
+                    const targetPhysicalWidth = Math.ceil(finalW * scaleFactor);
+                    const restoreX = Math.round(cx - (targetPhysicalWidth / 2));
+                    await appWindow.setPosition(new PhysicalPosition(restoreX, cy));
+                    console.log(`⚠️ 旧版物理坐标兼容恢复: centerX=${cx}, y=${cy}`);
+                    return;
+                }
+            }
+
+            // 无任何有效缓存 → 默认居中
+            console.log('无有效缓存，执行默认居中');
+            await adjustWindowPosition();
+
         } catch (error) {
-            // 如果发生缩放比例错乱或越界，兜底使用默认居中算法
+            console.error('安全恢复位置失败，执行兜底居中:', error);
             await adjustWindowPosition();
         }
-    } else {
-        await adjustWindowPosition();
+    };
+
+    // 清理旧版残留键
+    if (localStorage.getItem('nsd_island_x')) {
+        localStorage.removeItem('nsd_island_x');
     }
+
+    await safeRestorePosition();
 
     // 检查本地记录的灵动岛开关状态
     const isWidgetEnabled = localStorage.getItem('nsd_widget_visible') !== 'false';
