@@ -1,0 +1,32 @@
+name: Update Star History
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # 每天北京时间上午10点（UTC凌晨2点）自动更新一次
+  workflow_dispatch: # 允许你在 GitHub 网页上手动点击运行
+
+permissions:
+  contents: write # 赋予机器人提交图片的权限
+
+jobs:
+  update:
+    concurrency:
+      group: star-history
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Generate star history chart
+        uses: nicoloboschi/gh-stars@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          line-color: '#42b883' # 给你配了 Vue 经典的绿色主题，你也可以换成别的Hex颜色
+
+      - name: Commit chart
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/star-history/data.json .github/star-history/chart.svg
+          git diff --cached --quiet || git commit -m 'chore: 自动更新 Star 历史趋势图 [skip ci]'
+          git push
