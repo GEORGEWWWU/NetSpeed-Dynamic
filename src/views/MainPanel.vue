@@ -2899,8 +2899,8 @@ input:disabled+.slider {
 
 /* 修改菜单方向：使其向上弹出，彻底告别底部裁切 */
 .custom-dnd-menu {
-    width: 220px !important;
-    padding: 8px !important;
+    width: 250px !important;
+    padding: 10px 20px !important;
     right: 0;
     top: auto !important;
     bottom: calc(100% + 6px) !important;
@@ -3049,5 +3049,45 @@ input:disabled+.slider {
     align-items: center;
     justify-content: center;
     opacity: 0.8;
+}
+
+/* 自定义显示内灵动岛背景*/
+/* 1. 直接把变量挂载到全局，彻底避开 scoped 编译 bug */
+:global(:root) {
+    --mock-island-bg: #f5f5f5;
+    --mock-island-border: var(--card-border);
+    --mock-island-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* 2. 暗色模式下，直接修改全局变量 */
+:global(.dark-theme) {
+    --mock-island-bg: #000000;
+    --mock-island-border: rgba(255, 255, 255, 0.08);
+    --mock-island-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03), 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* 3. 本地元素只负责傻瓜式读取，不参与任何复杂逻辑 */
+.slots-row {
+    position: relative;
+    z-index: 1;
+}
+
+.slots-row::before {
+    content: "";
+    position: absolute;
+    top: -2px;
+    bottom: 4px;
+    left: -10px;
+    right: -10px;
+
+    background-color: var(--mock-island-bg);
+    border: 1px solid var(--mock-island-border);
+    box-shadow: var(--mock-island-shadow);
+
+    border-radius: 100vh;
+    z-index: -1;
+    pointer-events: none;
+    transition: all 0.3s ease;
+    /* 切换黑白时增加丝滑渐变 */
 }
 </style>
