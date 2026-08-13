@@ -583,6 +583,39 @@ const bakeBlurImage = (url: string): Promise<string> => {
     });
 };
 
+// 共享的封面获取/应用逻辑：查缓存 → 未命中就调接口 → 写缓存 → 烘焙模糊封面
+// onlyIfChanged: 与当前显示的封面对比，不一样才应用（恢复播放时用）
+// clearOnError: 获取失败时是否清空封面（切歌时清空，恢复播放时保留）
+const fetchAndApplyCover = async (trackInfo: string, song: string, artist: string, onlyIfChanged = false, clearOnError = true) => {
+    if (coverCache.has(trackInfo)) {
+        const cached = coverCache.get(trackInfo)!;
+        if (!onlyIfChanged || cached !== coverUrl.value) {
+            coverUrl.value = cached;
+            blurredCoverUrl.value = blurredCoverCache.get(trackInfo) || '';
+        }
+        return;
+    }
+    try {
+        const url = await invoke<string>('get_random_cover_url', { songName: song, artistName: artist });
+        if (!onlyIfChanged || url !== coverUrl.value) {
+            coverUrl.value = url;
+            if (coverCache.size > 50) {
+                coverCache.clear();
+                blurredCoverCache.clear();
+            }
+            coverCache.set(trackInfo, url);
+            const bakedImage = await bakeBlurImage(url);
+            blurredCoverUrl.value = bakedImage;
+            blurredCoverCache.set(trackInfo, bakedImage);
+        }
+    } catch (e) {
+        if (clearOnError) {
+            coverUrl.value = '';
+            blurredCoverUrl.value = '';
+        }
+    }
+};
+
 // 实时FPS功能相关
 const enableFps = ref(localStorage.getItem('nsd_fps_monitor') === 'true');
 const currentFps = ref(0);
@@ -837,6 +870,37 @@ const nextTrack = async () => {
     await invoke('control_system_media', { action: 'next' });
 };
 
+// 从暂停恢复到播放时，重新获取封面并与当前显示对比（不一样才更新）
+let isCoverRefreshing = false;
+const refreshCoverOnResume = async () => {
+    // 防重入，避免连续触发时并发请求
+    if (isCoverRefreshing) return;
+
+    const song = currentSongName.value;
+    const artist = currentArtistName.value;
+    // 与 syncMusicStatus 里的缓存 key 格式保持一致
+    const trackInfo = artist ? `${song} - ${artist}` : song;
+    // 没有有效歌曲信息（如"暂无歌曲播放"占位）时跳过
+    if (!trackInfo || !song || song === t('noSongPlaying')) return;
+    // 浏览器/视频类应用用的是固定 logo 封面，无需刷新
+    if (coverUrl.value.startsWith('src/assets/')) return;
+
+    isCoverRefreshing = true;
+    try {
+        // 与当前显示的封面对比，不一样才更新；失败时保持现有封面不动
+        await fetchAndApplyCover(trackInfo, song, artist, true, false);
+    } finally {
+        isCoverRefreshing = false;
+    }
+};
+
+// 监听暂停 -> 播放的切换（SMTC 与 WS 两条路径都会走到这里），触发封面刷新对比
+watch(isPlaying, (now, prev) => {
+    if (now && !prev) {
+        refreshCoverOnResume();
+    }
+});
+
 // 核心同步函数：负责获取状态并智能降级
 const syncMusicStatus = async () => {
     try {
@@ -904,26 +968,7 @@ const syncMusicStatus = async () => {
                 }
                 
                 if (!app_id_str.includes("bilibili") && !app_id_str.includes("edge") && !app_id_str.includes("chrome")) {
-                    if (coverCache.has(newTrackInfo)) {
-                        coverUrl.value = coverCache.get(newTrackInfo)!;
-                        blurredCoverUrl.value = blurredCoverCache.get(newTrackInfo) || '';
-                    } else {
-                        invoke<string>('get_random_cover_url', { songName: song, artistName: artist })
-                            .then(async url => {
-                                coverUrl.value = url;
-                                if (coverCache.size > 50) {
-                                    coverCache.clear();
-                                    blurredCoverCache.clear();
-                                }
-                                coverCache.set(newTrackInfo, url);
-                                const bakedImage = await bakeBlurImage(url);
-                                blurredCoverUrl.value = bakedImage;
-                                blurredCoverCache.set(newTrackInfo, bakedImage);
-                            }).catch(() => {
-                                coverUrl.value = '';
-                                blurredCoverUrl.value = '';
-                            });
-                    }
+                    fetchAndApplyCover(newTrackInfo, song, artist);
                 }
 
                 // 仅在 WS 不活跃时，发起 HTTP 网络歌词兜底
