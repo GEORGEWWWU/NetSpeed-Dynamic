@@ -677,6 +677,9 @@ const initWebSocket = async () => {
                 isWsConnecting.value = false;
                 if (isWsConnected.value) {
                     parsedLyrics.value = []; // 连上 WS 后，立刻清空可能残存的网络歌词，防止打架
+                } else {
+                    // 断开/连接失败时重置一次性标志，允许下次检测到 JustSolo 时重试连接
+                    wsConnectAttempted = false;
                 }
             });
         }
