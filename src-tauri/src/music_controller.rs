@@ -262,6 +262,12 @@ fn get_smtc_thumbnail() -> Option<String> {
     ))
 }
 
+// 仅尝试读取 SMTC 本地封面，不联网兜底（浏览器/视频类应用专用）
+#[command]
+pub async fn get_smtc_cover() -> Result<Option<String>, String> {
+    Ok(get_smtc_thumbnail())
+}
+
 #[command]
 pub async fn get_random_cover_url(
     song_name: String,

@@ -572,6 +572,10 @@ const convertWs12To7 = (bands12: number[]): number[] => {
 const coverUrl = ref('');
 const coverCache = new Map<string, string>();
 
+// 当前播放器是否为浏览器（edge/chrome），以及是否正在展示 SMTC 本地封面
+const currentIsBrowser = ref(false);
+const isSmtcCoverActive = ref(false);
+
 // 沉浸模式专属的静态模糊封面
 const blurredCoverUrl = ref('');
 const blurredCoverCache = new Map<string, string>();
@@ -627,6 +631,37 @@ const fetchAndApplyCover = async (trackInfo: string, song: string, artist: strin
             coverUrl.value = '';
             blurredCoverUrl.value = '';
         }
+    }
+};
+
+// 浏览器专用封面：只认 SMTC 本地封面，拿不到就保留默认应用图标（绝不走网络兜底，避免串错图）
+const fetchAndApplySmtcCover = async (trackInfo: string, onlyIfChanged = false) => {
+    if (coverCache.has(trackInfo)) {
+        const cached = coverCache.get(trackInfo)!;
+        if (!onlyIfChanged || cached !== coverUrl.value) {
+            coverUrl.value = cached;
+            blurredCoverUrl.value = blurredCoverCache.get(trackInfo) || '';
+        }
+        return;
+    }
+    try {
+        const smtcCover = await invoke<string | null>('get_smtc_cover');
+        if (smtcCover) {
+            isSmtcCoverActive.value = true;
+            if (!onlyIfChanged || smtcCover !== coverUrl.value) {
+                coverUrl.value = smtcCover;
+                if (coverCache.size > 50) {
+                    coverCache.clear();
+                    blurredCoverCache.clear();
+                }
+                coverCache.set(trackInfo, smtcCover);
+                const bakedImage = await bakeBlurImage(smtcCover);
+                blurredCoverUrl.value = bakedImage;
+                blurredCoverCache.set(trackInfo, bakedImage);
+            }
+        }
+    } catch (e) {
+        // SMTC 封面读取失败时静默保留当前封面（logo），不做任何兜底
     }
 };
 
@@ -934,8 +969,13 @@ const refreshCoverOnResume = async () => {
 
     isCoverRefreshing = true;
     try {
-        // 与当前显示的封面对比，不一样才更新；失败时保持现有封面不动
-        await fetchAndApplyCover(trackInfo, song, artist, true, false);
+        // 浏览器只认 SMTC 本地封面，避免网络兜底串到错误图片
+        if (currentIsBrowser.value) {
+            await fetchAndApplySmtcCover(trackInfo, true);
+        } else {
+            // 与当前显示的封面对比，不一样才更新；失败时保持现有封面不动
+            await fetchAndApplyCover(trackInfo, song, artist, true, false);
+        }
     } finally {
         isCoverRefreshing = false;
     }
@@ -963,10 +1003,17 @@ const syncMusicStatus = async () => {
             // 浏览器/视频类应用使用内置 logo 封面（import 引用，打包后路径才会被 Vite 正确重写）
             for (const [key, logo] of Object.entries(APP_COVER_LOGO_MAP)) {
                 if (app_id_str.includes(key)) {
-                    coverUrl.value = logo;
+                    // 已拿到 SMTC 封面则不再退回默认应用图标
+                    if (!isSmtcCoverActive.value) {
+                        coverUrl.value = logo;
+                    }
                     break;
                 }
             }
+
+            // 记录当前是否为浏览器类应用（edge/chrome），供封面刷新逻辑区分处理
+            currentIsBrowser.value =
+                app_id_str.includes("edge") || app_id_str.includes("chrome");
 
             // 仅在 WS 不活跃时，使用 SMTC 的播放状态
             if (!isWsActive) {
@@ -1004,7 +1051,12 @@ const syncMusicStatus = async () => {
                 lyricQueue.value = [];
                 currentMatchedIndex = -1;
                 
-                if (!app_id_str.includes("bilibili") && !app_id_str.includes("edge") && !app_id_str.includes("chrome")) {
+                if (app_id_str.includes("edge") || app_id_str.includes("chrome")) {
+                    // 浏览器：先回退到默认应用图标，再尝试用 SMTC 本地封面覆盖
+                    isSmtcCoverActive.value = false;
+                    coverUrl.value = APP_COVER_LOGO_MAP[app_id_str.includes("edge") ? "edge" : "chrome"];
+                    fetchAndApplySmtcCover(newTrackInfo);
+                } else if (!app_id_str.includes("bilibili")) {
                     fetchAndApplyCover(newTrackInfo, song, artist);
                 }
 
