@@ -1313,12 +1313,12 @@ const fetchSpeedStats = async () => {
                 networkStatus.value = 'error';
             }
 
-            // 负数置零，避免显示负网速
-            if (rxDiff < 0) rxDiff = 0;
-            if (txDiff < 0) txDiff = 0;
-
             downloadSpeed.value = formatSpeed(rxDiff);
             uploadSpeed.value = formatSpeed(txDiff);
+
+            // 负数置零，避免显示负网速
+            if (rxDiff < 0) downloadSpeed.value = '0 B/s';
+            if (txDiff < 0) uploadSpeed.value = '0 B/s';
 
             // 1MB = 1048576 字节
             const limit = 1024 * 1024;
@@ -1350,11 +1350,18 @@ const FAIL_THRESHOLD = 2;
 const checkNetworkLatency = async () => {
     try {
         const latency = await invoke<number>('get_network_latency');
+        
+        // 拿到当前流量统计，计算流量变化
+        const [currentRx, currentTx] = await invoke<[number, number]>('get_network_stats');
+        let rxDiff = currentRx - lastRx;
+        let txDiff = currentTx - lastTx;
 
         // 只要能拿到延迟数字，说明网络肯定是通的，立即清零失败计数
         consecutiveFailures = 0;
         if (latency < 150) {
-            networkStatus.value = 'good';      // 延迟优秀，绿色
+            if (rxDiff > 0 && txDiff > 0) { // 有流量变化，说明网络正常
+                networkStatus.value = 'good';      // 延迟优秀，绿色
+            }
         } else {
             networkStatus.value = 'warning';   // 延迟高/不稳定，黄色
         }
