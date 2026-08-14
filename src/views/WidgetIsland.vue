@@ -721,7 +721,7 @@ let unlistenJustSolo: (() => void) | null = null;
 // WebSocket 实时歌词监听
 let unlistenWs: (() => void) | null = null;
 
-// 用 SMTC 已获取到的 "标题 - 歌手" 立刻填充折叠态文本（WS 刚连上、歌词还没匹配上时的兜底）
+// 用 SMTC 已获取到的 "标题 - 歌手" 立刻填充折叠态文本
 const fillCollapsedWithTrackInfo = () => {
     if (!currentSongName.value || currentSongName.value === t('noSongPlaying')) return;
     const artist = currentArtistName.value === t('unknownArtist') ? '' : currentArtistName.value;
@@ -1023,17 +1023,6 @@ const syncMusicStatus = async () => {
         if (res) {
             const [song, artist, playing, positionMs, durationMs, app_id_str] = res;
 
-            // 浏览器/视频类应用使用内置 logo 封面（import 引用，打包后路径才会被 Vite 正确重写）
-            for (const [key, logo] of Object.entries(APP_COVER_LOGO_MAP)) {
-                if (app_id_str.includes(key)) {
-                    // 已拿到 SMTC 封面则不再退回默认应用图标
-                    if (!isSmtcCoverActive.value) {
-                        coverUrl.value = logo;
-                    }
-                    break;
-                }
-            }
-
             // 记录当前是否为浏览器类应用（edge/chrome），供封面刷新逻辑区分处理
             currentIsBrowser.value =
                 app_id_str.includes("edge") || app_id_str.includes("chrome");
@@ -1079,12 +1068,9 @@ const syncMusicStatus = async () => {
                     localPositionMs.value = positionMs; // 必须补上这行，否则新歌会继承老歌的时间！
                     lastLyricChangeTime = performance.now() + 2000;
                 }
-                // 无论 WS 是否活跃，切歌都立刻把折叠态文本更新为 "标题 - 歌手"，
-                // 避免 WS 已活跃时折叠态一直停留在上一首歌的旧歌词上
-                setSafeTrackInfo(newTrackInfo);
-                parsedLyrics.value = [];
-                lyricQueue.value = [];
-                currentMatchedIndex = -1;
+                
+                // 切歌立刻把折叠态文本更新为 "标题 - 歌手"，
+                fillCollapsedWithTrackInfo();
 
                 // 切换播放内容时强制重新获取封面：清掉该曲目的封面缓存，避免沿用旧封面
                 coverCache.delete(newTrackInfo);
@@ -1097,6 +1083,17 @@ const syncMusicStatus = async () => {
                     fetchAndApplySmtcCover(newTrackInfo);
                 } else if (!app_id_str.includes("bilibili")) {
                     fetchAndApplyCover(newTrackInfo, song, artist);
+                }
+
+                // 浏览器/视频类应用使用内置 logo 封面（import 引用，打包后路径才会被 Vite 正确重写）
+                for (const [key, logo] of Object.entries(APP_COVER_LOGO_MAP)) {
+                    if (app_id_str.includes(key)) {
+                        // 已拿到 SMTC 封面则不再退回默认应用图标
+                        if (!isSmtcCoverActive.value) {
+                            coverUrl.value = logo;
+                        }
+                        break;
+                    }
                 }
 
                 // 仅在 WS 不活跃时，发起 HTTP 网络歌词兜底
