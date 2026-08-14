@@ -1308,13 +1308,17 @@ const fetchSpeedStats = async () => {
     try {
         const [currentRx, currentTx] = await invoke<[number, number]>('get_network_stats');
         if (lastRx !== 0) {
-            const rxDiff = currentRx - lastRx;
-            const txDiff = currentTx - lastTx;
+            let rxDiff = currentRx - lastRx;
+            let txDiff = currentTx - lastTx;
 
-            // 网速为负说明网络计数器被重置（网卡重连/断网），直接判定为断网
+            // 网速为负说明网络计数器被重置（网卡重连/断网），判定为断网
             if (rxDiff < 0 || txDiff < 0) {
                 networkStatus.value = 'error';
             }
+
+            // 负数置零，避免显示负网速
+            if (rxDiff < 0) rxDiff = 0;
+            if (txDiff < 0) txDiff = 0;
 
             downloadSpeed.value = formatSpeed(rxDiff);
             uploadSpeed.value = formatSpeed(txDiff);
