@@ -688,7 +688,16 @@ const checkAndToggleFpsPlugin = () => {
     const needFps = enableFps.value || (enableCustomDisplay.value && customSlots.value.includes('fps'));
     invoke('toggle_fps_plugin', { enable: needFps }).catch((err) => {
         console.error('FPS 插件启动失败:', err);
-        // 👈 当 Rust 报错说找不到插件时，发送全局求救信号给控制台主窗口
+        // 👈 检测到 FPS 插件不存在时，前端就地退出 FPS 显示，避免灵动岛停留在 FPS 模式
+        enableFps.value = false;
+        localStorage.setItem('nsd_fps_monitor', 'false');
+        if (customSlots.value.includes('fps')) {
+            const newSlots = [...customSlots.value];
+            const index = newSlots.indexOf('fps');
+            if (index !== -1) newSlots[index] = null;
+            customSlots.value = newSlots;
+        }
+        // 再发送全局求救信号给控制台主窗口（由主窗口弹下载提示并同步状态）
         emit('fps-plugin-missing');
     });
 };
@@ -1301,6 +1310,11 @@ const fetchSpeedStats = async () => {
         if (lastRx !== 0) {
             const rxDiff = currentRx - lastRx;
             const txDiff = currentTx - lastTx;
+
+            // 网速为负说明网络计数器被重置（网卡重连/断网），直接判定为断网
+            if (rxDiff < 0 || txDiff < 0) {
+                networkStatus.value = 'error';
+            }
 
             downloadSpeed.value = formatSpeed(rxDiff);
             uploadSpeed.value = formatSpeed(txDiff);
