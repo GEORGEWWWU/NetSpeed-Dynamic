@@ -554,6 +554,20 @@ watch(isGlowBorderEnabled, (val) => invoke('sync_tray_menu', { glow: val }));
 const spectrumData = ref([0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35]);
 let spectrumTimer: number;
 
+// Just Solo LyricServer v1.2.0：12 频段 -> 7 频段（与本地频谱柱数一致，低到高分组取均值）
+const convertWs12To7 = (bands12: number[]): number[] => {
+    const groups: number[][] = [
+        bands12.slice(0, 1),    // 低频 1 段
+        bands12.slice(1, 3),    // 2 段
+        bands12.slice(3, 5),    // 2 段
+        bands12.slice(5, 7),    // 2 段
+        bands12.slice(7, 9),    // 2 段
+        bands12.slice(9, 11),   // 2 段
+        bands12.slice(11, 12),  // 高频 1 段
+    ];
+    return groups.map(g => g.reduce((a, b) => a + b, 0) / g.length);
+};
+
 // 封面url
 const coverUrl = ref('');
 const coverCache = new Map<string, string>();
@@ -633,17 +647,24 @@ const checkAndToggleFpsPlugin = () => {
 // 记录最后一次接收到真实 WS 歌词的时间
 let lastWsLyricTime = 0;
 
+// 记录最后一次收到 WS 12 频段频谱数据的时间（用于判定 WS 频谱是否新鲜）
+let lastWsSpectrumTime = 0;
+
 // WebSocket 状态管理
 const isWsConnected = ref(false);
 const isWsConnecting = ref(false);
-let lastWsAttemptTime = 0;
-const WS_RETRY_BACKOFF_MS = 10000;
+// 一次性连接标志：只要尝试过（无论成功失败）就不再尝试第二次
+let wsConnectAttempted = false;
 let unlistenWsStatus: (() => void) | null = null;
 
 // WebSocket 实时歌词监听
 let unlistenWs: (() => void) | null = null;
 
 const initWebSocket = async () => {
+    // 一次性连接：尝试过就不再连第二次
+    if (wsConnectAttempted) return;
+    wsConnectAttempted = true;
+
     try {
         // 防重入：已连上或正在连就不再调
         if (isWsConnected.value || isWsConnecting.value) return;
@@ -714,6 +735,16 @@ const initWebSocket = async () => {
                         }
                         return;
                     }
+
+                    // 收到实时频谱 (协议 v1.2.0)：12 频段 -> 7 频段（与本地频谱柱数一致）
+                    if (payload.type === 'spectrum') {
+                        lastWsLyricTime = Date.now();
+                        if (Array.isArray(payload.bands) && payload.bands.length === 12) {
+                            lastWsSpectrumTime = Date.now();
+                            spectrumData.value = convertWs12To7(payload.bands);
+                        }
+                        return;
+                    }
                 }
 
                 // 下方保留单句纯文本推送的兼容逻辑
@@ -744,7 +775,6 @@ const initWebSocket = async () => {
 
         // 监听器就绪后，再发车连接
         isWsConnecting.value = true;
-        lastWsAttemptTime = Date.now();
         await invoke('start_websocket_lyrics', { url: "ws://127.0.0.1:47290/" });
 
     } catch (err) {
@@ -767,6 +797,8 @@ const stopWebSocket = async () => {
         }
         isWsConnected.value = false;
         isWsConnecting.value = false;
+        // 关闭媒体控制时重置一次性标志，允许下次开启时重新连接
+        wsConnectAttempted = false;
     } catch (err) {
         console.error("WebSocket 停止失败:", err);
     }
@@ -898,6 +930,8 @@ const refreshCoverOnResume = async () => {
 watch(isPlaying, (now, prev) => {
     if (now && !prev) {
         refreshCoverOnResume();
+        // 仅在播放状态切换时尝试一次 WS 连接（连接失败不重试，等下次切换再说）
+        initWebSocket();
     }
 });
 
@@ -912,14 +946,12 @@ const syncMusicStatus = async () => {
         if (res) {
             const [song, artist, playing, positionMs, durationMs, app_id_str] = res;
 
-            // 通用媒体模式：检测到正在播放但 WS 未连上时，自动尝试连接（带退避）
-            if (localStorage.getItem('nsd_target_player') === 'other'
-                && playing && !isWsActive && !isWsConnected.value && !isWsConnecting.value) {
-                if (Date.now() - lastWsAttemptTime >= WS_RETRY_BACKOFF_MS) {
-                    initWebSocket();
-                }
+            // 后端识别到 SMTC 中有 JustSolo 时，也尝试一次 WS 连接（防重入由 initWebSocket 内部保证，连上后不再触发）
+            if (app_id_str.includes("justsolo")
+                && !isWsActive && !isWsConnected.value && !isWsConnecting.value) {
+                initWebSocket();
             }
-            
+
             if (app_id_str.includes("bilibili")) {
                 coverUrl.value = 'src/assets/bilibili-logo.png';
             }
@@ -1778,7 +1810,6 @@ onMounted(async () => {
         isMusicCtlEnabled.value = isEnabled;
         if (isEnabled) {
             enableSysResource.value = false; // 开启音乐，关资源监控
-            initWebSocket();
             if (localStorage.getItem('nsd_glow_border') === null) {
                 isGlowBorderEnabled.value = true;
                 localStorage.setItem('nsd_glow_border', 'true');
@@ -2204,6 +2235,9 @@ onMounted(async () => {
         const delta = now - lastTickTime;
         lastTickTime = now;
 
+        // 判定 WS 12 频段频谱是否新鲜（服务端 100ms 一帧，500ms 内未收到即视为无 WS 频谱）
+        const wsSpectrumFresh = (Date.now() - lastWsSpectrumTime < 500);
+
         if (isPlaying.value) {
             // 1. 播放状态下，本地时钟疯狂往前推算
             localPositionMs.value += delta;
@@ -2265,8 +2299,9 @@ onMounted(async () => {
                 }
             }
 
-            // 3. 原有的频谱逻辑保持不变
-            if (showSpectrumIndicator.value) {
+            // 3. 频谱逻辑：有 WS 频谱数据时用 v1.2.0 的 12->7 频谱（由 websocket-lyrics 事件实时写入）
+            //    没有 WS 频谱数据就回退到本地 7 频段采集（两路柱数统一为 7，视觉一致）
+            if (showSpectrumIndicator.value && !wsSpectrumFresh) {
                 try {
                     const data = await invoke<number[]>('get_audio_spectrum');
                     spectrumData.value = data;
@@ -2275,15 +2310,10 @@ onMounted(async () => {
                 }
             }
         } else {
-            // 没在播放时，让柱子平滑回落到最低点
+            // 没在播放时，让柱子平滑回落到最低点（统一 7 柱）
             spectrumData.value = [0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35];
         }
     }, 50) as unknown as number;
-
-    // 软件启动时，如果媒体控制是开启的，立刻连接 WebSocket
-    if (isMusicCtlEnabled.value) {
-        initWebSocket();
-    }
 
     // 组件挂载时检查一次是否需要开启 FPS 采集
     checkAndToggleFpsPlugin();
