@@ -1,4 +1,5 @@
 use futures_util::{SinkExt, StreamExt};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::{command, AppHandle, Emitter};
 use tokio_tungstenite::connect_async;
@@ -11,6 +12,9 @@ use windows::Media::Control::{
 
 // 全局记录当前选中的平台（默认空，由前端传来）
 static TARGET_PLAYER: Mutex<String> = Mutex::new(String::new());
+
+// 记录上一次是否发现 JustSolo，只在“从无到有”的跳变时通知前端（避免轮询式重复触发）
+static LAST_JUSTSOLO_FOUND: AtomicBool = AtomicBool::new(false);
 
 // 给前端调用的切换接口
 #[command]
@@ -87,12 +91,27 @@ fn get_target_media_session() -> Option<(GlobalSystemMediaTransportControlsSessi
 }
 
 #[command]
-pub async fn fetch_netease_music_info() -> Result<Option<(String, String, bool, i64, i64, String)>, String>
+pub async fn fetch_netease_music_info(
+    app: tauri::AppHandle,
+) -> Result<Option<(String, String, bool, i64, i64, String)>, String>
 {
     let (session, app_id_str) = match get_target_media_session() {
         Some(s) => s,
-        None => return Ok(None),
+        None => {
+            // 没有任何媒体会话时，重置发现标志，保证 JustSolo 下次出现时能再次通知前端
+            LAST_JUSTSOLO_FOUND.store(false, Ordering::Relaxed);
+            return Ok(None);
+        }
     };
+
+    // 后端刚在 SMTC 中发现 JustSolo（从无到有的跳变）时，通知前端发起 WS 连接/重连
+    if app_id_str.contains("justsolo") {
+        if !LAST_JUSTSOLO_FOUND.swap(true, Ordering::Relaxed) {
+            let _ = app.emit("justsolo-discovered", ());
+        }
+    } else {
+        LAST_JUSTSOLO_FOUND.store(false, Ordering::Relaxed);
+    }
 
     let is_playing = if let Ok(playback_info) = session.GetPlaybackInfo() {
         if let Ok(status) = playback_info.PlaybackStatus() {

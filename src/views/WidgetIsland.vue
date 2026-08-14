@@ -657,6 +657,9 @@ const isWsConnecting = ref(false);
 let wsConnectAttempted = false;
 let unlistenWsStatus: (() => void) | null = null;
 
+// 后端发现 JustSolo 事件的监听器（唯一驱动 WS 连接/重连的入口，不轮询）
+let unlistenJustSolo: (() => void) | null = null;
+
 // WebSocket 实时歌词监听
 let unlistenWs: (() => void) | null = null;
 
@@ -927,7 +930,7 @@ const refreshCoverOnResume = async () => {
     // 没有有效歌曲信息（如"暂无歌曲播放"占位）时跳过
     if (!trackInfo || !song || song === t('noSongPlaying')) return;
     // 浏览器/视频类应用用的是固定 logo 封面，无需刷新
-    if (coverUrl.value.startsWith('src/assets/')) return;
+    if (APP_COVER_LOGOS.includes(coverUrl.value)) return;
 
     isCoverRefreshing = true;
     try {
@@ -939,11 +942,10 @@ const refreshCoverOnResume = async () => {
 };
 
 // 监听暂停 -> 播放的切换（SMTC 与 WS 两条路径都会走到这里），触发封面刷新对比
+// 注意：WS 连接/重连不再由播放状态触发，统一由后端发现 JustSolo 后的事件驱动
 watch(isPlaying, (now, prev) => {
     if (now && !prev) {
         refreshCoverOnResume();
-        // 仅在播放状态切换时尝试一次 WS 连接（连接失败不重试，等下次切换再说）
-        initWebSocket();
     }
 });
 
@@ -958,22 +960,12 @@ const syncMusicStatus = async () => {
         if (res) {
             const [song, artist, playing, positionMs, durationMs, app_id_str] = res;
 
-            // 后端识别到 SMTC 中有 JustSolo 时，也尝试一次 WS 连接（防重入由 initWebSocket 内部保证，连上后不再触发）
-            if (app_id_str.includes("justsolo")
-                && !isWsActive && !isWsConnected.value && !isWsConnecting.value) {
-                initWebSocket();
-            }
-
-            if (app_id_str.includes("bilibili")) {
-                coverUrl.value = 'src/assets/bilibili-logo.png';
-            }
-
-            if (app_id_str.includes("edge")) {
-                coverUrl.value = 'src/assets/edge-logo.png';
-            }
-            
-            if (app_id_str.includes("chrome")) {
-                coverUrl.value = 'src/assets/chrome-logo.png';
+            // 浏览器/视频类应用使用内置 logo 封面（import 引用，打包后路径才会被 Vite 正确重写）
+            for (const [key, logo] of Object.entries(APP_COVER_LOGO_MAP)) {
+                if (app_id_str.includes(key)) {
+                    coverUrl.value = logo;
+                    break;
+                }
             }
 
             // 仅在 WS 不活跃时，使用 SMTC 的播放状态
@@ -1730,6 +1722,18 @@ watch(displayMusic, (newVal: boolean) => {
 import defaultLogo from '../assets/logo.png';
 const currentMsgIcon = ref(defaultLogo);
 
+// 浏览器/视频类应用的内置 logo 封面（必须 import 引用，Vite 打包时才会重写资源路径）
+import bilibiliLogo from '../assets/bilibili-logo.png';
+import edgeLogo from '../assets/edge-logo.png';
+import chromeLogo from '../assets/chrome-logo.png';
+
+const APP_COVER_LOGOS = [bilibiliLogo, edgeLogo, chromeLogo];
+const APP_COVER_LOGO_MAP: Record<string, string> = {
+    bilibili: bilibiliLogo,
+    edge: edgeLogo,
+    chrome: chromeLogo,
+};
+
 // 图标映射器
 const getAppIcon = (appName: string) => {
     const name = appName.toLowerCase();
@@ -2117,6 +2121,11 @@ onMounted(async () => {
         }
     };
 
+    // 后端在 SMTC 中发现 JustSolo 时才通知前端，前端据此发起 WS 连接/重连（不再轮询触发）
+    unlistenJustSolo = await listen('justsolo-discovered', () => {
+        initWebSocket();
+    });
+
     // 接收来自控制台的独立 FPS 开关指令
     await listen<{ enabled: boolean }>('control-fps-monitor', (event) => {
         enableFps.value = event.payload.enabled;
@@ -2339,6 +2348,10 @@ onMounted(async () => {
 
 onUnmounted(() => {
     stopWebSocket();
+    if (unlistenJustSolo) {
+        unlistenJustSolo();
+        unlistenJustSolo = null;
+    }
     window.removeEventListener('blur', collapseMusic);
     clearInterval(speedTimer);
     clearInterval(pingTimer);
