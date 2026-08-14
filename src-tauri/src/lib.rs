@@ -3,7 +3,7 @@ mod music_controller;
 mod notification;
 mod system_events;
 
-use std::net::{SocketAddr, TcpStream};
+use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -428,15 +428,23 @@ fn get_network_stats(state: State<'_, AppState>) -> (u64, u64) {
 }
 
 #[tauri::command]
-fn get_network_latency() -> Result<u128, String> {
-    let addr: SocketAddr = "223.5.5.5:53".parse().unwrap();
+async fn get_network_latency() -> Result<u128, String> {
     let timeout = Duration::from_millis(1500);
-
-    let start = Instant::now();
-    match TcpStream::connect_timeout(&addr, timeout) {
-        Ok(_) => Ok(start.elapsed().as_millis()),
-        Err(_) => Err("Timeout".to_string()),
+    // 主目标 + 备用目标：避免单一 IP/端口被网络环境拦截导致误判断网
+    for addr_str in ["223.5.5.5:53", "114.114.114.114:53"] {
+        let addr: SocketAddr = match addr_str.parse() {
+            Ok(a) => a,
+            Err(_) => continue,
+        };
+        let attempt_start = Instant::now();
+        if tokio::time::timeout(timeout, tokio::net::TcpStream::connect(addr))
+            .await
+            .is_ok()
+        {
+            return Ok(attempt_start.elapsed().as_millis());
+        }
     }
+    Err("Timeout".to_string())
 }
 
 #[tauri::command]

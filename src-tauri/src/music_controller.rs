@@ -133,7 +133,16 @@ pub async fn fetch_netease_music_info(
     let artist = properties.Artist().unwrap_or_default().to_string();
 
     if title.is_empty() {
-        return Ok(None);
+        // SMTC 已连上应用但尚未提供有效标题：仍返回会话信息（空标题 + 应用包名），
+        // 让前端把单行展示改为显示"已连接的应用名"，而不是"未在播放"
+        return Ok(Some((
+            String::new(),
+            String::new(),
+            is_playing,
+            0,
+            0,
+            app_id_str,
+        )));
     }
 
     let mut position_ms: i64 = 0;

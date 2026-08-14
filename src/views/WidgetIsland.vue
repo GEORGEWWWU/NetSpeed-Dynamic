@@ -634,34 +634,48 @@ const fetchAndApplyCover = async (trackInfo: string, song: string, artist: strin
     }
 };
 
+// 记录最近一次 SMTC 封面请求序号，防止切歌竞态下旧请求的结果覆盖新内容封面
+let smtcCoverReqSeq = 0;
+
 // 浏览器专用封面：只认 SMTC 本地封面，拿不到就保留默认应用图标（绝不走网络兜底，避免串错图）
 const fetchAndApplySmtcCover = async (trackInfo: string, onlyIfChanged = false) => {
+    const mySeq = ++smtcCoverReqSeq;
     if (coverCache.has(trackInfo)) {
         const cached = coverCache.get(trackInfo)!;
-        if (!onlyIfChanged || cached !== coverUrl.value) {
+        if (mySeq === smtcCoverReqSeq && (!onlyIfChanged || cached !== coverUrl.value)) {
             coverUrl.value = cached;
             blurredCoverUrl.value = blurredCoverCache.get(trackInfo) || '';
         }
         return;
     }
-    try {
-        const smtcCover = await invoke<string | null>('get_smtc_cover');
-        if (smtcCover) {
-            isSmtcCoverActive.value = true;
-            if (!onlyIfChanged || smtcCover !== coverUrl.value) {
-                coverUrl.value = smtcCover;
-                if (coverCache.size > 50) {
-                    coverCache.clear();
-                    blurredCoverCache.clear();
+    // 切歌场景：SMTC 封面可能晚于标题就绪，最多重试 3 次（间隔 1.5s）确保拿到新封面
+    const maxAttempts = onlyIfChanged ? 1 : 3;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        try {
+            const smtcCover = await invoke<string | null>('get_smtc_cover');
+            // 期间已切到新内容，丢弃过期结果
+            if (mySeq !== smtcCoverReqSeq) return;
+            if (smtcCover) {
+                isSmtcCoverActive.value = true;
+                if (!onlyIfChanged || smtcCover !== coverUrl.value) {
+                    coverUrl.value = smtcCover;
+                    if (coverCache.size > 50) {
+                        coverCache.clear();
+                        blurredCoverCache.clear();
+                    }
+                    coverCache.set(trackInfo, smtcCover);
+                    const bakedImage = await bakeBlurImage(smtcCover);
+                    blurredCoverUrl.value = bakedImage;
+                    blurredCoverCache.set(trackInfo, bakedImage);
                 }
-                coverCache.set(trackInfo, smtcCover);
-                const bakedImage = await bakeBlurImage(smtcCover);
-                blurredCoverUrl.value = bakedImage;
-                blurredCoverCache.set(trackInfo, bakedImage);
+                return;
             }
+        } catch (e) {
+            // 单次失败继续重试，最终仍拿不到就静默保留 logo
         }
-    } catch (e) {
-        // SMTC 封面读取失败时静默保留当前封面（logo），不做任何兜底
+        if (attempt < maxAttempts - 1) {
+            await new Promise(r => setTimeout(r, 1500));
+        }
     }
 };
 
@@ -1023,6 +1037,18 @@ const syncMusicStatus = async () => {
             isFirstMediaCheck = false;
             isNewlyEnabled = false;
 
+            // SMTC 已连上应用但还没有有效标题：单行展示改为显示已连接的应用名（而不是"未在播放"）
+            if (!song) {
+                if (!isWsActive) {
+                    const connectedName = getConnectedAppName(app_id_str);
+                    if (currentBaseInfo.value !== connectedName) {
+                        currentBaseInfo.value = connectedName;
+                        setSafeTrackInfo(connectedName);
+                    }
+                }
+                return;
+            }
+
             // 拦截无效的时长，并智能利用歌词反推
             if (durationMs > 0) {
                 currentDurationMs.value = durationMs; // 系统给的准，直接用
@@ -1050,7 +1076,11 @@ const syncMusicStatus = async () => {
                 parsedLyrics.value = [];
                 lyricQueue.value = [];
                 currentMatchedIndex = -1;
-                
+
+                // 切换播放内容时强制重新获取封面：清掉该曲目的封面缓存，避免沿用旧封面
+                coverCache.delete(newTrackInfo);
+                blurredCoverCache.delete(newTrackInfo);
+
                 if (app_id_str.includes("edge") || app_id_str.includes("chrome")) {
                     // 浏览器：先回退到默认应用图标，再尝试用 SMTC 本地封面覆盖
                     isSmtcCoverActive.value = false;
@@ -1122,6 +1152,20 @@ const getPlayerName = () => {
         'other': t('genericMediaFull')
     };
     return map[key] || t('unknownPlatform');
+};
+
+// SMTC 连上应用但没有有效标题时，把应用包名转成可读的应用名
+const getConnectedAppName = (appId: string) => {
+    const id = appId.toLowerCase();
+    if (id.includes('edge')) return 'Microsoft Edge';
+    if (id.includes('chrome')) return 'Google Chrome';
+    if (id.includes('bilibili')) return '哔哩哔哩';
+    if (id.includes('cloudmusic') || id.includes('netease')) return '网易云音乐';
+    if (id.includes('spotify')) return 'Spotify';
+    if (id.includes('qqmusic')) return 'QQ音乐';
+    if (id.includes('justsolo')) return 'JustSolo';
+    // 兜底：去掉 .exe 后缀后直接展示包名
+    return id.replace(/\.exe$/i, '');
 };
 
 // 定义一个用于强制刷新的 key
@@ -1282,12 +1326,18 @@ const fetchSpeedStats = async () => {
     }
 };
 
-// 通过真实延迟控制状态灯（加入大流量避让判断）
+// 连续 ping 失败计数：避免单次网络抖动就误判断网
+let consecutiveFailures = 0;
+// 连续失败 2 次（约 11s）才确认断网，单次失败只降为黄灯
+const FAIL_THRESHOLD = 2;
+
+// 通过真实延迟控制状态灯（加入大流量避让 + 连续失败确认）
 const checkNetworkLatency = async () => {
     try {
         const latency = await invoke<number>('get_network_latency');
 
-        // 只要能拿到延迟数字，说明网络肯定是通的
+        // 只要能拿到延迟数字，说明网络肯定是通的，立即清零失败计数
+        consecutiveFailures = 0;
         if (latency < 150) {
             networkStatus.value = 'good';      // 延迟优秀，绿色
         } else {
@@ -1307,9 +1357,15 @@ const checkNetworkLatency = async () => {
         if (timeSinceLowTraffic < RED_DELAY_MS) {
             // 还在缓冲期内，判定为大流量带来的余波卡顿，依然保持黄灯
             networkStatus.value = 'warning';
-        } else {
-            // 已经下了好几秒都没流量了，结果还连不上，说明是真的断网了，变红！
+            return;
+        }
+
+        // 3. 连续多次失败才确认断网（单次抖动只降为黄灯，避免误判断网）
+        consecutiveFailures++;
+        if (consecutiveFailures >= FAIL_THRESHOLD) {
             networkStatus.value = 'error';
+        } else {
+            networkStatus.value = 'warning';
         }
     }
 };

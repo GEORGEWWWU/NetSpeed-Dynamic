@@ -826,6 +826,8 @@ const syncMusicCover = async () => {
         const res = await invoke<[string, string, boolean] | null>('fetch_netease_music_info');
         if (res) {
             const [song, artist] = res;
+            // SMTC 已连上应用但还没有有效标题时，跳过封面刷新（避免用空标题去联网搜图）
+            if (!song) return;
             const newTrackInfo = artist ? `${song} - ${artist}` : song;
 
             if (currentTrackInfo.value !== newTrackInfo) {
