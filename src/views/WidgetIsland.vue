@@ -554,9 +554,27 @@ watch(isGlowBorderEnabled, (val) => invoke('sync_tray_menu', { glow: val }));
 const spectrumData = ref([0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35]);
 let spectrumTimer: number;
 
+// Just Solo LyricServer v1.2.0：12 频段 -> 7 频段（与本地频谱柱数一致，低到高分组取均值）
+const convertWs12To7 = (bands12: number[]): number[] => {
+    const groups: number[][] = [
+        bands12.slice(0, 1),    // 低频 1 段
+        bands12.slice(1, 3),    // 2 段
+        bands12.slice(3, 5),    // 2 段
+        bands12.slice(5, 7),    // 2 段
+        bands12.slice(7, 9),    // 2 段
+        bands12.slice(9, 11),   // 2 段
+        bands12.slice(11, 12),  // 高频 1 段
+    ];
+    return groups.map(g => g.reduce((a, b) => a + b, 0) / g.length);
+};
+
 // 封面url
 const coverUrl = ref('');
 const coverCache = new Map<string, string>();
+
+// 当前播放器是否为浏览器（edge/chrome），以及是否正在展示 SMTC 本地封面
+const currentIsBrowser = ref(false);
+const isSmtcCoverActive = ref(false);
 
 // 沉浸模式专属的静态模糊封面
 const blurredCoverUrl = ref('');
@@ -583,6 +601,84 @@ const bakeBlurImage = (url: string): Promise<string> => {
     });
 };
 
+// 共享的封面获取/应用逻辑：查缓存 → 未命中就调接口 → 写缓存 → 烘焙模糊封面
+// onlyIfChanged: 与当前显示的封面对比，不一样才应用（恢复播放时用）
+// clearOnError: 获取失败时是否清空封面（切歌时清空，恢复播放时保留）
+const fetchAndApplyCover = async (trackInfo: string, song: string, artist: string, onlyIfChanged = false, clearOnError = true) => {
+    if (coverCache.has(trackInfo)) {
+        const cached = coverCache.get(trackInfo)!;
+        if (!onlyIfChanged || cached !== coverUrl.value) {
+            coverUrl.value = cached;
+            blurredCoverUrl.value = blurredCoverCache.get(trackInfo) || '';
+        }
+        return;
+    }
+    try {
+        const url = await invoke<string>('get_random_cover_url', { songName: song, artistName: artist });
+        if (!onlyIfChanged || url !== coverUrl.value) {
+            coverUrl.value = url;
+            if (coverCache.size > 50) {
+                coverCache.clear();
+                blurredCoverCache.clear();
+            }
+            coverCache.set(trackInfo, url);
+            const bakedImage = await bakeBlurImage(url);
+            blurredCoverUrl.value = bakedImage;
+            blurredCoverCache.set(trackInfo, bakedImage);
+        }
+    } catch (e) {
+        if (clearOnError) {
+            coverUrl.value = '';
+            blurredCoverUrl.value = '';
+        }
+    }
+};
+
+// 记录最近一次 SMTC 封面请求序号，防止切歌竞态下旧请求的结果覆盖新内容封面
+let smtcCoverReqSeq = 0;
+
+// 浏览器专用封面：只认 SMTC 本地封面，拿不到就保留默认应用图标（绝不走网络兜底，避免串错图）
+const fetchAndApplySmtcCover = async (trackInfo: string, onlyIfChanged = false) => {
+    const mySeq = ++smtcCoverReqSeq;
+    if (coverCache.has(trackInfo)) {
+        const cached = coverCache.get(trackInfo)!;
+        if (mySeq === smtcCoverReqSeq && (!onlyIfChanged || cached !== coverUrl.value)) {
+            coverUrl.value = cached;
+            blurredCoverUrl.value = blurredCoverCache.get(trackInfo) || '';
+        }
+        return;
+    }
+    // 切歌场景：SMTC 封面可能晚于标题就绪，最多重试 3 次（间隔 1.5s）确保拿到新封面
+    const maxAttempts = onlyIfChanged ? 1 : 3;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        try {
+            const smtcCover = await invoke<string | null>('get_smtc_cover');
+            // 期间已切到新内容，丢弃过期结果
+            if (mySeq !== smtcCoverReqSeq) return;
+            if (smtcCover) {
+                isSmtcCoverActive.value = true;
+                if (!onlyIfChanged || smtcCover !== coverUrl.value) {
+                    coverUrl.value = smtcCover;
+                    if (coverCache.size > 50) {
+                        coverCache.clear();
+                        blurredCoverCache.clear();
+                    }
+                    coverCache.set(trackInfo, smtcCover);
+                    const bakedImage = await bakeBlurImage(smtcCover);
+                    blurredCoverUrl.value = bakedImage;
+                    blurredCoverCache.set(trackInfo, bakedImage);
+                }
+                return;
+            }
+        } catch (e) {
+            // 单次失败继续重试，最终仍拿不到就静默保留 logo
+        }
+        if (attempt < maxAttempts - 1) {
+            await new Promise(r => setTimeout(r, 1500));
+        }
+    }
+};
+
 // 实时FPS功能相关
 const enableFps = ref(localStorage.getItem('nsd_fps_monitor') === 'true');
 const currentFps = ref(0);
@@ -592,7 +688,16 @@ const checkAndToggleFpsPlugin = () => {
     const needFps = enableFps.value || (enableCustomDisplay.value && customSlots.value.includes('fps'));
     invoke('toggle_fps_plugin', { enable: needFps }).catch((err) => {
         console.error('FPS 插件启动失败:', err);
-        // 👈 当 Rust 报错说找不到插件时，发送全局求救信号给控制台主窗口
+        // 👈 检测到 FPS 插件不存在时，前端就地退出 FPS 显示，避免灵动岛停留在 FPS 模式
+        enableFps.value = false;
+        localStorage.setItem('nsd_fps_monitor', 'false');
+        if (customSlots.value.includes('fps')) {
+            const newSlots = [...customSlots.value];
+            const index = newSlots.indexOf('fps');
+            if (index !== -1) newSlots[index] = null;
+            customSlots.value = newSlots;
+        }
+        // 再发送全局求救信号给控制台主窗口（由主窗口弹下载提示并同步状态）
         emit('fps-plugin-missing');
     });
 };
@@ -600,17 +705,34 @@ const checkAndToggleFpsPlugin = () => {
 // 记录最后一次接收到真实 WS 歌词的时间
 let lastWsLyricTime = 0;
 
+// 记录最后一次收到 WS 12 频段频谱数据的时间（用于判定 WS 频谱是否新鲜）
+let lastWsSpectrumTime = 0;
+
 // WebSocket 状态管理
 const isWsConnected = ref(false);
 const isWsConnecting = ref(false);
-let lastWsAttemptTime = 0;
-const WS_RETRY_BACKOFF_MS = 10000;
+// 一次性连接标志：只要尝试过（无论成功失败）就不再尝试第二次
+let wsConnectAttempted = false;
 let unlistenWsStatus: (() => void) | null = null;
+
+// 后端发现 JustSolo 事件的监听器（唯一驱动 WS 连接/重连的入口，不轮询）
+let unlistenJustSolo: (() => void) | null = null;
 
 // WebSocket 实时歌词监听
 let unlistenWs: (() => void) | null = null;
 
+// 用 SMTC 已获取到的 "标题 - 歌手" 立刻填充折叠态文本
+const fillCollapsedWithTrackInfo = () => {
+    if (!currentSongName.value || currentSongName.value === t('noSongPlaying')) return;
+    const artist = currentArtistName.value === t('unknownArtist') ? '' : currentArtistName.value;
+    setSafeTrackInfo(artist ? `${currentSongName.value} - ${artist}` : currentSongName.value);
+};
+
 const initWebSocket = async () => {
+    // 一次性连接：尝试过就不再连第二次
+    if (wsConnectAttempted) return;
+    wsConnectAttempted = true;
+
     try {
         // 防重入：已连上或正在连就不再调
         if (isWsConnected.value || isWsConnecting.value) return;
@@ -623,6 +745,11 @@ const initWebSocket = async () => {
                 isWsConnecting.value = false;
                 if (isWsConnected.value) {
                     parsedLyrics.value = []; // 连上 WS 后，立刻清空可能残存的网络歌词，防止打架
+                    // 连上 WS 就立刻用 SMTC 已拿到的 "标题 - 歌手" 填充折叠态文本（歌词接管前先兜底显示）
+                    fillCollapsedWithTrackInfo();
+                } else {
+                    // 断开/连接失败时重置一次性标志，允许下次检测到 JustSolo 时重试连接
+                    wsConnectAttempted = false;
                 }
             });
         }
@@ -681,6 +808,16 @@ const initWebSocket = async () => {
                         }
                         return;
                     }
+
+                    // 收到实时频谱 (协议 v1.2.0)：12 频段 -> 7 频段（与本地频谱柱数一致）
+                    if (payload.type === 'spectrum') {
+                        lastWsLyricTime = Date.now();
+                        if (Array.isArray(payload.bands) && payload.bands.length === 12) {
+                            lastWsSpectrumTime = Date.now();
+                            spectrumData.value = convertWs12To7(payload.bands);
+                        }
+                        return;
+                    }
                 }
 
                 // 下方保留单句纯文本推送的兼容逻辑
@@ -711,7 +848,6 @@ const initWebSocket = async () => {
 
         // 监听器就绪后，再发车连接
         isWsConnecting.value = true;
-        lastWsAttemptTime = Date.now();
         await invoke('start_websocket_lyrics', { url: "ws://127.0.0.1:47290/" });
 
     } catch (err) {
@@ -734,6 +870,8 @@ const stopWebSocket = async () => {
         }
         isWsConnected.value = false;
         isWsConnecting.value = false;
+        // 关闭媒体控制时重置一次性标志，允许下次开启时重新连接
+        wsConnectAttempted = false;
     } catch (err) {
         console.error("WebSocket 停止失败:", err);
     }
@@ -837,6 +975,43 @@ const nextTrack = async () => {
     await invoke('control_system_media', { action: 'next' });
 };
 
+// 从暂停恢复到播放时，重新获取封面并与当前显示对比（不一样才更新）
+let isCoverRefreshing = false;
+const refreshCoverOnResume = async () => {
+    // 防重入，避免连续触发时并发请求
+    if (isCoverRefreshing) return;
+
+    const song = currentSongName.value;
+    const artist = currentArtistName.value;
+    // 与 syncMusicStatus 里的缓存 key 格式保持一致
+    const trackInfo = artist ? `${song} - ${artist}` : song;
+    // 没有有效歌曲信息（如"暂无歌曲播放"占位）时跳过
+    if (!trackInfo || !song || song === t('noSongPlaying')) return;
+    // 浏览器/视频类应用用的是固定 logo 封面，无需刷新
+    if (APP_COVER_LOGOS.includes(coverUrl.value)) return;
+
+    isCoverRefreshing = true;
+    try {
+        // 浏览器只认 SMTC 本地封面，避免网络兜底串到错误图片
+        if (currentIsBrowser.value) {
+            await fetchAndApplySmtcCover(trackInfo, true);
+        } else {
+            // 与当前显示的封面对比，不一样才更新；失败时保持现有封面不动
+            await fetchAndApplyCover(trackInfo, song, artist, true, false);
+        }
+    } finally {
+        isCoverRefreshing = false;
+    }
+};
+
+// 监听暂停 -> 播放的切换（SMTC 与 WS 两条路径都会走到这里），触发封面刷新对比
+// 注意：WS 连接/重连不再由播放状态触发，统一由后端发现 JustSolo 后的事件驱动
+watch(isPlaying, (now, prev) => {
+    if (now && !prev) {
+        refreshCoverOnResume();
+    }
+});
+
 // 核心同步函数：负责获取状态并智能降级
 const syncMusicStatus = async () => {
     try {
@@ -848,25 +1023,9 @@ const syncMusicStatus = async () => {
         if (res) {
             const [song, artist, playing, positionMs, durationMs, app_id_str] = res;
 
-            // 通用媒体模式：检测到正在播放但 WS 未连上时，自动尝试连接（带退避）
-            if (localStorage.getItem('nsd_target_player') === 'other'
-                && playing && !isWsActive && !isWsConnected.value && !isWsConnecting.value) {
-                if (Date.now() - lastWsAttemptTime >= WS_RETRY_BACKOFF_MS) {
-                    initWebSocket();
-                }
-            }
-            
-            if (app_id_str.includes("bilibili")) {
-                coverUrl.value = 'src/assets/bilibili-logo.png';
-            }
-
-            if (app_id_str.includes("edge")) {
-                coverUrl.value = 'src/assets/edge-logo.png';
-            }
-            
-            if (app_id_str.includes("chrome")) {
-                coverUrl.value = 'src/assets/chrome-logo.png';
-            }
+            // 记录当前是否为浏览器类应用（edge/chrome），供封面刷新逻辑区分处理
+            currentIsBrowser.value =
+                app_id_str.includes("edge") || app_id_str.includes("chrome");
 
             // 仅在 WS 不活跃时，使用 SMTC 的播放状态
             if (!isWsActive) {
@@ -875,6 +1034,18 @@ const syncMusicStatus = async () => {
             if (!isMediaActive.value) isMediaActive.value = true;
             isFirstMediaCheck = false;
             isNewlyEnabled = false;
+
+            // SMTC 已连上应用但还没有有效标题：单行展示改为显示已连接的应用名（而不是"未在播放"）
+            if (!song) {
+                if (!isWsActive) {
+                    const connectedName = getConnectedAppName(app_id_str);
+                    if (currentBaseInfo.value !== connectedName) {
+                        currentBaseInfo.value = connectedName;
+                        setSafeTrackInfo(connectedName);
+                    }
+                }
+                return;
+            }
 
             // 拦截无效的时长，并智能利用歌词反推
             if (durationMs > 0) {
@@ -895,34 +1066,33 @@ const syncMusicStatus = async () => {
                 // 切歌时，第一时间重置本地时间轴！
                 if (!isWsActive) {
                     localPositionMs.value = positionMs; // 必须补上这行，否则新歌会继承老歌的时间！
-
-                    setSafeTrackInfo(newTrackInfo);
-                    parsedLyrics.value = [];
-                    lyricQueue.value = [];
-                    currentMatchedIndex = -1;
                     lastLyricChangeTime = performance.now() + 2000;
                 }
                 
-                if (!app_id_str.includes("bilibili") && !app_id_str.includes("edge") && !app_id_str.includes("chrome")) {
-                    if (coverCache.has(newTrackInfo)) {
-                        coverUrl.value = coverCache.get(newTrackInfo)!;
-                        blurredCoverUrl.value = blurredCoverCache.get(newTrackInfo) || '';
-                    } else {
-                        invoke<string>('get_random_cover_url', { songName: song, artistName: artist })
-                            .then(async url => {
-                                coverUrl.value = url;
-                                if (coverCache.size > 50) {
-                                    coverCache.clear();
-                                    blurredCoverCache.clear();
-                                }
-                                coverCache.set(newTrackInfo, url);
-                                const bakedImage = await bakeBlurImage(url);
-                                blurredCoverUrl.value = bakedImage;
-                                blurredCoverCache.set(newTrackInfo, bakedImage);
-                            }).catch(() => {
-                                coverUrl.value = '';
-                                blurredCoverUrl.value = '';
-                            });
+                // 切歌立刻把折叠态文本更新为 "标题 - 歌手"，
+                fillCollapsedWithTrackInfo();
+
+                // 切换播放内容时强制重新获取封面：清掉该曲目的封面缓存，避免沿用旧封面
+                coverCache.delete(newTrackInfo);
+                blurredCoverCache.delete(newTrackInfo);
+
+                if (app_id_str.includes("edge") || app_id_str.includes("chrome")) {
+                    // 浏览器：先回退到默认应用图标，再尝试用 SMTC 本地封面覆盖
+                    isSmtcCoverActive.value = false;
+                    coverUrl.value = APP_COVER_LOGO_MAP[app_id_str.includes("edge") ? "edge" : "chrome"];
+                    fetchAndApplySmtcCover(newTrackInfo);
+                } else if (!app_id_str.includes("bilibili")) {
+                    fetchAndApplyCover(newTrackInfo, song, artist);
+                }
+
+                // 浏览器/视频类应用使用内置 logo 封面（import 引用，打包后路径才会被 Vite 正确重写）
+                for (const [key, logo] of Object.entries(APP_COVER_LOGO_MAP)) {
+                    if (app_id_str.includes(key)) {
+                        // 已拿到 SMTC 封面则不再退回默认应用图标
+                        if (!isSmtcCoverActive.value) {
+                            coverUrl.value = logo;
+                        }
+                        break;
                     }
                 }
 
@@ -988,6 +1158,20 @@ const getPlayerName = () => {
         'other': t('genericMediaFull')
     };
     return map[key] || t('unknownPlatform');
+};
+
+// SMTC 连上应用但没有有效标题时，把应用包名转成可读的应用名
+const getConnectedAppName = (appId: string) => {
+    const id = appId.toLowerCase();
+    if (id.includes('edge')) return 'Microsoft Edge';
+    if (id.includes('chrome')) return 'Google Chrome';
+    if (id.includes('bilibili')) return '哔哩哔哩';
+    if (id.includes('cloudmusic') || id.includes('netease')) return '网易云音乐';
+    if (id.includes('spotify')) return 'Spotify';
+    if (id.includes('qqmusic')) return 'QQ音乐';
+    if (id.includes('justsolo')) return 'JustSolo';
+    // 兜底：去掉 .exe 后缀后直接展示包名
+    return id.replace(/\.exe$/i, '');
 };
 
 // 定义一个用于强制刷新的 key
@@ -1121,11 +1305,20 @@ const fetchSpeedStats = async () => {
     try {
         const [currentRx, currentTx] = await invoke<[number, number]>('get_network_stats');
         if (lastRx !== 0) {
-            const rxDiff = currentRx - lastRx;
-            const txDiff = currentTx - lastTx;
+            let rxDiff = currentRx - lastRx;
+            let txDiff = currentTx - lastTx;
+
+            // 网速为负说明网络计数器被重置（网卡重连/断网），判定为断网
+            if (rxDiff < 0 || txDiff < 0) {
+                networkStatus.value = 'error';
+            }
 
             downloadSpeed.value = formatSpeed(rxDiff);
             uploadSpeed.value = formatSpeed(txDiff);
+
+            // 负数置零，避免显示负网速
+            if (rxDiff < 0) downloadSpeed.value = '0 B/s';
+            if (txDiff < 0) uploadSpeed.value = '0 B/s';
 
             // 1MB = 1048576 字节
             const limit = 1024 * 1024;
@@ -1148,14 +1341,27 @@ const fetchSpeedStats = async () => {
     }
 };
 
-// 通过真实延迟控制状态灯（加入大流量避让判断）
+// 连续 ping 失败计数：避免单次网络抖动就误判断网
+let consecutiveFailures = 0;
+// 连续失败 2 次（约 11s）才确认断网，单次失败只降为黄灯
+const FAIL_THRESHOLD = 2;
+
+// 通过真实延迟控制状态灯（加入大流量避让 + 连续失败确认）
 const checkNetworkLatency = async () => {
     try {
         const latency = await invoke<number>('get_network_latency');
+        
+        // 拿到当前流量统计，计算流量变化
+        const [currentRx, currentTx] = await invoke<[number, number]>('get_network_stats');
+        let rxDiff = currentRx - lastRx;
+        let txDiff = currentTx - lastTx;
 
-        // 只要能拿到延迟数字，说明网络肯定是通的
+        // 只要能拿到延迟数字，说明网络肯定是通的，立即清零失败计数
+        consecutiveFailures = 0;
         if (latency < 150) {
-            networkStatus.value = 'good';      // 延迟优秀，绿色
+            if (rxDiff > 0 && txDiff > 0) { // 有流量变化，说明网络正常
+                networkStatus.value = 'good';      // 延迟优秀，绿色
+            }
         } else {
             networkStatus.value = 'warning';   // 延迟高/不稳定，黄色
         }
@@ -1173,9 +1379,15 @@ const checkNetworkLatency = async () => {
         if (timeSinceLowTraffic < RED_DELAY_MS) {
             // 还在缓冲期内，判定为大流量带来的余波卡顿，依然保持黄灯
             networkStatus.value = 'warning';
-        } else {
-            // 已经下了好几秒都没流量了，结果还连不上，说明是真的断网了，变红！
+            return;
+        }
+
+        // 3. 连续多次失败才确认断网（单次抖动只降为黄灯，避免误判断网）
+        consecutiveFailures++;
+        if (consecutiveFailures >= FAIL_THRESHOLD) {
             networkStatus.value = 'error';
+        } else {
+            networkStatus.value = 'warning';
         }
     }
 };
@@ -1640,6 +1852,18 @@ watch(displayMusic, (newVal: boolean) => {
 import defaultLogo from '../assets/logo.png';
 const currentMsgIcon = ref(defaultLogo);
 
+// 浏览器/视频类应用的内置 logo 封面（必须 import 引用，Vite 打包时才会重写资源路径）
+import bilibiliLogo from '../assets/bilibili-logo.png';
+import edgeLogo from '../assets/edge-logo.png';
+import chromeLogo from '../assets/chrome-logo.png';
+
+const APP_COVER_LOGOS = [bilibiliLogo, edgeLogo, chromeLogo];
+const APP_COVER_LOGO_MAP: Record<string, string> = {
+    bilibili: bilibiliLogo,
+    edge: edgeLogo,
+    chrome: chromeLogo,
+};
+
 // 图标映射器
 const getAppIcon = (appName: string) => {
     const name = appName.toLowerCase();
@@ -1733,7 +1957,6 @@ onMounted(async () => {
         isMusicCtlEnabled.value = isEnabled;
         if (isEnabled) {
             enableSysResource.value = false; // 开启音乐，关资源监控
-            initWebSocket();
             if (localStorage.getItem('nsd_glow_border') === null) {
                 isGlowBorderEnabled.value = true;
                 localStorage.setItem('nsd_glow_border', 'true');
@@ -2028,6 +2251,11 @@ onMounted(async () => {
         }
     };
 
+    // 后端在 SMTC 中发现 JustSolo 时才通知前端，前端据此发起 WS 连接/重连（不再轮询触发）
+    unlistenJustSolo = await listen('justsolo-discovered', () => {
+        initWebSocket();
+    });
+
     // 接收来自控制台的独立 FPS 开关指令
     await listen<{ enabled: boolean }>('control-fps-monitor', (event) => {
         enableFps.value = event.payload.enabled;
@@ -2159,6 +2387,9 @@ onMounted(async () => {
         const delta = now - lastTickTime;
         lastTickTime = now;
 
+        // 判定 WS 12 频段频谱是否新鲜（服务端 100ms 一帧，500ms 内未收到即视为无 WS 频谱）
+        const wsSpectrumFresh = (Date.now() - lastWsSpectrumTime < 500);
+
         if (isPlaying.value) {
             // 1. 播放状态下，本地时钟疯狂往前推算
             localPositionMs.value += delta;
@@ -2220,8 +2451,9 @@ onMounted(async () => {
                 }
             }
 
-            // 3. 原有的频谱逻辑保持不变
-            if (showSpectrumIndicator.value) {
+            // 3. 频谱逻辑：有 WS 频谱数据时用 v1.2.0 的 12->7 频谱（由 websocket-lyrics 事件实时写入）
+            //    没有 WS 频谱数据就回退到本地 7 频段采集（两路柱数统一为 7，视觉一致）
+            if (showSpectrumIndicator.value && !wsSpectrumFresh) {
                 try {
                     const data = await invoke<number[]>('get_audio_spectrum');
                     spectrumData.value = data;
@@ -2230,15 +2462,10 @@ onMounted(async () => {
                 }
             }
         } else {
-            // 没在播放时，让柱子平滑回落到最低点
+            // 没在播放时，让柱子平滑回落到最低点（统一 7 柱）
             spectrumData.value = [0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35];
         }
     }, 50) as unknown as number;
-
-    // 软件启动时，如果媒体控制是开启的，立刻连接 WebSocket
-    if (isMusicCtlEnabled.value) {
-        initWebSocket();
-    }
 
     // 组件挂载时检查一次是否需要开启 FPS 采集
     checkAndToggleFpsPlugin();
@@ -2251,6 +2478,10 @@ onMounted(async () => {
 
 onUnmounted(() => {
     stopWebSocket();
+    if (unlistenJustSolo) {
+        unlistenJustSolo();
+        unlistenJustSolo = null;
+    }
     window.removeEventListener('blur', collapseMusic);
     clearInterval(speedTimer);
     clearInterval(pingTimer);

@@ -751,6 +751,10 @@ watch(customSlots, async (newVal) => {
 
 const enableFps = ref(localStorage.getItem('nsd_fps_monitor') === 'true');
 
+// 记录开启 FPS 前音乐/资源的开关状态，FPS 启动失败时恢复，避免变回网速
+let prevMusicBeforeFps = false;
+let prevResourceBeforeFps = false;
+
 // 添加切换方法
 const toggleFps = async () => {
     localStorage.setItem('nsd_fps_monitor', String(enableFps.value));
@@ -758,6 +762,8 @@ const toggleFps = async () => {
 
     // 互斥逻辑：开启 FPS 时，强制关闭音乐和资源监控
     if (enableFps.value) {
+        prevMusicBeforeFps = enableMusicCtrl.value;
+        prevResourceBeforeFps = enableSysResource.value;
         if (enableMusicCtrl.value) {
             enableMusicCtrl.value = false;
             localStorage.setItem('nsd_music_ctrl', 'false');
@@ -826,6 +832,8 @@ const syncMusicCover = async () => {
         const res = await invoke<[string, string, boolean] | null>('fetch_netease_music_info');
         if (res) {
             const [song, artist] = res;
+            // SMTC 已连上应用但还没有有效标题时，跳过封面刷新（避免用空标题去联网搜图）
+            if (!song) return;
             const newTrackInfo = artist ? `${song} - ${artist}` : song;
 
             if (currentTrackInfo.value !== newTrackInfo) {
@@ -1518,7 +1526,21 @@ onMounted(async () => {
         enableFps.value = false;
         localStorage.setItem('nsd_fps_monitor', 'false');
 
-        // 2. 如果用户是在“自定义显示”里把 FPS 拖进去了，把它抠出来弹回下方池子
+        // 2. 恢复开启 FPS 前的音乐/资源状态，避免灵动岛变回网速
+        if (prevMusicBeforeFps) {
+            prevMusicBeforeFps = false;
+            enableMusicCtrl.value = true;
+            localStorage.setItem('nsd_music_ctrl', 'true');
+            emit('control-music-ctl', { enabled: true });
+        }
+        if (prevResourceBeforeFps) {
+            prevResourceBeforeFps = false;
+            enableSysResource.value = true;
+            localStorage.setItem('nsd_sys_resource', 'true');
+            emit('control-sys-resource', { enabled: true });
+        }
+
+        // 3. 如果用户是在“自定义显示”里把 FPS 拖进去了，把它抠出来弹回下方池子
         if (customSlots.value.includes('fps')) {
             const newSlots = [...customSlots.value];
             const index = newSlots.indexOf('fps');
@@ -1529,7 +1551,7 @@ onMounted(async () => {
             }
         }
 
-        // 3. 呼出下载弹窗
+        // 4. 呼出下载弹窗
         showDialog(
             t('pluginMissingTitle'),
             t('pluginMissingDesc'),

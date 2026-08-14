@@ -1,4 +1,5 @@
 use futures_util::{SinkExt, StreamExt};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::{command, AppHandle, Emitter};
 use tokio_tungstenite::connect_async;
@@ -11,6 +12,9 @@ use windows::Media::Control::{
 
 // 全局记录当前选中的平台（默认空，由前端传来）
 static TARGET_PLAYER: Mutex<String> = Mutex::new(String::new());
+
+// 记录上一次是否发现 JustSolo，只在“从无到有”的跳变时通知前端（避免轮询式重复触发）
+static LAST_JUSTSOLO_FOUND: AtomicBool = AtomicBool::new(false);
 
 // 给前端调用的切换接口
 #[command]
@@ -87,12 +91,27 @@ fn get_target_media_session() -> Option<(GlobalSystemMediaTransportControlsSessi
 }
 
 #[command]
-pub async fn fetch_netease_music_info() -> Result<Option<(String, String, bool, i64, i64, String)>, String>
+pub async fn fetch_netease_music_info(
+    app: tauri::AppHandle,
+) -> Result<Option<(String, String, bool, i64, i64, String)>, String>
 {
     let (session, app_id_str) = match get_target_media_session() {
         Some(s) => s,
-        None => return Ok(None),
+        None => {
+            // 没有任何媒体会话时，重置发现标志，保证 JustSolo 下次出现时能再次通知前端
+            LAST_JUSTSOLO_FOUND.store(false, Ordering::Relaxed);
+            return Ok(None);
+        }
     };
+
+    // 后端刚在 SMTC 中发现 JustSolo（从无到有的跳变）时，通知前端发起 WS 连接/重连
+    if app_id_str.contains("justsolo") {
+        if !LAST_JUSTSOLO_FOUND.swap(true, Ordering::Relaxed) {
+            let _ = app.emit("justsolo-discovered", ());
+        }
+    } else {
+        LAST_JUSTSOLO_FOUND.store(false, Ordering::Relaxed);
+    }
 
     let is_playing = if let Ok(playback_info) = session.GetPlaybackInfo() {
         if let Ok(status) = playback_info.PlaybackStatus() {
@@ -114,7 +133,16 @@ pub async fn fetch_netease_music_info() -> Result<Option<(String, String, bool, 
     let artist = properties.Artist().unwrap_or_default().to_string();
 
     if title.is_empty() {
-        return Ok(None);
+        // SMTC 已连上应用但尚未提供有效标题：仍返回会话信息（空标题 + 应用包名），
+        // 让前端把单行展示改为显示"已连接的应用名"，而不是"未在播放"
+        return Ok(Some((
+            String::new(),
+            String::new(),
+            is_playing,
+            0,
+            0,
+            app_id_str,
+        )));
     }
 
     let mut position_ms: i64 = 0;
@@ -154,6 +182,10 @@ pub async fn fetch_netease_music_info() -> Result<Option<(String, String, bool, 
     
     if app_id_str.contains("edge") { // 识别到 Edge 浏览器
         return Ok(Some((title, "edge".to_string(), is_playing, position_ms, duration_ms, app_id_str)));
+    }
+
+    if app_id_str.contains("chrome") { // 识别到 Chrome 浏览器
+        return Ok(Some((title, "chrome".to_string(), is_playing, position_ms, duration_ms, app_id_str)));
     }
 
     // 返回值增加了一个 duration_ms 参数
@@ -237,6 +269,12 @@ fn get_smtc_thumbnail() -> Option<String> {
         "data:image/jpeg;base64,{}",
         inline_base64_encode(&bytes)
     ))
+}
+
+// 仅尝试读取 SMTC 本地封面，不联网兜底（浏览器/视频类应用专用）
+#[command]
+pub async fn get_smtc_cover() -> Result<Option<String>, String> {
+    Ok(get_smtc_thumbnail())
 }
 
 #[command]
