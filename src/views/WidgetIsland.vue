@@ -660,6 +660,13 @@ let unlistenWsStatus: (() => void) | null = null;
 // WebSocket 实时歌词监听
 let unlistenWs: (() => void) | null = null;
 
+// 用 SMTC 已获取到的 "标题 - 歌手" 立刻填充折叠态文本（WS 刚连上、歌词还没匹配上时的兜底）
+const fillCollapsedWithTrackInfo = () => {
+    if (!currentSongName.value || currentSongName.value === t('noSongPlaying')) return;
+    const artist = currentArtistName.value === t('unknownArtist') ? '' : currentArtistName.value;
+    setSafeTrackInfo(artist ? `${currentSongName.value} - ${artist}` : currentSongName.value);
+};
+
 const initWebSocket = async () => {
     // 一次性连接：尝试过就不再连第二次
     if (wsConnectAttempted) return;
@@ -677,6 +684,8 @@ const initWebSocket = async () => {
                 isWsConnecting.value = false;
                 if (isWsConnected.value) {
                     parsedLyrics.value = []; // 连上 WS 后，立刻清空可能残存的网络歌词，防止打架
+                    // 连上 WS 就立刻用 SMTC 已拿到的 "标题 - 歌手" 填充折叠态文本（歌词接管前先兜底显示）
+                    fillCollapsedWithTrackInfo();
                 } else {
                     // 断开/连接失败时重置一次性标志，允许下次检测到 JustSolo 时重试连接
                     wsConnectAttempted = false;
@@ -994,13 +1003,14 @@ const syncMusicStatus = async () => {
                 // 切歌时，第一时间重置本地时间轴！
                 if (!isWsActive) {
                     localPositionMs.value = positionMs; // 必须补上这行，否则新歌会继承老歌的时间！
-
-                    setSafeTrackInfo(newTrackInfo);
-                    parsedLyrics.value = [];
-                    lyricQueue.value = [];
-                    currentMatchedIndex = -1;
                     lastLyricChangeTime = performance.now() + 2000;
                 }
+                // 无论 WS 是否活跃，切歌都立刻把折叠态文本更新为 "标题 - 歌手"，
+                // 避免 WS 已活跃时折叠态一直停留在上一首歌的旧歌词上
+                setSafeTrackInfo(newTrackInfo);
+                parsedLyrics.value = [];
+                lyricQueue.value = [];
+                currentMatchedIndex = -1;
                 
                 if (!app_id_str.includes("bilibili") && !app_id_str.includes("edge") && !app_id_str.includes("chrome")) {
                     fetchAndApplyCover(newTrackInfo, song, artist);
