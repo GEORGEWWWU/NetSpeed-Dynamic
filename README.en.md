@@ -21,7 +21,8 @@
 ![Music Controller](./src/assets/screenshot2.png)
 ![Dynamic Island Notification](./src/assets/screenshot4.png)
 ![Music Controller 2.0](./src/assets/screenshot.gif)
-![2.4.2](./src/assets/screenshot3.png)
+![2.4.3](./src/assets/screenshot3.png)
+![2.4.3](./src/assets/screenshot5.png)
 
 ---
 
@@ -30,43 +31,60 @@ NetSpeed Dynamic Pro (NSD) is a Windows desktop application built with Tauri 2, 
 ## Highlights
 
 - Monitor upload and download activity in real time with live traffic stats, monthly totals, and trend charts
-- Show network, music, message, CPU, RAM, and system status in a floating Dynamic Island UI
-- Support cross-platform media control through the Windows SMTC ecosystem and system media sessions
-- Capture incoming Toast notifications and render them as on-screen notification cards with priority handling
-- Offer theme switching, transparency, corner style, scaling, lyric timing, glow border, and animation tuning
-- Support startup launch, tray icon usage, taskbar plugin sync, fullscreen auto-hide, and position locking
+- Display network, music, message, CPU, RAM, and system status in a floating Dynamic Island UI
+- Support multi-platform media control through the Windows SMTC ecosystem and system media sessions
+- Capture incoming Toast notifications and render them as on-screen cards with silent mode, priority handling, and click-to-open actions
+- Offer light, dark, immersive, transparent, rounded, scaled, lyric-delay, glow-border, and audio-spectrum customization
+- Support startup launch, tray icon control, taskbar plugin sync, FPS plugin, fullscreen auto-hide, position locking, and pinning
 
 ## Core Features
 
 ### 1. Network Monitoring
 
-- Refresh upload and download speed every second with auto-scaling units
-- Display network health indicators for normal, high-latency, and disconnected states
-- Provide local traffic totals and monthly cumulative traffic analytics
-- Switch between bar and line charts inside the console
-- Make disconnection decisions more conservatively during heavy traffic fluctuations
+- Refresh upload and download speed every second with automatic unit conversion
+- Show network health state for normal, high-latency, and disconnected conditions
+- Provide local total traffic stats and monthly traffic charts
+- Switch between bar and line chart views in the control panel
+- Use dual-address timeout checks and high-traffic fluctuation logic to reduce false network disconnections
+- Sync live speed information to taskbar plugins for desktop-side status monitoring
 
 ### 2. Music and Media Control
 
 - Use the Windows SMTC API to control previous / play-pause / next
-- Support NetEase Cloud Music, Spotify, Apple Music, QQ Music, Kugou Music, Echo Music, and LX Music
-- Present current song title, artist, and cover art in real time
-- Prefer local cover art from the system media session and fall back gracefully to other sources
-- Support synchronized lyrics, lyric queue logic, and glowing visual borders
+- Support NetEase Cloud Music, Spotify, Apple Music, QQ Music, Kugou Music, Echo Music, LX Music, and JustSolo
+- Automatically identify the active media session and prioritize local SMTC cover art
+- Support cover fallback, lyric lookup, lyric sync, delay adjustment, and playback progress display
+- Enable live track info switching, cover rotation, and lyric animation during playback
 
 ### 3. Notifications and System Events
 
-- Receive system Toast notifications and display them directly in the Dynamic Island
-- Support silent mode, a message priority queue, and click-to-open actions
-- Watch for volume changes, power connection/disconnection, lock/unlock, and low battery events
-- Use event-specific icons and visual styles for different kinds of system updates
+- Receive system Toast notifications and render them inside the Dynamic Island
+- Support notification filtering, silent mode, priority handling, and click-to-open actions
+- Watch for volume changes, power plugging/unplugging, lock/unlock, and low-battery events
+- Use event-specific icons, colors, and style variations for different system messages
+- Manage these messages through the theme, transparency, border, size, and display-combination settings
 
-### 4. Taskbar Plugin and Desktop Integration
+### 4. Taskbar Components and Desktop Integration
 
-- Expose a taskbar plugin mode that mirrors live speed, lyrics, resource info, and messages into a taskbar companion component
+- Expose a taskbar plugin that mirrors live speed, lyrics, messages, and resource info in a desktop-side companion component
+- Support an FPS plugin to display frame rate data in a separate window
 - Keep the app accessible through the tray icon
 - Auto-hide the island during fullscreen gaming or video playback
-- Support position reset, lock, glow border switching, and always-on-top behavior
+- Support position reset, lock, glow border toggling, always-on-top behavior, and multiple border styles
+
+### 5. Personalization Center
+
+- Switch between light, dark, immersive, transparent, rounded, scaled, and language options
+- Tune “dynamic and physical feedback” with fast and bouncy spring animation styles
+- Configure sizing boundaries such as base width, base height, media-card width, message-card width, and music base width
+- Use custom display combinations to arrange speed, resource, FPS, and cover slots as needed
+- Configure taskbar components, lyric delay, glow border, theme colors, and interface language
+
+### 6. Audio Spectrum and Visual Effects
+
+- Sample system output audio and perform FFT analysis to generate 7-band dynamic spectrum bars
+- Use a symmetrical “hill” distribution to make music scenes look more vivid
+- Drive island animation and glow effects from the spectrum output for richer visual feedback
 
 ## Tech Stack
 
@@ -82,35 +100,42 @@ NetSpeed Dynamic Pro (NSD) is a Windows desktop application built with Tauri 2, 
 | Async Runtime | Tokio (Rust) |
 | HTTP Client | reqwest (Rust) |
 | Media Control | Windows SMTC API |
-| Audio Processing | cpal + rustfft |
+| Audio Processing | cpal + realfft |
 | System Events | Windows COM / WinAPI |
+| Taskbar Communication | WebSocket + Tauri command |
 | Storage | localStorage |
 
 ## Project Structure
 
 ```text
 NetSpeed-Dynamic/
-├── src/                      # Frontend source
-│   ├── main.ts               # App entry
-│   ├── router/index.ts       # Router setup
-│   ├── i18n.ts               # Chinese/English localization
+├── src/                           # Frontend source
+│   ├── App.vue                    # App root
+│   ├── main.ts                    # App entry
+│   ├── i18n.ts                    # Chinese/English localization
+│   ├── router/
+│   │   └── index.ts               # Routing config
 │   ├── views/
-│   │   ├── MainPanel.vue     # Main console UI
-│   │   └── WidgetIsland.vue  # Floating Dynamic Island
+│   │   ├── MainPanel.vue           # Main console UI
+│   │   └── WidgetIsland.vue        # Floating Dynamic Island
 │   ├── components/
-│   │   └── DynamicSet.vue    # Personalization center
-│   └── assets/               # Icons, screenshots, and static assets
-├── src-tauri/                # Tauri Rust backend
+│   │   └── DynamicSet.vue          # Personalization center
+│   └── assets/                    # Icons, screenshots, and static assets
+├── src-tauri/                     # Tauri Rust backend
 │   ├── src/
-│   │   ├── lib.rs            # Core logic, windows, animation, tray
-│   │   ├── music_controller.rs  # Media control and cover/lyric logic
-│   │   ├── notification.rs   # System notification capture
-│   │   ├── system_events.rs  # Volume, power, and lock events
-│   │   └── audio_spectrum.rs # Audio spectrum analysis
-│   ├── Cargo.toml           # Rust dependencies
-│   └── tauri.conf.json      # Tauri configuration
-├── package.json              # Frontend dependencies and scripts
-└── README.en.md             # English documentation
+│   │   ├── lib.rs                  # Core logic, windows, animation, tray, and plugins
+│   │   ├── music_controller.rs     # Media control, cover art, and lyrics
+│   │   ├── notification.rs         # System notification capture
+│   │   ├── system_events.rs         # Volume, battery, lock, and power events
+│   │   └── audio_spectrum.rs       # Audio spectrum analysis
+│   ├── Cargo.toml                 # Rust dependencies
+│   ├── tauri.conf.json            # Tauri config
+│   └── icons/                     # App icons
+├── package.json                   # Frontend dependencies and scripts
+├── README.md                      # Chinese documentation
+├── README.en.md                   # English documentation
+├── LICENSE                        # MIT License
+└── .github/                       # GitHub workflows and star history assets
 ```
 
 ## Development Environment
@@ -137,17 +162,17 @@ npm run tauri dev
 npm run tauri build
 ```
 
-The packaged output is written to `src-tauri/target/release/bundle/`.
+The output is generated in `src-tauri/target/release/bundle/`.
 
 ## Usage
 
 1. Launch the app to open the main console.
-2. Enable the Widget switch to show the floating Dynamic Island.
-3. Drag it with the mouse and use the right-click menu to lock, reset, close, toggle the glow border, or pin it on top.
-4. Configure music platform selection, notification preferences, theme, opacity, auto-start, and taskbar plugin settings.
-5. Open the Personalization Center to adjust animation behavior, appearance, size, and scaling.
+2. Turn on the widget switch to show the floating Dynamic Island.
+3. Drag the island with the mouse, then use the right-click menu to lock, reset, close, toggle the glow border, or keep it on top.
+4. Configure media platform selection, notification preferences, theme, opacity, startup behavior, taskbar plugin, and FPS plugin settings.
+5. Open the Personalization Center to adjust physics, appearance, size, scaling, lyric delay, and custom display combinations.
 
-> Note: This project is deeply adapted for Windows and relies on system SMTC, WinAPI, COM, and notification-management features.
+> Note: This project is deeply adapted for Windows and depends on system SMTC, WinAPI, COM, Notification Manager, and taskbar plugin interfaces.
 
 ## License
 

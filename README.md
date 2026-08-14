@@ -19,7 +19,8 @@
 ![音乐控制器](./src/assets/screenshot2.png)
 ![灵动岛通知](./src/assets/screenshot4.png)
 ![音乐控制器 2.0](./src/assets/screenshot.gif)
-![2.4.2](./src/assets/screenshot3.png)
+![2.4.3](./src/assets/screenshot3.png)
+![2.4.3](./src/assets/screenshot5.png)
 
 ---
 
@@ -29,10 +30,10 @@ NetSpeed Dynamic Pro（NSD）是一个基于 Tauri 2、Vue 3、TypeScript 与 Ru
 
 - 实时展示上传/下载网速，并提供本地流量统计、月度累计与趋势图
 - 使用悬浮式 Dynamic Island 展示网络、音乐、消息、CPU/RAM 资源和系统状态
-- 支持多平台音乐控制，兼容 Windows SMTC 生态与多种播放器与媒体会话
-- 拦截并展示系统 Toast 通知，并支持静默模式、优先级处理与点击唤醒控制台
-- 提供亮色、暗色、沉浸模式、透明度、圆角、全局缩放、歌词延迟、流光边框等设置
-- 支持开机自启、托盘图标、任务栏插件、全屏自动隐藏、位置锁定与置顶等桌面增强能力
+- 支持多平台音乐控制，兼容 Windows SMTC 与多种媒体会话与应用包名识别
+- 拦截并展示系统 Toast 通知，并支持静默模式、优先级处理与点击打开应用等交互
+- 提供亮色、暗色、沉浸模式、透明度、圆角、全局缩放、歌词延迟、流光边框、音频频谱等配置
+- 支持开机自启、托盘图标、任务栏插件、FPS 插件、全屏自动隐藏、位置锁定、置顶等桌面增强能力
 
 ## 核心功能
 
@@ -42,29 +43,46 @@ NetSpeed Dynamic Pro（NSD）是一个基于 Tauri 2、Vue 3、TypeScript 与 Ru
 - 显示网络状态灯：正常 / 高延迟 / 断网
 - 提供本地累计流量统计与按月统计图表
 - 支持在控制台中切换柱状图与折线图视图
-- 在高流量波动下进行更稳妥的断网判断，减少误报
+- 结合双地址断网检测与高流量波动分析，减少误报
+- 同步到任务栏插件，确保网络状态在桌面侧边栏也可观察
 
 ### 2. 多平台音乐控制
 
 - 通过 Windows SMTC API 进行上一首 / 播放暂停 / 下一首控制
-- 支持网易云音乐、Spotify、Apple Music、QQ 音乐、酷狗音乐、Echo Music、LX Music 等媒体源
-- 实时展示歌曲名、歌手与封面，播放时封面可旋转
-- 优先读取系统媒体会话中的本地封面，兼容多源封面兜底
-- 支持歌词显示、歌词队列与同步调校、彩虹流光边框等视觉表现
+- 兼容网易云音乐、Spotify、Apple Music、QQ 音乐、酷狗音乐、Echo Music、LX Music、JustSolo 等媒体来源
+- 自动识别当前媒体会话，并优先读取 SMTC 本地封面
+- 支持封面兜底、歌词请求、歌词同步、歌词延迟调节与播放进度展示
+- 运行中支持播放状态切换、封面旋转、歌曲信息切换与歌词动画
 
 ### 3. 系统通知与事件
 
 - 接收系统 Toast 通知，并在 Dynamic Island 中呈现消息卡片
-- 支持消息通知优先级队列、静默模式、点击打开应用等交互
+- 支持消息通知筛选、静默模式、优先级处理与点击打开应用等交互
 - 监听系统音量变化、电源插拔、锁屏/解锁、低电量等事件
 - 根据事件类型切换独立图标、颜色与通知样式
+- 可在主题、透明度、边框、尺寸和显示组合中统一管理这些事件信息
 
-### 4. 任务栏插件与桌面集成
+### 4. 任务栏组件与桌面集成
 
-- 提供任务栏插件能力，将实时网速、歌词、消息与资源信息同步到任务栏侧边组件
+- 提供任务栏插件能力，可将实时网速、歌词、消息与资源信息同步到任务栏侧边组件
+- 支持 FPS 插件，以独立窗口方式展示帧率信息
 - 支持通过托盘图标快速打开或关闭界面
 - 支持全屏自动隐藏，避免游戏或视频观看时干扰
-- 支持动态岛位置锁定、重置、流光边框开关与始终置顶
+- 支持动态岛位置锁定、重置、流光边框开关、始终置顶和多种边框样式
+
+### 5. 个性化中心
+
+- 支持亮色、暗色、沉浸模式、透明度、圆角、全局缩放等统一设置
+- 提供“动态与物理反馈”调节：快速 / Q 弹两种弹性动画风格
+- 支持尺寸边界控制：常规宽度、高度、媒体卡片宽度、消息卡片宽度、音乐常态宽度
+- 支持自定义显示组合：网速、资源、FPS、封面可按需组合排列
+- 可配置任务栏组件、歌词延迟、流光边框、主题色与系统语言
+
+### 6. 音频频谱与视觉效果
+
+- 采集系统输出音频并进行 FFT 分析，生成 7 段动态频谱柱
+- 对称“山丘”分布，适合搭配音乐场景进行视觉增强
+- 频谱数据作为动画驱动源，可与灵动岛、流光边框、封面玻璃效果协同表现
 
 ## 技术栈
 
@@ -80,35 +98,42 @@ NetSpeed Dynamic Pro（NSD）是一个基于 Tauri 2、Vue 3、TypeScript 与 Ru
 | 异步运行时 | Tokio (Rust) |
 | HTTP 客户端 | reqwest (Rust) |
 | 媒体控制 | Windows SMTC API |
-| 音频处理 | cpal + rustfft |
+| 音频处理 | cpal + realfft |
 | 系统事件 | Windows COM / WinAPI |
+| 任务栏通信 | WebSocket + Tauri command |
 | 存储 | localStorage |
 
 ## 项目结构
 
 ```text
 NetSpeed-Dynamic/
-├── src/                      # 前端源码
-│   ├── main.ts               # 应用入口
-│   ├── router/index.ts       # 路由设置
-│   ├── i18n.ts               # 中文/英文国际化
+├── src/                           # 前端源码
+│   ├── App.vue                    # 根组件
+│   ├── main.ts                    # 应用入口
+│   ├── i18n.ts                    # 中英文国际化
+│   ├── router/
+│   │   └── index.ts               # 路由配置
 │   ├── views/
-│   │   ├── MainPanel.vue     # 主控制台界面
-│   │   └── WidgetIsland.vue  # 灵动岛悬浮窗
+│   │   ├── MainPanel.vue           # 主控制台界面
+│   │   └── WidgetIsland.vue        # 灵动岛悬浮窗
 │   ├── components/
-│   │   └── DynamicSet.vue    # 个性化中心
-│   └── assets/               # 图标、截图与静态资源
-├── src-tauri/                # Tauri Rust 后端
+│   │   └── DynamicSet.vue          # 个性化中心
+│   └── assets/                    # 图标、截图与静态资源
+├── src-tauri/                     # Tauri Rust 后端
 │   ├── src/
-│   │   ├── lib.rs            # 核心逻辑、窗口、动画与托盘
-│   │   ├── music_controller.rs  # 媒体控制与封面/歌词
-│   │   ├── notification.rs   # 系统通知捕获
-│   │   ├── system_events.rs  # 音量、电源、锁屏等事件
-│   │   └── audio_spectrum.rs # 音频频谱分析
-│   ├── Cargo.toml           # Rust 依赖
-│   └── tauri.conf.json      # Tauri 配置
-├── package.json              # 前端依赖与脚本
-└── README.md                 # 中文说明
+│   │   ├── lib.rs                  # 核心逻辑、窗口、动画、托盘与插件
+│   │   ├── music_controller.rs     # 媒体控制、封面、歌词与 SMTC
+│   │   ├── notification.rs         # 系统通知捕获
+│   │   ├── system_events.rs         # 音量、电源、锁屏等系统事件
+│   │   └── audio_spectrum.rs       # 音频频谱分析
+│   ├── Cargo.toml                 # Rust 依赖
+│   ├── tauri.conf.json            # Tauri 配置
+│   └── icons/                     # 图标资源
+├── package.json                   # 前端依赖与脚本
+├── README.md                      # 中文说明
+├── README.en.md                   # 英文说明
+├── LICENSE                        # MIT License
+└── .github/                       # GitHub 工作流与 Star 历史资源
 ```
 
 ## 开发环境
@@ -142,10 +167,10 @@ npm run tauri build
 1. 启动应用后，主控制台会弹出实时网速与设置入口。
 2. 打开“Widget”开关后，屏幕顶部会显示可拖拽的 Dynamic Island 悬浮窗。
 3. 左键拖拽移动，右键菜单可进行位置锁定、重置、关闭、流光边框开关与置顶设置。
-4. 在控制台中配置音乐平台、消息通知、主题、透明度、自动启动与任务栏插件。
-5. 进入“个性化中心”后，可调整物理动效、外观、尺寸与全局缩放比例。
+4. 在控制台中配置媒体平台、消息通知、主题、透明度、自动启动、任务栏插件和 FPS 插件。
+5. 进入“个性化中心”后，可以调整物理反馈、边框样式、尺寸、缩放比例、歌词延迟和显示组合。
 
-> 说明：当前项目针对 Windows 平台深度适配，部分能力依赖系统 SMTC、WinAPI、COM 与通知管理接口。
+> 说明：当前项目针对 Windows 平台深度适配，部分能力依赖系统 SMTC、WinAPI、COM、Notification Manager 与任务栏插件接口。
 
 ## 许可证
 
