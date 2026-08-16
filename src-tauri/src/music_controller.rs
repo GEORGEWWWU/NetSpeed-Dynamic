@@ -290,9 +290,13 @@ pub async fn get_smtc_cover() -> Result<Option<String>, String> {
 pub async fn get_random_cover_url(
     song_name: String,
     artist_name: String,
+    prefer_smtc: Option<bool>,
 ) -> Result<String, String> {
-    if let Some(base64_cover) = get_smtc_thumbnail() {
-        return Ok(base64_cover);
+    // 默认优先用 SMTC 本地封面；PotPlayer 音乐模式等场景前端会显式传 prefer_smtc=false 强制走网络封面
+    if prefer_smtc.unwrap_or(true) {
+        if let Some(base64_cover) = get_smtc_thumbnail() {
+            return Ok(base64_cover);
+        }
     }
 
     let client = reqwest::Client::builder()
