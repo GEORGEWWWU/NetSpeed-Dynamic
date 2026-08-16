@@ -299,6 +299,18 @@ watch(isIslandVisible, (newVal) => {
     emit('island-status-sync', { visible: newVal });
 });
 
+// 兜底保险：OS 窗口显隐必须严格跟随灵动岛状态。
+// 防止“窗体(v-show)已隐藏但透明窗口仍残留”导致该区域拦截鼠标点击
+watch(isIslandVisible, (visible) => {
+    if (visible) return;
+    // 等离开动画播完（约 350ms）再物理隐藏窗口；期间若又被呼出则放弃隐藏
+    setTimeout(() => {
+        if (!isIslandVisible.value) {
+            getCurrentWindow().hide().catch(() => { });
+        }
+    }, 400);
+}, { immediate: true });
+
 // 记录全屏自动隐藏开关状态
 const isAutoHideEnabled = ref(localStorage.getItem('nsd_autohide_fs') === 'true');
 // 记录进入全屏前的灵动岛显隐状态，用来决定退回桌面时要不要恢复
@@ -1641,6 +1653,9 @@ const adjustWindowPosition = async () => {
     } catch (error) {
         console.error('调整窗口位置失败:', error);
     } finally {
+        // 仅当灵动岛处于显示状态时才拉起透明窗口；
+        // 否则空窗口会残留并拦截该区域的鼠标点击（窗体隐藏 ≠ 窗口隐藏）
+        if (!isIslandVisible.value) return;
         try {
             await invoke('show_window_no_activate', { label: 'widget' });
         } catch (e) {
