@@ -1301,8 +1301,11 @@ const calculateScroll = () => {
         // 速度再参照「当前歌词句的演唱时长」，让滚动跟随节奏而非固定 30px/s
         const lineDurationSec = getCurrentLineDuration() / 1000;
 
+        // 本句实际展示时长：歌词队列消费闸门是 800ms，短句不会低于这个展示窗口
+        const displayWindowSec = Math.max(lineDurationSec, 0.8);
+
         // 整段动画 = 开头停 15% + 滚动 70% + 末尾停 15%，纯滚动占歌词时长的 70%
-        const timeToMove = lineDurationSec * 0.7;
+        const timeToMove = displayWindowSec * 0.7;
 
         // 速度保护：过快看不清、过慢拖沓，钳制在 18~90 px/s
         const rawSpeed = scrollDist.value / timeToMove;
@@ -1310,9 +1313,14 @@ const calculateScroll = () => {
         const safeTimeToMove = scrollDist.value / speed;
 
         // 由纯滚动时间反推总动画时长（纯滚动占 70%）
-        const totalDuration = safeTimeToMove / 0.7;
+        let totalDuration = safeTimeToMove / 0.7;
 
-        scrollDuration.value = `${Math.max(totalDuration, 4.5)}s`;
+        // 滚到底的保证：动画总时长不得超过本句展示时长。
+        // 否则长句被 90px/s 钳制 / 4.5s 保底拉长后，还没滚到末尾就被下一句顶掉，
+        // 表现为「有时候歌词滚不到底」。文字在展示期内即可滚完并停住结尾。
+        totalDuration = Math.max(Math.min(totalDuration, displayWindowSec), 0.8);
+
+        scrollDuration.value = `${totalDuration.toFixed(2)}s`;
     } else {
         scrollDist.value = 0;
     }
