@@ -188,6 +188,15 @@ pub async fn fetch_netease_music_info(
         return Ok(Some((title, "chrome".to_string(), is_playing, position_ms, duration_ms, app_id_str)));
     }
 
+    if app_id_str.contains("potplayer") { // 识别到 PotPlayer
+        if artist.is_empty() {
+            return Ok(Some((title, "potplayer".to_string(), is_playing, position_ms, duration_ms, app_id_str)));
+        }
+        else {
+            return Ok(Some((title, artist, is_playing, position_ms, duration_ms, app_id_str)));
+        }
+    }
+
     // 返回值增加了一个 duration_ms 参数
     // 标题、歌手、是否播放、当前位置、总时长、应用包名
     Ok(Some((title, artist, is_playing, position_ms, duration_ms, app_id_str)))

@@ -728,6 +728,11 @@ let unlistenWs: (() => void) | null = null;
 // 用 SMTC 已获取到的 "标题 - 歌手" 立刻填充折叠态文本
 const fillCollapsedWithTrackInfo = () => {
     if (!currentSongName.value || currentSongName.value === t('noSongPlaying')) return;
+    // PotPlayer：直接用标题当常驻歌词显示，不再拼 "标题 - potplayer"
+    if (isPotplayerSource.value) {
+        setSafeTrackInfo(currentSongName.value);
+        return;
+    }
     const artist = currentArtistName.value === t('unknownArtist') ? '' : currentArtistName.value;
     setSafeTrackInfo(artist ? `${currentSongName.value} - ${artist}` : currentSongName.value);
 };
@@ -1076,6 +1081,13 @@ const syncMusicStatus = async () => {
                 // 切歌立刻把折叠态文本更新为 "标题 - 歌手"，
                 fillCollapsedWithTrackInfo();
 
+                // PotPlayer：不做歌词匹配，清空可能残留的歌词队列，标题常驻显示
+                if (isPotplayerSource.value) {
+                    parsedLyrics.value = [];
+                    lyricQueue.value = [];
+                    currentMatchedIndex = -1;
+                }
+
                 // 切换播放内容时强制重新获取封面：清掉该曲目的封面缓存，避免沿用旧封面
                 coverCache.delete(newTrackInfo);
                 blurredCoverCache.delete(newTrackInfo);
@@ -1085,23 +1097,33 @@ const syncMusicStatus = async () => {
                     isSmtcCoverActive.value = false;
                     coverUrl.value = APP_COVER_LOGO_MAP[app_id_str.includes("edge") ? "edge" : "chrome"];
                     fetchAndApplySmtcCover(newTrackInfo);
-                } else if (!app_id_str.includes("bilibili")) {
+                } else if (!app_id_str.includes("bilibili") && artist !== "potplayer") {
                     fetchAndApplyCover(newTrackInfo, song, artist);
                 }
 
-                // 浏览器/视频类应用使用内置 logo 封面（import 引用，打包后路径才会被 Vite 正确重写）
-                for (const [key, logo] of Object.entries(APP_COVER_LOGO_MAP)) {
-                    if (app_id_str.includes(key)) {
-                        // 已拿到 SMTC 封面则不再退回默认应用图标
-                        if (!isSmtcCoverActive.value && !app_id_str.includes("potplayer")) {
-                            coverUrl.value = logo;
+                if (!app_id_str.includes("potplayer")) {
+                    // 浏览器/视频类应用使用内置 logo 封面（import 引用，打包后路径才会被 Vite 正确重写）
+                    for (const [key, logo] of Object.entries(APP_COVER_LOGO_MAP)) {
+                        if (app_id_str.includes(key)) {
+                            // 已拿到 SMTC 封面则不再退回默认应用图标
+                            if (!isSmtcCoverActive.value) {
+                                coverUrl.value = logo;
+                            }
+                            break;
                         }
-                        break;
                     }
+                } else {
+                    console.log(app_id_str);
+                    coverUrl.value = potplayerLogo;
+                    // 清除上个封面的缓存与沉浸背景：防止 coverglass 背景残留上一首歌的模糊封面
+                    blurredCoverUrl.value = '';
+                    isSmtcCoverActive.value = false;
+                    blurredCoverCache.clear();
+                    coverCache.clear();
                 }
 
-                // 仅在 WS 不活跃时，发起 HTTP 网络歌词兜底
-                if (!isWsActive) {
+                // 仅在 WS 不活跃时，发起 HTTP 网络歌词兜底（PotPlayer 不拉歌词，标题常驻）
+                if (!isWsActive && !isPotplayerSource.value) {
                     invoke<string>('fetch_netease_lyrics', { songName: song, artistName: artist, durationMs })
                         .then(lrc => {
                             if (Date.now() - lastWsLyricTime > 3000) {
@@ -1185,6 +1207,10 @@ const musicBoxKey = ref(0);
 const currentSongName = ref(t('noSongPlaying'));
 const currentArtistName = ref(getPlayerName());
 const currentTrackInfo = ref(`${t('noSongPlaying')} - ${getPlayerName()}`);
+
+// PotPlayer 无歌手元数据时，后端会把歌手占位为 "potplayer"。
+// 此时不做歌词匹配，直接用标题当常驻歌词显示
+const isPotplayerSource = computed(() => currentArtistName.value === 'potplayer');
 
 watch(currentLanguage, () => {
     if (!displayMusic.value || currentSongName.value === t('noSongPlaying')) {
@@ -2522,6 +2548,13 @@ onMounted(async () => {
     // 调大Ping间隔：从2.5秒调大到5.5秒
     pingTimer = setInterval(checkNetworkLatency, 5500) as unknown as number;
 
+    // 周期性强保顶：灵动岛常驻显示时，防止被后激活的其他置顶窗口（全屏应用/播放器悬浮窗等）盖住
+    setInterval(async () => {
+        if (isIslandVisible.value) {
+            await getCurrentWindow().setAlwaysOnTop(true).catch(() => { });
+        }
+    }, 3000);
+
     // 监听控制台发来的显隐调度指令
     await listen<{ show: boolean }>('control-island-visibility', async (event) => {
         if (event.payload.show) {
@@ -2560,7 +2593,8 @@ onMounted(async () => {
             localPositionMs.value += delta;
 
             // 2. 毫秒级歌词匹配与队列逻辑 (解决快节奏吞字、闪烁消失问题)
-            if (parsedLyrics.value.length > 0) {
+            // PotPlayer：不做歌词匹配，标题常驻显示
+            if (!isPotplayerSource.value && parsedLyrics.value.length > 0) {
                 let matchedIndex = -1;
 
                 // 找出当前时间进度应该播放哪一句

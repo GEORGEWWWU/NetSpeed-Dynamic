@@ -203,6 +203,17 @@ fn show_window_no_activate(app: tauri::AppHandle, label: String) {
                 unsafe {
                     // SW_SHOWNOACTIVATE = 4，显示窗口但不抢占当前应用的焦点
                     winapi::um::winuser::ShowWindow(hwnd.0 as _, 4);
+                    // 强制回到置顶带最顶端：防止被其他置顶窗口（全屏应用/视频播放器悬浮窗等）盖住
+                    winapi::um::winuser::SetWindowPos(
+                        hwnd.0 as _,
+                        winapi::um::winuser::HWND_TOPMOST,
+                        0,
+                        0,
+                        0,
+                        0,
+                        // SWP_NOSIZE(0x0001) | SWP_NOMOVE(0x0002) | SWP_NOACTIVATE(0x0010)
+                        0x0001 | 0x0002 | 0x0010,
+                    );
                 }
             }
         }
