@@ -1093,7 +1093,7 @@ const syncMusicStatus = async () => {
                 for (const [key, logo] of Object.entries(APP_COVER_LOGO_MAP)) {
                     if (app_id_str.includes(key)) {
                         // 已拿到 SMTC 封面则不再退回默认应用图标
-                        if (!isSmtcCoverActive.value) {
+                        if (!isSmtcCoverActive.value && !app_id_str.includes("potplayer")) {
                             coverUrl.value = logo;
                         }
                         break;
@@ -2014,12 +2014,14 @@ const currentMsgIcon = ref(defaultLogo);
 import bilibiliLogo from '../assets/bilibili-logo.png';
 import edgeLogo from '../assets/edge-logo.png';
 import chromeLogo from '../assets/chrome-logo.png';
+import potplayerLogo from '../assets/potplayer-logo.jpg';
 
-const APP_COVER_LOGOS = [bilibiliLogo, edgeLogo, chromeLogo];
+const APP_COVER_LOGOS = [bilibiliLogo, edgeLogo, chromeLogo, potplayerLogo];
 const APP_COVER_LOGO_MAP: Record<string, string> = {
     bilibili: bilibiliLogo,
     edge: edgeLogo,
     chrome: chromeLogo,
+    potplayer: potplayerLogo,
 };
 
 // 图标映射器
@@ -2027,7 +2029,6 @@ const getAppIcon = (appName: string) => {
     const name = appName.toLowerCase();
 
     if (name.includes('qq')) {
-        // 使用 new URL 让 Vite 知道你要引入这个资源
         return new URL('../assets/qq.png', import.meta.url).href;
     }
     if (name.includes('钉钉') || name.includes('dingtalk')) {
