@@ -186,7 +186,7 @@
 
                         <div v-else-if="displaySpeed" class="speed-box" key="speed">
                             <Transition name="speed-fade" mode="out-in">
-                                <div v-if="nsdBaseWidth >= 220" key="dual" class="speed-dual-box">
+                                <div v-if="nsdBaseWidth >= 230" key="dual" class="speed-dual-box">
                                     <div class="speed-item">
                                         <span :class="['label', { 'high-traffic': isHighUpload }]">⬆</span>
                                         <span class="value">{{ uploadSpeed }}</span>
@@ -2363,8 +2363,8 @@ onMounted(async () => {
 
     // 启动网速和硬件显示轮换定时器 (每 5 秒切换一次)
     speedCycleTimer = window.setInterval(() => {
-        // 仅在宽度小于 220px 时才进行上下行网速轮换
-        if (displaySpeed.value && nsdBaseWidth.value < 220) {
+        // 仅在宽度小于 230px 时才进行上下行网速轮换
+        if (displaySpeed.value && nsdBaseWidth.value < 230) {
             isShowingUpload.value = !isShowingUpload.value;
         }
     }, 5000);
