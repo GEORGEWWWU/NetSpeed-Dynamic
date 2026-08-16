@@ -1097,7 +1097,11 @@ const syncMusicStatus = async () => {
                     isSmtcCoverActive.value = false;
                     coverUrl.value = APP_COVER_LOGO_MAP[app_id_str.includes("edge") ? "edge" : "chrome"];
                     fetchAndApplySmtcCover(newTrackInfo);
-                } else if (!app_id_str.includes("bilibili") && artist !== "potplayer") {
+                } else if (!app_id_str.includes("bilibili")) {
+                    fetchAndApplyCover(newTrackInfo, song, artist);
+                }
+
+                if (app_id_str.includes("potplayer") && artist !== "potplayer") {
                     fetchAndApplyCover(newTrackInfo, song, artist);
                 }
 
@@ -1113,13 +1117,14 @@ const syncMusicStatus = async () => {
                         }
                     }
                 } else {
-                    console.log(app_id_str);
-                    coverUrl.value = potplayerLogo;
-                    // 清除上个封面的缓存与沉浸背景：防止 coverglass 背景残留上一首歌的模糊封面
-                    blurredCoverUrl.value = '';
-                    isSmtcCoverActive.value = false;
-                    blurredCoverCache.clear();
-                    coverCache.clear();
+                    if (artist == "potplayer") { // PotPlayer视频模式
+                        coverUrl.value = potplayerLogo;
+                        // 清除上个封面的缓存与沉浸背景：防止 coverglass 背景残留上一首歌的模糊封面
+                        blurredCoverUrl.value = '';
+                        isSmtcCoverActive.value = false;
+                        blurredCoverCache.clear();
+                        coverCache.clear();
+                    }
                 }
 
                 // 仅在 WS 不活跃时，发起 HTTP 网络歌词兜底（PotPlayer 不拉歌词，标题常驻）

@@ -415,7 +415,100 @@ pub async fn fetch_netease_lyrics(
         .build()
         .map_err(|e| e.to_string())?;
 
-    // ENGINE 1: LRCLIB (精确匹配，自带极高校验度)
+    let ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+    let query = format!("{} {}", song_name, artist_name);
+    let query_name_lower = song_name.to_lowercase();
+    let query_artist_lower = artist_name.to_lowercase(); // 新增：歌手小写比对
+
+    // ENGINE 1: QQ MUSIC (极速国内优选源)
+    let qq_search_url = format!(
+        "https://c.y.qq.com/soso/fcgi-bin/client_search_cp?w={}&n=5&format=json",
+        urlencoding::encode(&query)
+    );
+
+    if let Ok(resp) = client
+        .get(&qq_search_url)
+        .header("User-Agent", ua)
+        .send()
+        .await
+    {
+        if let Ok(json) = resp.json::<serde_json::Value>().await {
+            if let Some(songs) = json.pointer("/data/song/list").and_then(|v| v.as_array()) {
+                let mut best_songmid = None;
+
+                for song in songs {
+                    let songmid = song.get("songmid").and_then(|v| v.as_str());
+                    let interval = song.get("interval").and_then(|v| v.as_i64()).unwrap_or(0);
+                    let name = song
+                        .get("songname")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_lowercase();
+
+                    // 提取 QQ 音乐歌手名
+                    let mut singer_name = String::new();
+                    if let Some(singers) = song.get("singer").and_then(|v| v.as_array()) {
+                        for s in singers {
+                            if let Some(sname) = s.get("name").and_then(|v| v.as_str()) {
+                                singer_name.push_str(&sname.to_lowercase());
+                            }
+                        }
+                    }
+
+                    let name_match =
+                        name.contains(&query_name_lower) || query_name_lower.contains(&name);
+                    let artist_match = singer_name.contains(&query_artist_lower)
+                        || query_artist_lower.contains(&singer_name)
+                        || query_artist_lower.is_empty();
+
+                    if let Some(mid) = songmid {
+                        if duration_ms > 0 {
+                            let diff = (interval * 1000 - duration_ms).abs();
+                            // 核心修复：必须名字匹配，且 (歌手匹配 或 时间误差极小)
+                            if name_match && (artist_match || diff <= 3000) {
+                                best_songmid = Some(mid.to_string());
+                                break;
+                            }
+                        } else if name_match && artist_match {
+                            best_songmid = Some(mid.to_string());
+                            break;
+                        }
+                    }
+                }
+
+                if let Some(songmid) = best_songmid {
+                    let qq_lyric_url = format!("https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid={}&format=json&nobase64=1", songmid);
+                    if let Ok(lyric_resp) = client
+                        .get(&qq_lyric_url)
+                        .header("Referer", "https://y.qq.com/")
+                        .header("User-Agent", ua)
+                        .send()
+                        .await
+                    {
+                        if let Ok(lyric_json) = lyric_resp.json::<serde_json::Value>().await {
+                            if let Some(lyric_text) =
+                                lyric_json.get("lyric").and_then(|v| v.as_str())
+                            {
+                                let decoded = lyric_text
+                                    .replace("&#10;", "\n")
+                                    .replace("&#13;", "\r")
+                                    .replace("&#32;", " ")
+                                    .replace("&#45;", "-")
+                                    .replace("&#40;", "(")
+                                    .replace("&#41;", ")");
+                                if !decoded.is_empty() {
+                                    println!("[网络歌词调试] 命中引擎 3: QQ音乐 API (已通过完美双重校验)");
+                                    return Ok(decoded);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ENGINE 2: LRCLIB (精确匹配，自带极高校验度)
     let duration_sec = duration_ms / 1000;
     if duration_sec > 0 {
         let lrclib_url = format!(
@@ -438,12 +531,7 @@ pub async fn fetch_netease_lyrics(
         }
     }
 
-    let ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
-    let query = format!("{} {}", song_name, artist_name);
-    let query_name_lower = song_name.to_lowercase();
-    let query_artist_lower = artist_name.to_lowercase(); // 新增：歌手小写比对
-
-    // ENGINE 2: NETEASE FALLBACK (网易云兜底)
+    // ENGINE 3: NETEASE FALLBACK (网易云兜底)
     let fake_ip = {
         use rand::Rng;
         let mut rng = rand::thread_rng();
@@ -542,94 +630,6 @@ pub async fn fetch_netease_lyrics(
                             {
                                 println!("[网络歌词调试] 命中引擎 2: 网易云 API 兜底 (已通过完美双重校验)");
                                 return Ok(lyric_text.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // ENGINE 3: QQ MUSIC (极速国内优选源)
-    let qq_search_url = format!(
-        "https://c.y.qq.com/soso/fcgi-bin/client_search_cp?w={}&n=5&format=json",
-        urlencoding::encode(&query)
-    );
-
-    if let Ok(resp) = client
-        .get(&qq_search_url)
-        .header("User-Agent", ua)
-        .send()
-        .await
-    {
-        if let Ok(json) = resp.json::<serde_json::Value>().await {
-            if let Some(songs) = json.pointer("/data/song/list").and_then(|v| v.as_array()) {
-                let mut best_songmid = None;
-
-                for song in songs {
-                    let songmid = song.get("songmid").and_then(|v| v.as_str());
-                    let interval = song.get("interval").and_then(|v| v.as_i64()).unwrap_or(0);
-                    let name = song
-                        .get("songname")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_lowercase();
-
-                    // 提取 QQ 音乐歌手名
-                    let mut singer_name = String::new();
-                    if let Some(singers) = song.get("singer").and_then(|v| v.as_array()) {
-                        for s in singers {
-                            if let Some(sname) = s.get("name").and_then(|v| v.as_str()) {
-                                singer_name.push_str(&sname.to_lowercase());
-                            }
-                        }
-                    }
-
-                    let name_match =
-                        name.contains(&query_name_lower) || query_name_lower.contains(&name);
-                    let artist_match = singer_name.contains(&query_artist_lower)
-                        || query_artist_lower.contains(&singer_name)
-                        || query_artist_lower.is_empty();
-
-                    if let Some(mid) = songmid {
-                        if duration_ms > 0 {
-                            let diff = (interval * 1000 - duration_ms).abs();
-                            // 核心修复：必须名字匹配，且 (歌手匹配 或 时间误差极小)
-                            if name_match && (artist_match || diff <= 3000) {
-                                best_songmid = Some(mid.to_string());
-                                break;
-                            }
-                        } else if name_match && artist_match {
-                            best_songmid = Some(mid.to_string());
-                            break;
-                        }
-                    }
-                }
-
-                if let Some(songmid) = best_songmid {
-                    let qq_lyric_url = format!("https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid={}&format=json&nobase64=1", songmid);
-                    if let Ok(lyric_resp) = client
-                        .get(&qq_lyric_url)
-                        .header("Referer", "https://y.qq.com/")
-                        .header("User-Agent", ua)
-                        .send()
-                        .await
-                    {
-                        if let Ok(lyric_json) = lyric_resp.json::<serde_json::Value>().await {
-                            if let Some(lyric_text) =
-                                lyric_json.get("lyric").and_then(|v| v.as_str())
-                            {
-                                let decoded = lyric_text
-                                    .replace("&#10;", "\n")
-                                    .replace("&#13;", "\r")
-                                    .replace("&#32;", " ")
-                                    .replace("&#45;", "-")
-                                    .replace("&#40;", "(")
-                                    .replace("&#41;", ")");
-                                if !decoded.is_empty() {
-                                    println!("[网络歌词调试] 命中引擎 3: QQ音乐 API (已通过完美双重校验)");
-                                    return Ok(decoded);
-                                }
                             }
                         }
                     }
