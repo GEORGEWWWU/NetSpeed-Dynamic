@@ -1250,6 +1250,22 @@ const textInnerRef = ref<HTMLElement | null>(null);
 const scrollDist = ref(0);
 const scrollDuration = ref('0s');
 
+// 获取当前歌词句的演唱时长（毫秒），用于动态滚动调速
+const getCurrentLineDuration = (): number => {
+    const lyrics = parsedLyrics.value;
+    const idx = currentMatchedIndex;
+    if (lyrics.length === 0 || idx < 0 || idx >= lyrics.length) return 4000;
+
+    // 有下一句：用两句时间差作为本句时长
+    if (idx + 1 < lyrics.length) {
+        return Math.max(lyrics[idx + 1].time - lyrics[idx].time, 400);
+    }
+
+    // 最后一句：用歌曲总时长减去本句起始时间，兜底 4 秒
+    const remain = currentDurationMs.value - lyrics[idx].time;
+    return remain > 800 ? remain : 4000;
+};
+
 // 核心计算函数：判断文本是否超出容器，并动态调整滚动速度和时长
 const calculateScroll = () => {
     if (!textInnerRef.value || !maskBoxRef.value) return;
@@ -1265,21 +1281,28 @@ const calculateScroll = () => {
 
     console.log('[calculateScroll]', { textWidth, containerWidth, text: currentTrackInfo.value });
 
-    // 关键修正：因为 CSS mask 从 75% 处开始渐变遮挡
-    // 我们必须以这 75% 的“绝对清晰安全区”作为计算基准
-    const safeWidth = containerWidth * 0.75;
+    // 让文字末尾滚到容器最右侧，完整显示整句歌词（而非只滚到 75% 安全区）
+    const safeWidth = containerWidth;
 
-    // 只要文字超过了安全区，哪怕还没超出整个物理盒子，也必须开始滚动！
+    // 只要文字超出容器宽度就必须开始滚动
     if (textWidth > safeWidth) {
-        // 计算滚动距离：把文字的末尾准确无误地拖进安全区，外加 5px 的微小呼吸空间
-        // 这样既不会挡住结尾，也不会像之前那样盲目多滚几十个像素
+        // 计算滚动距离：把文字的末尾拖到最右，外加 5px 的微小呼吸空间
         scrollDist.value = Math.ceil(textWidth - safeWidth + 5);
 
-        // 按照 30px/s 的速度阅读，计算纯移动时间
-        const timeToMove = scrollDist.value / 30;
+        // 动态滚动速度：滚动距离已由「歌词长度 - 灵动岛安全区」决定，
+        // 速度再参照「当前歌词句的演唱时长」，让滚动跟随节奏而非固定 30px/s
+        const lineDurationSec = getCurrentLineDuration() / 1000;
 
-        // 将首尾各停留的 1s 左右（基于20%占比计算）融入总时长中，确保匀速
-        const totalDuration = timeToMove / 0.6;
+        // 整段动画 = 开头停 15% + 滚动 70% + 末尾停 15%，纯滚动占歌词时长的 70%
+        const timeToMove = lineDurationSec * 0.7;
+
+        // 速度保护：过快看不清、过慢拖沓，钳制在 18~90 px/s
+        const rawSpeed = scrollDist.value / timeToMove;
+        const speed = Math.min(Math.max(rawSpeed, 18), 90);
+        const safeTimeToMove = scrollDist.value / speed;
+
+        // 由纯滚动时间反推总动画时长（纯滚动占 70%）
+        const totalDuration = safeTimeToMove / 0.7;
 
         scrollDuration.value = `${Math.max(totalDuration, 4.5)}s`;
     } else {
@@ -1466,7 +1489,7 @@ const persistCenteredPosition = async (win: Window) => {
 };
 
 // 读取期望的物理位置：优先"左边缘"（用户手动拖动），其次"物理中心"（重置居中，按当前宽度换算左边缘）
-const loadExpectedPos = async (scaleFactor: number, finalWPhysical: number): Promise<{ x: number; y: number } | null> => {
+const loadExpectedPos = async (finalWPhysical: number): Promise<{ x: number; y: number } | null> => {
     const phys = loadSavedPhysicalPos();
     if (phys) return phys;
     const cxRaw = localStorage.getItem(POSITION_KEYS.centerX);
@@ -2251,7 +2274,7 @@ onMounted(async () => {
             ));
 
             // 1️⃣ 期望位置：用户拖动的左边缘物理坐标，或重置居中的物理中心（按当前宽度换算左边缘）
-            const expected = await loadExpectedPos(scaleFactor, Math.ceil(finalW * scaleFactor));
+            const expected = await loadExpectedPos(Math.ceil(finalW * scaleFactor));
             if (expected) {
                 // 显示器变动保护：保存的位置已不在任何显示器上（如拔掉外接屏）→ 居中
                 if (!(await isPosOnAnyMonitor(expected.x, expected.y))) {
@@ -2311,7 +2334,7 @@ onMounted(async () => {
                 const scale = monitor.scaleFactor;
                 const { w: rw } = getBaseSize();
                 const physW = Math.ceil(rw * appScale.value * scale);
-                const expected = await loadExpectedPos(scale, physW);
+                const expected = await loadExpectedPos(physW);
                 if (!expected) return;
                 const actual = await w.outerPosition();
                 if (Math.abs(actual.x - expected.x) > 2 || Math.abs(actual.y - expected.y) > 2) {
@@ -2971,8 +2994,8 @@ onUnmounted(() => {
     padding-left: 0;
     -webkit-app-region: no-drag;
     transform: translateY(-1px) translateX(-0.5px);
-    mask-image: linear-gradient(to right, #000000 75%, transparent 100%);
-    -webkit-mask-image: linear-gradient(to right, #000000 75%, transparent 100%);
+    mask-image: linear-gradient(to right, #000000 96%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, #000000 96%, transparent 100%);
 }
 
 /* 歌曲文本基础样式 */
@@ -3287,15 +3310,15 @@ onUnmounted(() => {
     animation: scroll-ping-pong var(--scroll-duration) linear infinite alternate;
 }
 
-/* 滚动动画帧：利用 0-20% 和 80-100% 的区间实现两端停留 */
+/* 滚动动画帧：开头停留 15% 后滚动，末尾停留 15% 便于读完歌词 */
 @keyframes scroll-ping-pong {
 
     0%,
-    20% {
+    15% {
         transform: translateX(0);
     }
 
-    80%,
+    85%,
     100% {
         /* JS 里已经拼好了 px 单位，这里直接 -1 乘过去即可 */
         transform: translateX(calc(-1 * var(--scroll-dist)));
