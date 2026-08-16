@@ -414,6 +414,7 @@ pub async fn fetch_netease_lyrics(
     artist_name: String,
     duration_ms: i64,
 ) -> Result<String, String> {
+    
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(4))
         .build()
@@ -512,30 +513,7 @@ pub async fn fetch_netease_lyrics(
         }
     }
 
-    // ENGINE 2: LRCLIB (精确匹配，自带极高校验度)
-    let duration_sec = duration_ms / 1000;
-    if duration_sec > 0 {
-        let lrclib_url = format!(
-            "https://lrclib.net/api/get?track_name={}&artist_name={}&duration={}",
-            urlencoding::encode(&song_name),
-            urlencoding::encode(&artist_name),
-            duration_sec
-        );
-
-        if let Ok(resp) = client.get(&lrclib_url).send().await {
-            if let Ok(json) = resp.json::<serde_json::Value>().await {
-                if let Some(synced_lyrics) = json.pointer("/syncedLyrics").and_then(|v| v.as_str())
-                {
-                    if !synced_lyrics.is_empty() {
-                        println!("[网络歌词调试] 命中引擎 1: LRCLIB API 精确匹配");
-                        return Ok(synced_lyrics.to_string());
-                    }
-                }
-            }
-        }
-    }
-
-    // ENGINE 3: NETEASE FALLBACK (网易云兜底)
+    // ENGINE 2: NETEASE FALLBACK (网易云兜底)
     let fake_ip = {
         use rand::Rng;
         let mut rng = rand::thread_rng();
@@ -636,6 +614,29 @@ pub async fn fetch_netease_lyrics(
                                 return Ok(lyric_text.to_string());
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // ENGINE 3: LRCLIB (精确匹配，自带极高校验度)
+    let duration_sec = duration_ms / 1000;
+    if duration_sec > 0 {
+        let lrclib_url = format!(
+            "https://lrclib.net/api/get?track_name={}&artist_name={}&duration={}",
+            urlencoding::encode(&song_name),
+            urlencoding::encode(&artist_name),
+            duration_sec
+        );
+
+        if let Ok(resp) = client.get(&lrclib_url).send().await {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                if let Some(synced_lyrics) = json.pointer("/syncedLyrics").and_then(|v| v.as_str())
+                {
+                    if !synced_lyrics.is_empty() {
+                        println!("[网络歌词调试] 命中引擎 1: LRCLIB API 精确匹配");
+                        return Ok(synced_lyrics.to_string());
                     }
                 }
             }
