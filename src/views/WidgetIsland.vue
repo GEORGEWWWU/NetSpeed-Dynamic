@@ -1266,18 +1266,26 @@ const getCurrentLineDuration = (): number => {
     return remain > 800 ? remain : 4000;
 };
 
+// 折叠态容器宽度缓存：展开/收缩尺寸动画期间，容器实时宽度会被拉宽或收窄，
+// 不能用它来计算滚动距离，否则会得到错误结果甚至把滚动距离算成 0
+let collapsedMaskWidth = 0;
+
 // 核心计算函数：判断文本是否超出容器，并动态调整滚动速度和时长
 const calculateScroll = () => {
     if (!textInnerRef.value || !maskBoxRef.value) return;
 
-    // 展开状态下不执行滚动
-    if (isMusicExpanded.value) {
-        scrollDist.value = 0;
-        return;
-    }
-
     const textWidth = textInnerRef.value.getBoundingClientRect().width;
-    const containerWidth = maskBoxRef.value.clientWidth;
+    const realContainerWidth = maskBoxRef.value.clientWidth;
+
+    // 只有折叠态且尺寸动画结束（尺寸稳定）时才更新缓存；
+    // 展开中 / 展开态 / 收缩动画中都沿用折叠态宽度，保证滚动距离稳定不跳变
+    let containerWidth: number;
+    if (!isMusicExpanded.value && !isSizeAnimating) {
+        collapsedMaskWidth = realContainerWidth;
+        containerWidth = realContainerWidth;
+    } else {
+        containerWidth = collapsedMaskWidth || realContainerWidth;
+    }
 
     console.log('[calculateScroll]', { textWidth, containerWidth, text: currentTrackInfo.value });
 
@@ -1310,9 +1318,10 @@ const calculateScroll = () => {
     }
 };
 
-// 核心修复 2：监听数组必须带上 displayMusic，并在 nextTick 后加上微小延迟，防止 v-else-if 导致宽度拿到 0
-// 歌词切换时的滚动重算已移入 drainRenderQueue，这里只负责处理显示/展开状态变化
-watch([displayMusic, isMusicExpanded], async () => {
+// 核心修复 2：只监听 displayMusic 的显隐切换，展开/折叠不再重算滚动，
+// 让滚动动画在展开期间继续在后台推进，折叠后自然回到「理论未展开时」的位置。
+// 歌词切换时的滚动重算已移入 drainRenderQueue。
+watch(displayMusic, async () => {
     await nextTick();
     setTimeout(() => {
         if (displayMusic.value) {
@@ -2088,6 +2097,8 @@ onMounted(async () => {
             isNewlyEnabled = true;
             showInfo.value = false;
             musicBoxKey.value++;
+            // 启动 SMTC 时主动尝试连接一次 WS（initWebSocket 内部有一次性保护，不会重复连接）
+            initWebSocket();
         } else {
             stopWebSocket();
             isMediaActive.value = true;
