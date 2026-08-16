@@ -1439,6 +1439,7 @@ const formatSpeed = (bytes: number) => {
 const fetchSpeedStats = async () => {
     try {
         const [currentRx, currentTx] = await invoke<[number, number]>('get_network_stats');
+
         if (lastRx !== 0) {
             let rxDiff = currentRx - lastRx;
             let txDiff = currentTx - lastTx;
@@ -1468,6 +1469,8 @@ const fetchSpeedStats = async () => {
                 // 如果目前依然是大流量，重置计时器
                 lowTrafficStartTime = Date.now();
             }
+        } else {
+            networkStatus.value = 'error';
         }
         lastRx = currentRx;
         lastTx = currentTx;
