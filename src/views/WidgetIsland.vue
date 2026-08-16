@@ -299,6 +299,18 @@ watch(isIslandVisible, (newVal) => {
     emit('island-status-sync', { visible: newVal });
 });
 
+// 兜底保险：OS 窗口显隐必须严格跟随灵动岛状态。
+// 防止“窗体(v-show)已隐藏但透明窗口仍残留”导致该区域拦截鼠标点击
+watch(isIslandVisible, (visible) => {
+    if (visible) return;
+    // 等离开动画播完（约 350ms）再物理隐藏窗口；期间若又被呼出则放弃隐藏
+    setTimeout(() => {
+        if (!isIslandVisible.value) {
+            getCurrentWindow().hide().catch(() => { });
+        }
+    }, 400);
+}, { immediate: true });
+
 // 记录全屏自动隐藏开关状态
 const isAutoHideEnabled = ref(localStorage.getItem('nsd_autohide_fs') === 'true');
 // 记录进入全屏前的灵动岛显隐状态，用来决定退回桌面时要不要恢复
@@ -579,6 +591,8 @@ const coverCache = new Map<string, string>();
 // 当前播放器是否为浏览器（edge/chrome），以及是否正在展示 SMTC 本地封面
 const currentIsBrowser = ref(false);
 const isSmtcCoverActive = ref(false);
+// 当前 SMTC 来源应用的包名（用于 PotPlayer 音乐模式等封面策略判断）
+const currentAppIdStr = ref('');
 
 // 沉浸模式专属的静态模糊封面
 const blurredCoverUrl = ref('');
@@ -608,7 +622,7 @@ const bakeBlurImage = (url: string): Promise<string> => {
 // 共享的封面获取/应用逻辑：查缓存 → 未命中就调接口 → 写缓存 → 烘焙模糊封面
 // onlyIfChanged: 与当前显示的封面对比，不一样才应用（恢复播放时用）
 // clearOnError: 获取失败时是否清空封面（切歌时清空，恢复播放时保留）
-const fetchAndApplyCover = async (trackInfo: string, song: string, artist: string, onlyIfChanged = false, clearOnError = true) => {
+const fetchAndApplyCover = async (trackInfo: string, song: string, artist: string, onlyIfChanged = false, clearOnError = true, preferSmtc = true) => {
     if (coverCache.has(trackInfo)) {
         const cached = coverCache.get(trackInfo)!;
         if (!onlyIfChanged || cached !== coverUrl.value) {
@@ -618,7 +632,8 @@ const fetchAndApplyCover = async (trackInfo: string, song: string, artist: strin
         return;
     }
     try {
-        const url = await invoke<string>('get_random_cover_url', { songName: song, artistName: artist });
+        console.log("尝试获取封面");
+        const url = await invoke<string>('get_random_cover_url', { songName: song, artistName: artist, preferSmtc });
         if (!onlyIfChanged || url !== coverUrl.value) {
             coverUrl.value = url;
             if (coverCache.size > 50) {
@@ -629,6 +644,7 @@ const fetchAndApplyCover = async (trackInfo: string, song: string, artist: strin
             const bakedImage = await bakeBlurImage(url);
             blurredCoverUrl.value = bakedImage;
             blurredCoverCache.set(trackInfo, bakedImage);
+            console.log("获取封面成功");
         }
     } catch (e) {
         if (clearOnError) {
@@ -1006,7 +1022,8 @@ const refreshCoverOnResume = async () => {
             await fetchAndApplySmtcCover(trackInfo, true);
         } else {
             // 与当前显示的封面对比，不一样才更新；失败时保持现有封面不动
-            await fetchAndApplyCover(trackInfo, song, artist, true, false);
+            // PotPlayer 音乐模式同样忽略 SMTC 封面，恢复播放时仍走网络获取
+            await fetchAndApplyCover(trackInfo, song, artist, true, false, !currentAppIdStr.value.includes("potplayer"));
         }
     } finally {
         isCoverRefreshing = false;
@@ -1035,6 +1052,17 @@ const syncMusicStatus = async () => {
             // 记录当前是否为浏览器类应用（edge/chrome），供封面刷新逻辑区分处理
             currentIsBrowser.value =
                 app_id_str.includes("edge") || app_id_str.includes("chrome");
+            // 检测 SMTC 来源应用是否发生了切换（应用包名变更），用于及时刷新歌词
+            const appSwitched = currentAppIdStr.value !== '' && currentAppIdStr.value !== app_id_str;
+            // 记录当前 SMTC 来源应用的包名，供恢复播放时的封面刷新逻辑判断
+            currentAppIdStr.value = app_id_str;
+
+            // 切换 SMTC 来源应用：立即清空旧应用残留的歌词，避免串歌词（新应用歌词就绪前先显示标题）
+            if (appSwitched) {
+                parsedLyrics.value = [];
+                lyricQueue.value = [];
+                currentMatchedIndex = -1;
+            }
 
             // 仅在 WS 不活跃时，使用 SMTC 的播放状态
             if (!isWsActive) {
@@ -1098,7 +1126,12 @@ const syncMusicStatus = async () => {
                     coverUrl.value = APP_COVER_LOGO_MAP[app_id_str.includes("edge") ? "edge" : "chrome"];
                     fetchAndApplySmtcCover(newTrackInfo);
                 } else if (!app_id_str.includes("bilibili") && artist !== "potplayer") {
-                    fetchAndApplyCover(newTrackInfo, song, artist);
+                    if (app_id_str.includes("potplayer")) {
+                        // PotPlayer 音乐模式：忽略 SMTC 封面，强制走网络获取
+                        isSmtcCoverActive.value = false;
+                    }
+                    fetchAndApplyCover(newTrackInfo, song, artist, false, true, !app_id_str.includes("potplayer"));
+                    console.log("获取封面ing");
                 }
 
                 if (!app_id_str.includes("potplayer")) {
@@ -1113,20 +1146,23 @@ const syncMusicStatus = async () => {
                         }
                     }
                 } else {
-                    console.log(app_id_str);
-                    coverUrl.value = potplayerLogo;
-                    // 清除上个封面的缓存与沉浸背景：防止 coverglass 背景残留上一首歌的模糊封面
-                    blurredCoverUrl.value = '';
-                    isSmtcCoverActive.value = false;
-                    blurredCoverCache.clear();
-                    coverCache.clear();
+                    if (artist == "potplayer") { // PotPlayer视频模式
+                        console.log("直接使用PotPlayerLogo");
+                        coverUrl.value = potplayerLogo;
+                        // 清除上个封面的缓存与沉浸背景：防止 coverglass 背景残留上一首歌的模糊封面
+                        blurredCoverUrl.value = '';
+                        isSmtcCoverActive.value = false;
+                        blurredCoverCache.clear();
+                        coverCache.clear();
+                    }
                 }
 
                 // 仅在 WS 不活跃时，发起 HTTP 网络歌词兜底（PotPlayer 不拉歌词，标题常驻）
-                if (!isWsActive && !isPotplayerSource.value) {
+                // 切换 SMTC 应用后 WS 心跳可能仍属于旧应用，此时也立即用 HTTP 兜底，保证新歌歌词及时到位
+                if ((!isWsActive || appSwitched) && !isPotplayerSource.value) {
                     invoke<string>('fetch_netease_lyrics', { songName: song, artistName: artist, durationMs })
                         .then(lrc => {
-                            if (Date.now() - lastWsLyricTime > 3000) {
+                            if (appSwitched || Date.now() - lastWsLyricTime > 3000) {
                                 if (lrc) {
                                     parsedLyrics.value = parseLrc(lrc);
                                     // 刚拉到歌词时，如果发现时长还是 0，立刻补救
@@ -1617,6 +1653,9 @@ const adjustWindowPosition = async () => {
     } catch (error) {
         console.error('调整窗口位置失败:', error);
     } finally {
+        // 仅当灵动岛处于显示状态时才拉起透明窗口；
+        // 否则空窗口会残留并拦截该区域的鼠标点击（窗体隐藏 ≠ 窗口隐藏）
+        if (!isIslandVisible.value) return;
         try {
             await invoke('show_window_no_activate', { label: 'widget' });
         } catch (e) {
