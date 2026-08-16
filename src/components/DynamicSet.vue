@@ -122,8 +122,13 @@
                     <div class="row-action">
                         <input type="range" min="140" max="300" v-model.number="baseWidth"
                             class="track-slider highlight-slider" />
-                        <div class="value-box">{{ baseWidth }}<span class="unit">PX</span></div>
-                        <button class="reset-btn" @click="baseWidth = 150" :title="t('restoreDefault')">
+                        <input v-if="editingKey === 'baseWidth'" :value="editingText" type="text" inputmode="numeric" @input="onEditInput"
+                            class="value-input" @focus="selectEditText" @blur="commitEdit" @keydown.enter="commitEdit"
+                            @keydown.esc="cancelEdit" ref="edit-input" />
+                        <div v-else class="value-box value-box-clickable" @click="startEdit('baseWidth')"
+                            title="点击修改">{{ baseWidth }}<span class="unit">PX</span></div>
+                        <button class="reset-btn" @mousedown.prevent @click="resetField('baseWidth')"
+                            :title="t('restoreDefault')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                 stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
@@ -146,8 +151,13 @@
                     <div class="row-action">
                         <input type="range" min="30" max="60" v-model.number="baseHeight"
                             class="track-slider highlight-slider" />
-                        <div class="value-box">{{ baseHeight }}<span class="unit">PX</span></div>
-                        <button class="reset-btn" @click="baseHeight = 34" :title="t('restoreDefault')">
+                        <input v-if="editingKey === 'baseHeight'" :value="editingText" type="text" inputmode="numeric" @input="onEditInput"
+                            class="value-input" @focus="selectEditText" @blur="commitEdit" @keydown.enter="commitEdit"
+                            @keydown.esc="cancelEdit" ref="edit-input" />
+                        <div v-else class="value-box value-box-clickable" @click="startEdit('baseHeight')"
+                            title="点击修改">{{ baseHeight }}<span class="unit">PX</span></div>
+                        <button class="reset-btn" @mousedown.prevent @click="resetField('baseHeight')"
+                            :title="t('restoreDefault')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                 stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
@@ -170,8 +180,13 @@
                     <div class="row-action">
                         <input type="range" min="200" max="400" v-model.number="musicBaseWidth"
                             class="track-slider highlight-slider" />
-                        <div class="value-box">{{ musicBaseWidth }}<span class="unit">PX</span></div>
-                        <button class="reset-btn" @click="musicBaseWidth = 260" :title="t('restoreDefault')">
+                        <input v-if="editingKey === 'musicBaseWidth'" :value="editingText" type="text" inputmode="numeric" @input="onEditInput"
+                            class="value-input" @focus="selectEditText" @blur="commitEdit" @keydown.enter="commitEdit"
+                            @keydown.esc="cancelEdit" ref="edit-input" />
+                        <div v-else class="value-box value-box-clickable" @click="startEdit('musicBaseWidth')"
+                            title="点击修改">{{ musicBaseWidth }}<span class="unit">PX</span></div>
+                        <button class="reset-btn" @mousedown.prevent @click="resetField('musicBaseWidth')"
+                            :title="t('restoreDefault')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                 stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
@@ -194,8 +209,13 @@
                     <div class="row-action">
                         <input type="range" min="260" max="480" v-model.number="musicExpandedWidth"
                             class="track-slider highlight-slider" />
-                        <div class="value-box">{{ musicExpandedWidth }}<span class="unit">PX</span></div>
-                        <button class="reset-btn" @click="musicExpandedWidth = 320" :title="t('restoreDefault')">
+                        <input v-if="editingKey === 'musicExpandedWidth'" :value="editingText" type="text" inputmode="numeric" @input="onEditInput"
+                            class="value-input" @focus="selectEditText" @blur="commitEdit" @keydown.enter="commitEdit"
+                            @keydown.esc="cancelEdit" ref="edit-input" />
+                        <div v-else class="value-box value-box-clickable" @click="startEdit('musicExpandedWidth')"
+                            title="点击修改">{{ musicExpandedWidth }}<span class="unit">PX</span></div>
+                        <button class="reset-btn" @mousedown.prevent @click="resetField('musicExpandedWidth')"
+                            :title="t('restoreDefault')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                 stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
@@ -218,8 +238,13 @@
                     <div class="row-action">
                         <input type="range" min="300" max="600" v-model.number="msgExpandedWidth"
                             class="track-slider highlight-slider" />
-                        <div class="value-box">{{ msgExpandedWidth }}<span class="unit">PX</span></div>
-                        <button class="reset-btn" @click="msgExpandedWidth = 360" :title="t('restoreDefault')">
+                        <input v-if="editingKey === 'msgExpandedWidth'" :value="editingText" type="text" inputmode="numeric" @input="onEditInput"
+                            class="value-input" @focus="selectEditText" @blur="commitEdit" @keydown.enter="commitEdit"
+                            @keydown.esc="cancelEdit" ref="edit-input" />
+                        <div v-else class="value-box value-box-clickable" @click="startEdit('msgExpandedWidth')"
+                            title="点击修改">{{ msgExpandedWidth }}<span class="unit">PX</span></div>
+                        <button class="reset-btn" @mousedown.prevent @click="resetField('msgExpandedWidth')"
+                            :title="t('restoreDefault')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                 stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
@@ -242,8 +267,13 @@
                     <div class="row-action">
                         <input type="range" min="0.75" max="1.75" step="0.25" v-model.number="appScale"
                             class="track-slider highlight-slider" />
-                        <div class="value-box">{{ Math.round(appScale * 100) }}<span class="unit">%</span></div>
-                        <button class="reset-btn" @click="appScale = 1.0" :title="t('restoreDefault')">
+                        <input v-if="editingKey === 'appScale'" :value="editingText" type="text" inputmode="numeric" @input="onEditInput"
+                            class="value-input" @focus="selectEditText" @blur="commitEdit" @keydown.enter="commitEdit"
+                            @keydown.esc="cancelEdit" ref="edit-input" />
+                        <div v-else class="value-box value-box-clickable" @click="startEdit('appScale')"
+                            title="点击修改">{{ Math.round(appScale * 100) }}<span class="unit">%</span></div>
+                        <button class="reset-btn" @mousedown.prevent @click="resetField('appScale')"
+                            :title="t('restoreDefault')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                 stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
@@ -259,7 +289,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, nextTick, useTemplateRef } from 'vue';
 import { emit } from '@tauri-apps/api/event';
 import { t } from '../i18n';
 import { invoke } from '@tauri-apps/api/core';
@@ -281,6 +311,81 @@ const springStyle = ref<'stiff' | 'bouncy'>((localStorage.getItem('nsd_spring_st
 
 // 替换掉坐标偏移，改为窗口交互特性
 const lyricDelay = ref(Number(localStorage.getItem('nsd_lyric_delay')) || 0);
+
+// ---- 数值直改：点击数值框可直接输入，失焦/回车后自动夹取上下限 ----
+const editingKey = ref<string | null>(null);
+const editingText = ref('');
+
+const editableFields = [
+    { key: 'baseWidth', get: () => baseWidth.value, set: (v: number) => (baseWidth.value = v), min: 140, max: 300, step: 1, def: 150 },
+    { key: 'baseHeight', get: () => baseHeight.value, set: (v: number) => (baseHeight.value = v), min: 30, max: 60, step: 1, def: 34 },
+    { key: 'musicBaseWidth', get: () => musicBaseWidth.value, set: (v: number) => (musicBaseWidth.value = v), min: 200, max: 400, step: 1, def: 260 },
+    { key: 'musicExpandedWidth', get: () => musicExpandedWidth.value, set: (v: number) => (musicExpandedWidth.value = v), min: 260, max: 480, step: 1, def: 320 },
+    { key: 'msgExpandedWidth', get: () => msgExpandedWidth.value, set: (v: number) => (msgExpandedWidth.value = v), min: 300, max: 600, step: 1, def: 360 },
+    { key: 'appScale', get: () => Math.round(appScale.value * 100), set: (v: number) => (appScale.value = v / 100), min: 75, max: 175, step: 25, def: 100 },
+];
+
+function startEdit(key: string) {
+    const field = editableFields.find((f) => f.key === key);
+    if (!field) return;
+    editingKey.value = key;
+    editingText.value = String(field.get());
+}
+
+// 输入净化：只保留数字和一个小数点，允许超长输入（输入框宽度限制）；提交时超限自动夹取为最大值
+function onEditInput(e: Event) {
+    const raw = (e.target as HTMLInputElement).value;
+    let cleaned = raw.replace(/[^\d.]/g, '');
+    const dotIdx = cleaned.indexOf('.');
+    let intPart = cleaned;
+    let fracPart = '';
+    if (dotIdx !== -1) {
+        intPart = cleaned.slice(0, dotIdx);
+        fracPart = cleaned.slice(dotIdx + 1).replace(/\./g, '');
+    }
+    editingText.value = fracPart ? `${intPart}.${fracPart}` : intPart;
+}
+
+function commitEdit() {
+    const key = editingKey.value;
+    if (!key) return;
+    const field = editableFields.find((f) => f.key === key);
+    let num = parseFloat(editingText.value);
+    if (field && !Number.isNaN(num)) {
+        num = Math.round(num); // 输入小数自动四舍五入
+        num = Math.min(Math.max(num, field.min), field.max); // 自动夹取上下限
+        num = Math.round(num / field.step) * field.step; // 吸附到滑块步进
+        field.set(num);
+    }
+    editingKey.value = null; // 无论是否成功都退出编辑
+}
+
+function cancelEdit() {
+    editingKey.value = null;
+}
+
+// 重置默认值：若正在编辑该字段则先退出编辑模式
+function resetField(key: string) {
+    if (editingKey.value === key) {
+        editingKey.value = null;
+    }
+    const field = editableFields.find((f) => f.key === key);
+    if (field) field.set(field.def);
+}
+
+// 聚焦时自动全选，便于直接覆盖输入
+function selectEditText(e: FocusEvent) {
+    (e.target as HTMLInputElement).select();
+}
+
+// 编辑输入框模板引用（Vue 3.5 useTemplateRef），进入编辑时聚焦一次，聚焦后由 @focus 事件自动全选
+const editInputRef = useTemplateRef<HTMLInputElement>('edit-input');
+watch(editingKey, async (key) => {
+    if (key) {
+        await nextTick();
+        editInputRef.value?.focus();
+    }
+});
 
 // 任务栏组件
 const emits = defineEmits(['show-plugin-dialog']);
@@ -702,6 +807,45 @@ input:checked+.slider:before {
     color: #666;
     margin-left: 2px;
     transform: translateX(3px);
+}
+
+/* 数值框可点击直改 */
+.value-box-clickable {
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.value-box-clickable:hover {
+    border-color: var(--btn-pri-border, rgba(255, 255, 255, 0.35));
+    background: var(--btn-pri-bg);
+    color: var(--btn-pri-color);
+}
+
+/* 数值直改输入框 */
+.value-input {
+    width: 54px;
+    height: 24px;
+    text-align: center;
+    background: var(--bg-body, rgba(0, 0, 0, 0.3));
+    border: 1px solid var(--btn-pri-border, rgba(255, 255, 255, 0.35));
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--item-title-color);
+    font-family: ui-monospace, monospace;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.value-input:focus {
+    border-color: var(--btn-pri-border);
+    box-shadow: 0 0 0 2px var(--btn-pri-bg);
+}
+
+.value-input::-webkit-outer-spin-button,
+.value-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
 
 /* 重置按钮 */
