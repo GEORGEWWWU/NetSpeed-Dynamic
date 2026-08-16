@@ -300,13 +300,28 @@ watch(isIslandVisible, (newVal) => {
 });
 
 // 兜底保险：OS 窗口显隐必须严格跟随灵动岛状态。
-// 防止“窗体(v-show)已隐藏但透明窗口仍残留”导致该区域拦截鼠标点击
+// 关闭 → 立即开启鼠标透传（点击穿透，不拦截下层窗口）；
+//         等离开动画结束后把窗口物理缩成 1×1，彻底点不到；
+// 开启 → 关闭透传并恢复窗口到正常尺寸（正常交互）。
 watch(isIslandVisible, (visible) => {
-    if (visible) return;
-    // 等离开动画播完（约 350ms）再物理隐藏窗口；期间若又被呼出则放弃隐藏
+    const appWindow = getCurrentWindow();
+    appWindow.setIgnoreCursorEvents(!visible).catch(() => { });
+
+    if (visible) {
+        // 呼出时先把窗口恢复到应有的物理尺寸（getBaseSize/appScale 此时早已初始化）
+        const { w, h } = getBaseSize();
+        const scaleFactor = window.devicePixelRatio || 1;
+        appWindow.setSize(new PhysicalSize(
+            Math.ceil(w * appScale.value * scaleFactor),
+            Math.ceil(h * appScale.value * scaleFactor)
+        )).catch(() => { });
+        return;
+    }
+
+    // 关闭时等离开动画播完（约 350ms）再缩成 1×1；期间若又被呼出则放弃缩放
     setTimeout(() => {
         if (!isIslandVisible.value) {
-            getCurrentWindow().hide().catch(() => { });
+            appWindow.setSize(new PhysicalSize(1, 1)).catch(() => { });
         }
     }, 400);
 }, { immediate: true });
@@ -1713,11 +1728,9 @@ const onLeave = (el: Element, done: () => void) => {
         isFinished = true;
         done();
 
-        // 核心修复：检查此时到底是不是该隐藏？
-        // 如果在动画超时期间，灵动岛又被呼出了，绝对不能执行 hide！
-        if (!isIslandVisible.value) {
-            getCurrentWindow().hide().catch(console.error);
-        }
+        // 不再在这里物理隐藏窗口：统一交给顶部兜底 watch，在离开动画结束后
+        // 把窗口缩成 1×1（配合鼠标透传），避免 hide/show 造成的闪烁与重显延迟；
+        // 若动画超时期间灵动岛又被呼出，watch 的 400ms 定时器会自行放弃缩放。
     };
 
     const animate = (time: number) => {
