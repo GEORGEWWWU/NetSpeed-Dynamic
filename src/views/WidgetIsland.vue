@@ -108,7 +108,11 @@
                                         style="position: relative; width: 100%; height: 100%;">
                                         <transition name="lyric-fade">
                                             <span class="lyric-render-text" :key="currentTrackInfo">
-                                                {{ currentTrackInfo }}
+                                                <span class="scroll-inner" ref="textInnerRef"
+                                                    :class="{ 'is-scrolling': scrollDist > 0 }"
+                                                    :style="{ '--scroll-dist': scrollDist + 'px', '--scroll-duration': scrollDuration }">
+                                                    {{ currentTrackInfo }}
+                                                </span>
                                             </span>
                                         </transition>
                                     </div>
@@ -182,7 +186,7 @@
 
                         <div v-else-if="displaySpeed" class="speed-box" key="speed">
                             <Transition name="speed-fade" mode="out-in">
-                                <div v-if="nsdBaseWidth >= 240" key="dual" class="speed-dual-box">
+                                <div v-if="nsdBaseWidth >= 230" key="dual" class="speed-dual-box">
                                     <div class="speed-item">
                                         <span :class="['label', { 'high-traffic': isHighUpload }]">⬆</span>
                                         <span class="value">{{ uploadSpeed }}</span>
@@ -283,7 +287,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch, nextTick, type CSSProperties } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
-import { getCurrentWindow, currentMonitor, PhysicalPosition, LogicalPosition, PhysicalSize } from '@tauri-apps/api/window'; import { Menu, MenuItem } from '@tauri-apps/api/menu';
+import { getCurrentWindow, currentMonitor, availableMonitors, PhysicalPosition, LogicalPosition, PhysicalSize, type Window } from '@tauri-apps/api/window'; import { Menu, MenuItem } from '@tauri-apps/api/menu';
 import { listen, emit } from '@tauri-apps/api/event';
 import { t, currentLanguage, type AppLanguage } from '../i18n';
 
@@ -1221,6 +1225,17 @@ const drainRenderQueue = () => {
     isRendering = true;
     currentTrackInfo.value = nextText;
 
+    // 每次切换歌词后重新计算滚动距离（等 DOM 更新完再量宽度，防止拿到旧宽度/0）
+    nextTick(() => {
+        setTimeout(() => {
+            if (displayMusic.value) {
+                calculateScroll();
+            } else {
+                scrollDist.value = 0;
+            }
+        }, 100);
+    });
+
     // 4. 动画护城河：强制锁死 350ms！
     // 必须等 Vue 的 out-in 动画完美落幕，才允许渲染下一句！
     setTimeout(() => {
@@ -1235,34 +1250,67 @@ const textInnerRef = ref<HTMLElement | null>(null);
 const scrollDist = ref(0);
 const scrollDuration = ref('0s');
 
+// 获取当前歌词句的演唱时长（毫秒），用于动态滚动调速
+const getCurrentLineDuration = (): number => {
+    const lyrics = parsedLyrics.value;
+    const idx = currentMatchedIndex;
+    if (lyrics.length === 0 || idx < 0 || idx >= lyrics.length) return 4000;
+
+    // 有下一句：用两句时间差作为本句时长
+    if (idx + 1 < lyrics.length) {
+        return Math.max(lyrics[idx + 1].time - lyrics[idx].time, 400);
+    }
+
+    // 最后一句：用歌曲总时长减去本句起始时间，兜底 4 秒
+    const remain = currentDurationMs.value - lyrics[idx].time;
+    return remain > 800 ? remain : 4000;
+};
+
+// 折叠态容器宽度缓存：展开/收缩尺寸动画期间，容器实时宽度会被拉宽或收窄，
+// 不能用它来计算滚动距离，否则会得到错误结果甚至把滚动距离算成 0
+let collapsedMaskWidth = 0;
+
 // 核心计算函数：判断文本是否超出容器，并动态调整滚动速度和时长
 const calculateScroll = () => {
     if (!textInnerRef.value || !maskBoxRef.value) return;
 
-    // 展开状态下不执行滚动
-    if (isMusicExpanded.value) {
-        scrollDist.value = 0;
-        return;
+    const textWidth = textInnerRef.value.getBoundingClientRect().width;
+    const realContainerWidth = maskBoxRef.value.clientWidth;
+
+    // 只有折叠态且尺寸动画结束（尺寸稳定）时才更新缓存；
+    // 展开中 / 展开态 / 收缩动画中都沿用折叠态宽度，保证滚动距离稳定不跳变
+    let containerWidth: number;
+    if (!isMusicExpanded.value && !isSizeAnimating) {
+        collapsedMaskWidth = realContainerWidth;
+        containerWidth = realContainerWidth;
+    } else {
+        containerWidth = collapsedMaskWidth || realContainerWidth;
     }
 
-    const textWidth = textInnerRef.value.getBoundingClientRect().width;
-    const containerWidth = maskBoxRef.value.clientWidth;
+    console.log('[calculateScroll]', { textWidth, containerWidth, text: currentTrackInfo.value });
 
-    // 关键修正：因为 CSS mask 从 75% 处开始渐变遮挡
-    // 我们必须以这 75% 的“绝对清晰安全区”作为计算基准
-    const safeWidth = containerWidth * 0.75;
+    // 让文字末尾滚到容器最右侧，完整显示整句歌词（而非只滚到 75% 安全区）
+    const safeWidth = containerWidth;
 
-    // 只要文字超过了安全区，哪怕还没超出整个物理盒子，也必须开始滚动！
+    // 只要文字超出容器宽度就必须开始滚动
     if (textWidth > safeWidth) {
-        // 计算滚动距离：把文字的末尾准确无误地拖进安全区，外加 5px 的微小呼吸空间
-        // 这样既不会挡住结尾，也不会像之前那样盲目多滚几十个像素
+        // 计算滚动距离：把文字的末尾拖到最右，外加 5px 的微小呼吸空间
         scrollDist.value = Math.ceil(textWidth - safeWidth + 5);
 
-        // 按照 30px/s 的速度阅读，计算纯移动时间
-        const timeToMove = scrollDist.value / 30;
+        // 动态滚动速度：滚动距离已由「歌词长度 - 灵动岛安全区」决定，
+        // 速度再参照「当前歌词句的演唱时长」，让滚动跟随节奏而非固定 30px/s
+        const lineDurationSec = getCurrentLineDuration() / 1000;
 
-        // 将首尾各停留的 1s 左右（基于20%占比计算）融入总时长中，确保匀速
-        const totalDuration = timeToMove / 0.6;
+        // 整段动画 = 开头停 15% + 滚动 70% + 末尾停 15%，纯滚动占歌词时长的 70%
+        const timeToMove = lineDurationSec * 0.7;
+
+        // 速度保护：过快看不清、过慢拖沓，钳制在 18~90 px/s
+        const rawSpeed = scrollDist.value / timeToMove;
+        const speed = Math.min(Math.max(rawSpeed, 18), 90);
+        const safeTimeToMove = scrollDist.value / speed;
+
+        // 由纯滚动时间反推总动画时长（纯滚动占 70%）
+        const totalDuration = safeTimeToMove / 0.7;
 
         scrollDuration.value = `${Math.max(totalDuration, 4.5)}s`;
     } else {
@@ -1270,8 +1318,10 @@ const calculateScroll = () => {
     }
 };
 
-// 核心修复 2：监听数组必须带上 displayMusic，并在 nextTick 后加上微小延迟，防止 v-else-if 导致宽度拿到 0
-watch([currentTrackInfo, displayMusic, isMusicExpanded], async () => {
+// 核心修复 2：只监听 displayMusic 的显隐切换，展开/折叠不再重算滚动，
+// 让滚动动画在展开期间继续在后台推进，折叠后自然回到「理论未展开时」的位置。
+// 歌词切换时的滚动重算已移入 drainRenderQueue。
+watch(displayMusic, async () => {
     await nextTick();
     setTimeout(() => {
         if (displayMusic.value) {
@@ -1404,6 +1454,87 @@ watch(networkStatus, (newStatus, oldStatus) => {
     }
 });
 
+// ==================== 窗口坐标保存/恢复（物理坐标为唯一标准，免疫 DPI/缩放） ====================
+const POSITION_KEYS = {
+    physX: 'nsd_island_phys_x',
+    physY: 'nsd_island_phys_y',
+    logX: 'nsd_island_log_x',
+    logY: 'nsd_island_log_y',
+    centerX: 'nsd_island_center_x',
+    y: 'nsd_island_y',
+    x: 'nsd_island_x',
+};
+
+// 判定坐标是否可用（拦截幽灵坐标/未就绪坐标）
+const isUsablePosition = (x: number, y: number) =>
+    Number.isFinite(x) && Number.isFinite(y) && x > -10000 && y > -10000 && !(x === 0 && y === 0);
+
+// 读取已保存的物理坐标；无有效缓存返回 null
+const loadSavedPhysicalPos = (): { x: number; y: number } | null => {
+    const px = localStorage.getItem(POSITION_KEYS.physX);
+    const py = localStorage.getItem(POSITION_KEYS.physY);
+    if (px === null || py === null) return null;
+    const x = parseFloat(px);
+    const y = parseFloat(py);
+    return isUsablePosition(x, y) ? { x: Math.round(x), y: Math.round(y) } : null;
+};
+
+// 将当前位置（物理坐标）写入缓存
+const persistWindowPosition = async (win: Window) => {
+    const pos = await win.outerPosition();
+    if (!isUsablePosition(pos.x, pos.y)) return;
+    localStorage.setItem(POSITION_KEYS.physX, String(Math.round(pos.x)));
+    localStorage.setItem(POSITION_KEYS.physY, String(Math.round(pos.y)));
+};
+
+// 保存"物理中心点 + 顶部 y"（重置位置专用：窗口宽度可调整时仍保持居中）
+const persistCenteredPosition = async (win: Window) => {
+    const pos = await win.outerPosition();
+    if (!isUsablePosition(pos.x, pos.y)) return;
+    const size = await win.innerSize();
+    const centerX = Math.round(pos.x + size.width / 2);
+    localStorage.setItem(POSITION_KEYS.centerX, String(centerX));
+    localStorage.setItem(POSITION_KEYS.y, String(Math.round(pos.y)));
+};
+
+// 读取期望的物理位置：优先"左边缘"（用户手动拖动），其次"物理中心"（重置居中，按当前宽度换算左边缘）
+const loadExpectedPos = async (finalWPhysical: number): Promise<{ x: number; y: number } | null> => {
+    const phys = loadSavedPhysicalPos();
+    if (phys) return phys;
+    const cxRaw = localStorage.getItem(POSITION_KEYS.centerX);
+    const cyRaw = localStorage.getItem(POSITION_KEYS.y);
+    if (cxRaw !== null && cyRaw !== null) {
+        const cx = parseFloat(cxRaw);
+        const cy = parseInt(cyRaw, 10);
+        if (isUsablePosition(cx, cy)) {
+            return { x: Math.round(cx - finalWPhysical / 2), y: cy };
+        }
+    }
+    return null;
+};
+
+// 设置位置并验证，防止窗口句柄未就绪时 setPosition 被静默丢弃
+const setPositionWithVerify = async (win: Window, x: number, y: number) => {
+    const target = new PhysicalPosition(x, y);
+    await win.setPosition(target);
+    const actual = await win.outerPosition();
+    if (Math.abs(actual.x - x) > 2 || Math.abs(actual.y - y) > 2) {
+        console.warn(`⚠️ 首次定位未生效 (目标 ${x},${y}，实际 ${actual.x},${actual.y})，300ms 后重试`);
+        await new Promise(resolve => setTimeout(resolve, 300));
+        await win.setPosition(target);
+    }
+};
+
+// 判断目标物理坐标是否落在任一显示器范围内（含 50px 容差，防止拔掉外接屏后恢复出屏）
+const isPosOnAnyMonitor = async (x: number, y: number) => {
+    const monitors = await availableMonitors();
+    return monitors.some((m) => {
+        const { position, size } = m;
+        return x >= position.x - 50 && x <= position.x + size.width + 50 &&
+            y >= position.y - 50 && y <= position.y + size.height + 50;
+    });
+};
+
 // 调整窗口位置到正确位置
 const adjustWindowPosition = async () => {
     try {
@@ -1437,7 +1568,18 @@ const adjustWindowPosition = async () => {
         const x = monitorLeftPhysical + (monitorWidthPhysical - windowWidthPhysical) / 2;
         const y = monitorTopPhysical + (12 * scaleFactor);
 
+        console.log('[居中定位]', {
+            monitorLeft: monitorLeftPhysical, monitorTop: monitorTopPhysical,
+            monitorW: monitorWidthPhysical, windowW: windowWidthPhysical,
+            scale: scaleFactor, x: Math.round(x), y: Math.round(y),
+        });
+
         await appWindow.setPosition(new PhysicalPosition(Math.round(x), Math.round(y)));
+        // 验证居中是否真正生效
+        const after = await appWindow.outerPosition();
+        if (Math.abs(after.x - x) > 2 || Math.abs(after.y - y) > 2) {
+            console.warn(`⚠️ 居中定位未生效 (目标 ${Math.round(x)},${Math.round(y)}，实际 ${after.x},${after.y})`);
+        }
     } catch (error) {
         console.error('调整窗口位置失败:', error);
     } finally {
@@ -1615,6 +1757,8 @@ const handleRightClick = async (event: MouseEvent) => {
         action: async () => {
             try {
                 // 清除所有新旧格式的坐标缓存
+                localStorage.removeItem('nsd_island_phys_x');
+                localStorage.removeItem('nsd_island_phys_y');
                 localStorage.removeItem('nsd_island_log_x');
                 localStorage.removeItem('nsd_island_log_y');
                 localStorage.removeItem('nsd_island_center_x');
@@ -1622,6 +1766,9 @@ const handleRightClick = async (event: MouseEvent) => {
                 localStorage.removeItem('nsd_island_x');
 
                 await adjustWindowPosition();
+                // 重置后立即把居中的位置保存，确保下次启动能精确还原
+                await new Promise(resolve => setTimeout(resolve, 100));
+                await persistCenteredPosition(getCurrentWindow());
                 showToast(t('positionReset'));
             } catch (error) {
                 console.error(error);
@@ -1725,6 +1872,8 @@ const onInnerLeave = (el: Element, done: () => void) => {
 // 记录全局灵动岛是否正在执行形变动画
 let isSizeAnimating = false;
 let sizeAnimTimer: number | null = null;
+// 程序主动移动窗口（形变动画）的结束时间戳，用于拦截滞后的 onMoved 事件
+let lastProgrammaticMoveEnd = 0;
 
 // 在顶部声明缩放变量
 const appScale = ref(Number(localStorage.getItem('nsd_app_scale')) || 1.0);
@@ -1747,6 +1896,7 @@ const animateIslandSize = async (targetWidth: number, targetHeight: number) => {
 
         sizeAnimTimer = window.setTimeout(() => {
             isSizeAnimating = false;
+            lastProgrammaticMoveEnd = Date.now();
         }, 500);
 
         const appWindow = getCurrentWindow();
@@ -1891,7 +2041,7 @@ onMounted(async () => {
     // 记录当前实例的启动时间戳
     const bootTime = Date.now();
 
-    // 监听窗口移动并保存坐标
+    // 监听窗口移动：用户拖动停止 600ms 后保存位置（trailing 防抖）
     let moveTimeout: number | null = null;
 
     await appWindow.onMoved(() => {
@@ -1899,32 +2049,14 @@ onMounted(async () => {
 
         moveTimeout = window.setTimeout(async () => {
             try {
+                // 启动前 3 秒内的定位（系统/程序动作）不保存
                 if (Date.now() - bootTime < 3000) return;
+                // 形变动画期间不保存
                 if (isSizeAnimating || isMusicExpanding.value) return;
+                // 动画刚结束的滞后窗口内不保存（Rust SetWindowPos 属程序移动）
+                if (Date.now() - lastProgrammaticMoveEnd < 1500) return;
 
-                // 获取物理坐标和当前显示器的缩放比例
-                const physPos = await appWindow.outerPosition();
-                const monitor = await currentMonitor();
-                if (!monitor) return;
-
-                const scaleFactor = monitor.scaleFactor;
-
-                // 拦截幽灵坐标
-                if (physPos.x < -10000 || physPos.y < -10000) return;
-                if (physPos.x === 0 && physPos.y === 0) return;
-
-                // ✅ 核心修复：手动将物理坐标转换为逻辑坐标并保存
-                // 这样无论打包环境 DPI 怎么抖动，存下来的永远是稳定的逻辑坐标
-                const logX = Math.round(physPos.x / scaleFactor);
-                const logY = Math.round(physPos.y / scaleFactor);
-
-                localStorage.setItem('nsd_island_log_x', logX.toString());
-                localStorage.setItem('nsd_island_log_y', logY.toString());
-
-                // 兼容清理旧版物理坐标缓存
-                localStorage.removeItem('nsd_island_center_x');
-                localStorage.removeItem('nsd_island_y');
-                localStorage.removeItem('nsd_island_x');
+                await persistWindowPosition(appWindow);
             } catch (e) {
                 console.error('保存坐标失败:', e);
             }
@@ -1965,6 +2097,8 @@ onMounted(async () => {
             isNewlyEnabled = true;
             showInfo.value = false;
             musicBoxKey.value++;
+            // 启动 SMTC 时主动尝试连接一次 WS（initWebSocket 内部有一次性保护，不会重复连接）
+            initWebSocket();
         } else {
             stopWebSocket();
             isMediaActive.value = true;
@@ -2127,7 +2261,7 @@ onMounted(async () => {
     currentWidth.value = w * appScale.value;
     currentHeight.value = h * appScale.value;
 
-    // 【终极修复】用逻辑坐标恢复，彻底免疫 DPI 时序问题
+    // 安全恢复窗口位置（物理坐标为唯一标准，免疫 DPI/缩放/显示器变动）
     const safeRestorePosition = async () => {
         try {
             await new Promise(resolve => setTimeout(resolve, 250));
@@ -2140,7 +2274,7 @@ onMounted(async () => {
                 return;
             }
 
-            // 先确保窗口尺寸正确（尺寸仍然需要物理坐标，因为 setSize 只接受 PhysicalSize）
+            // 先确保窗口尺寸正确（setSize 只接受物理尺寸）
             const scaleFactor = monitor.scaleFactor;
             const { w: realW, h: realH } = getBaseSize();
             const finalW = realW * appScale.value;
@@ -2150,38 +2284,34 @@ onMounted(async () => {
                 Math.ceil(finalH * scaleFactor)
             ));
 
-            // ✅ 优先读取新版逻辑坐标
-            const savedLogX = localStorage.getItem('nsd_island_log_x');
-            const savedLogY = localStorage.getItem('nsd_island_log_y');
+            // 1️⃣ 期望位置：用户拖动的左边缘物理坐标，或重置居中的物理中心（按当前宽度换算左边缘）
+            const expected = await loadExpectedPos(Math.ceil(finalW * scaleFactor));
+            if (expected) {
+                // 显示器变动保护：保存的位置已不在任何显示器上（如拔掉外接屏）→ 居中
+                if (!(await isPosOnAnyMonitor(expected.x, expected.y))) {
+                    console.warn(`⚠️ 保存的位置 (${expected.x},${expected.y}) 不在任何显示器上，执行默认居中`);
+                    await adjustWindowPosition();
+                    return;
+                }
+                await setPositionWithVerify(appWindow, expected.x, expected.y);
+                console.log(`✅ 位置恢复成功: x=${expected.x}, y=${expected.y}`);
+                return;
+            }
 
-            if (savedLogX !== null && savedLogY !== null) {
-                const lx = parseFloat(savedLogX);
-                const ly = parseFloat(savedLogY);
-
-                if (!isNaN(lx) && !isNaN(ly) && lx > -10000 && ly > -10000) {
-                    // 🎯 直接用 LogicalPosition 设置位置，Tauri 底层自动处理 DPI
-                    await appWindow.setPosition(new LogicalPosition(Math.round(lx), Math.round(ly)));
-                    console.log(`✅ 逻辑坐标恢复成功: x=${lx}, y=${ly}`);
+            // 2️⃣ 旧版逻辑坐标（一次性迁移：逻辑 × 当前缩放 = 物理）
+            const lxRaw = localStorage.getItem(POSITION_KEYS.logX);
+            const lyRaw = localStorage.getItem(POSITION_KEYS.logY);
+            if (lxRaw !== null && lyRaw !== null) {
+                const lx = parseFloat(lxRaw);
+                const ly = parseFloat(lyRaw);
+                if (isUsablePosition(lx, ly)) {
+                    await setPositionWithVerify(appWindow, Math.round(lx * scaleFactor), Math.round(ly * scaleFactor));
+                    console.log(`⚠️ 旧版逻辑坐标迁移恢复: x=${lx}, y=${ly}`);
                     return;
                 }
             }
 
-            // 兜底：尝试读取旧版物理坐标缓存（向后兼容）
-            const savedCenterX = localStorage.getItem('nsd_island_center_x');
-            const savedY = localStorage.getItem('nsd_island_y');
-            if (savedCenterX !== null && savedY !== null) {
-                const cx = parseFloat(savedCenterX);
-                const cy = parseInt(savedY, 10);
-                if (!isNaN(cx) && !isNaN(cy) && cx > -10000 && cy > -10000) {
-                    const targetPhysicalWidth = Math.ceil(finalW * scaleFactor);
-                    const restoreX = Math.round(cx - (targetPhysicalWidth / 2));
-                    await appWindow.setPosition(new PhysicalPosition(restoreX, cy));
-                    console.log(`⚠️ 旧版物理坐标兼容恢复: centerX=${cx}, y=${cy}`);
-                    return;
-                }
-            }
-
-            // 无任何有效缓存 → 默认居中
+            // 3️⃣ 无任何有效缓存 → 默认居中
             console.log('无有效缓存，执行默认居中');
             await adjustWindowPosition();
 
@@ -2205,6 +2335,27 @@ onMounted(async () => {
     if (isWidgetEnabled && !isMsgModeEnabled.value) {
         await invoke('show_window_no_activate', { label: 'widget' });
         isIslandVisible.value = true;
+
+        // 窗口显示后再校验一次位置（隐藏状态下 setPosition 可能被系统丢弃）
+        setTimeout(async () => {
+            try {
+                const w = getCurrentWindow();
+                const monitor = await currentMonitor();
+                if (!monitor) return;
+                const scale = monitor.scaleFactor;
+                const { w: rw } = getBaseSize();
+                const physW = Math.ceil(rw * appScale.value * scale);
+                const expected = await loadExpectedPos(physW);
+                if (!expected) return;
+                const actual = await w.outerPosition();
+                if (Math.abs(actual.x - expected.x) > 2 || Math.abs(actual.y - expected.y) > 2) {
+                    await w.setPosition(new PhysicalPosition(expected.x, expected.y));
+                    console.log(`🔄 显示后位置修正: ${actual.x},${actual.y} → ${expected.x},${expected.y}`);
+                }
+            } catch (e) {
+                console.error('显示后位置校验失败:', e);
+            }
+        }, 400);
     }
 
     fetchSpeedStats();
@@ -2212,8 +2363,8 @@ onMounted(async () => {
 
     // 启动网速和硬件显示轮换定时器 (每 5 秒切换一次)
     speedCycleTimer = window.setInterval(() => {
-        // 仅在宽度小于 240px 时才进行上下行网速轮换
-        if (displaySpeed.value && nsdBaseWidth.value < 240) {
+        // 仅在宽度小于 230px 时才进行上下行网速轮换
+        if (displaySpeed.value && nsdBaseWidth.value < 230) {
             isShowingUpload.value = !isShowingUpload.value;
         }
     }, 5000);
@@ -2286,6 +2437,8 @@ onMounted(async () => {
     await listen('tray-reset-pos', async () => {
         try {
             // 清理本地坐标缓存
+            localStorage.removeItem('nsd_island_phys_x');
+            localStorage.removeItem('nsd_island_phys_y');
             localStorage.removeItem('nsd_island_log_x');
             localStorage.removeItem('nsd_island_log_y');
             localStorage.removeItem('nsd_island_center_x');
@@ -2293,6 +2446,9 @@ onMounted(async () => {
             localStorage.removeItem('nsd_island_x');
 
             await adjustWindowPosition();
+            // 重置后立即把居中的位置保存，确保下次启动能精确还原
+            await new Promise(resolve => setTimeout(resolve, 100));
+            await persistCenteredPosition(getCurrentWindow());
             showToast(t('positionReset'), 'sys');
         } catch (error) {
             console.error(error);
@@ -2849,8 +3005,8 @@ onUnmounted(() => {
     padding-left: 0;
     -webkit-app-region: no-drag;
     transform: translateY(-1px) translateX(-0.5px);
-    mask-image: linear-gradient(to right, #000000 75%, transparent 100%);
-    -webkit-mask-image: linear-gradient(to right, #000000 75%, transparent 100%);
+    mask-image: linear-gradient(to right, #000000 96%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, #000000 96%, transparent 100%);
 }
 
 /* 歌曲文本基础样式 */
@@ -3153,6 +3309,7 @@ onUnmounted(() => {
     white-space: nowrap;
     width: max-content;
     flex-shrink: 0;
+    vertical-align: top;
     backface-visibility: hidden;
     transform: translateZ(0);
     -webkit-font-smoothing: antialiased;
@@ -3164,15 +3321,15 @@ onUnmounted(() => {
     animation: scroll-ping-pong var(--scroll-duration) linear infinite alternate;
 }
 
-/* 滚动动画帧：利用 0-20% 和 80-100% 的区间实现两端停留 */
+/* 滚动动画帧：开头停留 15% 后滚动，末尾停留 15% 便于读完歌词 */
 @keyframes scroll-ping-pong {
 
     0%,
-    20% {
+    15% {
         transform: translateX(0);
     }
 
-    80%,
+    85%,
     100% {
         /* JS 里已经拼好了 px 单位，这里直接 -1 乘过去即可 */
         transform: translateX(calc(-1 * var(--scroll-dist)));
@@ -3439,6 +3596,11 @@ onUnmounted(() => {
     justify-content: space-between;
     align-items: center;
     width: 100%;
+}
+
+/* 上下行同时显示时，下行网速整体向左微调 */
+.speed-dual-box .speed-item:last-child {
+    transform: translate(-10px, -1px);
 }
 
 .speed-single-box {

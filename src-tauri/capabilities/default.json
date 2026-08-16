@@ -16,6 +16,8 @@
     "core:webview:allow-webview-hide",
     "core:window:allow-get-all-windows",
     "core:window:allow-current-monitor",
+    "core:window:allow-available-monitors",
+    "core:window:allow-outer-position",
     "core:window:allow-scale-factor",
     "core:window:allow-inner-size",
     "core:window:allow-set-position",
