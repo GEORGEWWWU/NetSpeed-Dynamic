@@ -303,14 +303,11 @@ watch(isIslandVisible, (newVal) => {
 // 关闭 → 立即开启鼠标透传（点击穿透，不拦截下层窗口）；
 //         等离开动画结束后把窗口物理缩成 1×1，彻底点不到；
 // 开启 → 关闭透传并恢复窗口到正常尺寸（正常交互）。
-// 记录是否经历过"可见→隐藏"的真实切换，避免启动时（初始即隐藏）误把窗口缩成 1×1
-let hasEverBeenVisible = false;
 watch(isIslandVisible, (visible) => {
     const appWindow = getCurrentWindow();
     appWindow.setIgnoreCursorEvents(!visible).catch(() => { });
 
     if (visible) {
-        hasEverBeenVisible = true;
         // 呼出时先把窗口恢复到应有的物理尺寸（getBaseSize/appScale 此时早已初始化）
         const { w, h } = getBaseSize();
         const scaleFactor = window.devicePixelRatio || 1;
@@ -320,9 +317,6 @@ watch(isIslandVisible, (visible) => {
         )).catch(() => { });
         return;
     }
-
-    // 启动时初始即为隐藏状态，不执行 1×1 收缩（避免窗口卡在 1×1 导致下次启动不显示）
-    if (!hasEverBeenVisible) return;
 
     // 关闭时等离开动画播完（约 350ms）再缩成 1×1；期间若又被呼出则放弃缩放
     setTimeout(() => {
@@ -2578,7 +2572,12 @@ onMounted(async () => {
             const centered = await adjustWindowPosition();
             // 重置后直接用居中目标保存缓存（不再二次读取，杜绝读到 setPosition 未生效的旧坐标），确保下次启动能精确还原
             if (centered) {
+                // 双保险：同时写入"左边缘"缓存，避免 onMoved 在重置后把旧坐标写回 physX/physY
+                localStorage.setItem(POSITION_KEYS.physX, String(centered.x));
+                localStorage.setItem(POSITION_KEYS.physY, String(centered.y));
                 await persistCenteredPosition(getCurrentWindow(), centered);
+                // 重置后 2 秒内 onMoved 不得保存，防止旧坐标污染缓存
+                positionResetAt = Date.now();
                 console.log('✅ 托盘重置位置完成，已保存居中坐标:', centered);
             } else {
                 console.warn('⚠️ 托盘重置位置未取得居中坐标，本次未保存');
