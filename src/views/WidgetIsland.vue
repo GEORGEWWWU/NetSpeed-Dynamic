@@ -1439,9 +1439,10 @@ const formatSpeed = (bytes: number) => {
 const fetchSpeedStats = async () => {
     try {
         const [currentRx, currentTx] = await invoke<[number, number]>('get_network_stats');
+        let rxDiff = currentRx - lastRx;
+        let txDiff = currentTx - lastTx;
+
         if (lastRx !== 0) {
-            let rxDiff = currentRx - lastRx;
-            let txDiff = currentTx - lastTx;
 
             // 网速为负说明网络计数器被重置（网卡重连/断网），判定为断网
             if (rxDiff < 0 || txDiff < 0) {
@@ -1467,6 +1468,18 @@ const fetchSpeedStats = async () => {
             if (currentDownloadHigh || currentUploadHigh) {
                 // 如果目前依然是大流量，重置计时器
                 lowTrafficStartTime = Date.now();
+            }
+        } else {
+            try {
+                const latency = await invoke<number>('get_network_latency');
+                if (rxDiff > 0 && txDiff > 0) {
+                    networkStatus.value = 'good';      // 有流量变化，说明网络正常
+                }else if (rxDiff <= 0)
+                    networkStatus.value = 'error';     // 无流量变化，说明网络异常
+                console.log(latency, rxDiff, txDiff);
+            } catch (error) {
+                console.error('延迟获取失败:', error);
+                networkStatus.value = 'error';
             }
         }
         lastRx = currentRx;
