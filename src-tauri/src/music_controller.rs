@@ -81,6 +81,12 @@ fn get_target_media_session() -> Option<(GlobalSystemMediaTransportControlsSessi
             {
                 return Some((session, app_id_str));
             }
+            // 落雪音乐：包名可能叫 lx 或 lx-music
+            else if target == "lx-music"
+                && (app_id_str.contains("cn.toside.music.desktop") || app_id_str.contains("lx-music"))
+            {
+                return Some((session, app_id_str));
+            }
             // 其他软件直接用名字去系统进程列表里撞
             else if target != "netease" && app_id_str.contains(&target) {
                 return Some((session, app_id_str));

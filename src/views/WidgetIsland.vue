@@ -117,8 +117,14 @@
                                         </transition>
                                     </div>
                                     <div class="music-info-text double-line" :class="{ 'fade-in': isMusicExpanded }">
-                                        <div class="song-title">{{ currentSongName }}</div>
-                                        <div class="song-artist">{{ currentArtistName }}</div>
+                                        <div class="song-title" ref="expandedTitleBoxRef">
+                                            <span class="scroll-inner" ref="expandedTitleRef"
+                                                :class="{ 'is-scrolling': expandedTitleScrollDist > 0 }"
+                                                :style="{ '--scroll-dist': expandedTitleScrollDist + 'px', '--scroll-duration': expandedTitleScrollDuration }">
+                                                {{ currentSongName }}
+                                            </span>
+                                        </div>
+                                        <div class="song-artist" v-show="!isVideoLikeSource">{{ currentArtistName }}</div>
                                     </div>
                                 </div>
                             </div>
@@ -606,6 +612,8 @@ const coverCache = new Map<string, string>();
 // 当前播放器是否为浏览器（edge/chrome），以及是否正在展示 SMTC 本地封面
 const currentIsBrowser = ref(false);
 const isSmtcCoverActive = ref(false);
+// 浏览器是否成功获取到封面/歌词（成功即视为播放音乐，而非视频）
+const isBrowserMusic = ref(false);
 // 当前 SMTC 来源应用的包名（用于 PotPlayer 音乐模式等封面策略判断）
 const currentAppIdStr = ref('');
 
@@ -764,6 +772,11 @@ const fillCollapsedWithTrackInfo = () => {
         setSafeTrackInfo(currentSongName.value);
         return;
     }
+    // 视频类播放源（B站/浏览器视频）：只显示标题，不拼歌手
+    if (isVideoLikeSource.value) {
+        setSafeTrackInfo(currentSongName.value);
+        return;
+    }
     const artist = currentArtistName.value === t('unknownArtist') ? '' : currentArtistName.value;
     setSafeTrackInfo(artist ? `${currentSongName.value} - ${artist}` : currentSongName.value);
 };
@@ -818,6 +831,9 @@ const initWebSocket = async () => {
                         lyricQueue.value = [];
                         currentMatchedIndex = -1;
                         lastLyricChangeTime = 0; // 重置时间锁，允许立刻显示第一句歌词
+
+                        // 浏览器收到完整歌词 → 判定为播放音乐（而非视频）
+                        if (currentIsBrowser.value) isBrowserMusic.value = true;
 
                         return;
                     }
@@ -1063,7 +1079,7 @@ const syncMusicStatus = async () => {
 
         if (res) {
             const [song, artist, playing, positionMs, durationMs, app_id_str] = res;
-
+            console.log('syncMusicStatus', song, artist, playing, positionMs, durationMs, app_id_str);
             // 记录当前是否为浏览器类应用（edge/chrome），供封面刷新逻辑区分处理
             currentIsBrowser.value =
                 app_id_str.includes("edge") || app_id_str.includes("chrome");
@@ -1114,6 +1130,9 @@ const syncMusicStatus = async () => {
 
             if (currentBaseInfo.value !== newTrackInfo) {
                 currentBaseInfo.value = newTrackInfo;
+
+                // 切歌时重置浏览器音乐判定，等封面/歌词获取结果再确认是音乐还是视频
+                isBrowserMusic.value = false;
 
                 // 切歌时，第一时间重置本地时间轴！
                 if (!isWsActive) {
@@ -1180,6 +1199,8 @@ const syncMusicStatus = async () => {
                             if (appSwitched || Date.now() - lastWsLyricTime > 3000) {
                                 if (lrc) {
                                     parsedLyrics.value = parseLrc(lrc);
+                                    // 浏览器拉到歌词 → 判定为播放音乐（而非视频）
+                                    if (currentIsBrowser.value) isBrowserMusic.value = true;
                                     // 刚拉到歌词时，如果发现时长还是 0，立刻补救
                                     if (currentDurationMs.value <= 0 && parsedLyrics.value.length > 0) {
                                         const lastLyric = parsedLyrics.value[parsedLyrics.value.length - 1];
@@ -1263,6 +1284,24 @@ const currentTrackInfo = ref(`${t('noSongPlaying')} - ${getPlayerName()}`);
 // 此时不做歌词匹配，直接用标题当常驻歌词显示
 const isPotplayerSource = computed(() => currentArtistName.value === 'potplayer');
 
+// 视频类播放源（B站/浏览器视频/PotPlayer视频）：只显示标题、不显示歌手，标题滚动放慢
+const isVideoLikeSource = computed(() => {
+    // PotPlayer 视频模式：始终作为视频类
+    if (isPotplayerSource.value) return true;
+    // B站：始终作为视频类
+    if (currentAppIdStr.value.includes('bilibili')) return true;
+    // 浏览器：成功获取到封面/歌词即视为播放音乐，否则视为播放视频
+    if (currentIsBrowser.value) return !isBrowserMusic.value;
+    return false;
+});
+
+// 浏览器音乐/视频判定变化时，重新填充折叠态文本（音乐显示"标题 - 歌手"，视频只显示标题）
+watch(isVideoLikeSource, () => {
+    if (displayMusic.value && currentSongName.value !== t('noSongPlaying')) {
+        fillCollapsedWithTrackInfo();
+    }
+});
+
 watch(currentLanguage, () => {
     if (!displayMusic.value || currentSongName.value === t('noSongPlaying')) {
         currentSongName.value = t('noSongPlaying');
@@ -1326,6 +1365,47 @@ const maskBoxRef = ref<HTMLElement | null>(null);
 const textInnerRef = ref<HTMLElement | null>(null);
 const scrollDist = ref(0);
 const scrollDuration = ref('0s');
+
+// 展开态标题（B站/浏览器视频等长标题）滚动相关变量
+const expandedTitleBoxRef = ref<HTMLElement | null>(null);
+const expandedTitleRef = ref<HTMLElement | null>(null);
+const expandedTitleScrollDist = ref(0);
+const expandedTitleScrollDuration = ref('0s');
+
+// 计算展开态标题是否需要滚动：标题超出容器宽度时，以固定速度来回滚动
+const calculateExpandedTitleScroll = () => {
+    if (!expandedTitleRef.value || !expandedTitleBoxRef.value) return;
+    const textWidth = expandedTitleRef.value.getBoundingClientRect().width;
+    const containerWidth = expandedTitleBoxRef.value.clientWidth;
+    if (textWidth > containerWidth) {
+        // 把文字末尾拖到最右，外加 5px 呼吸空间
+        expandedTitleScrollDist.value = Math.ceil(textWidth - containerWidth + 5);
+        // 固定 20px/s 的滚动速度（视频类标题放慢），来回 ping-pong（滚动占 70%，开头/末尾各停 15%）
+        const timeToMove = expandedTitleScrollDist.value / 20;
+        expandedTitleScrollDuration.value = `${(timeToMove / 0.7).toFixed(2)}s`;
+    } else {
+        expandedTitleScrollDist.value = 0;
+    }
+};
+
+// 标题变化、展开/折叠切换、或音乐/视频判定变化时，重新计算展开态标题的滚动
+watch([currentSongName, isMusicExpanded, isVideoLikeSource], async () => {
+    await nextTick();
+    // 点击展开立即计算一次，让标题马上开始滚动（此时容器还是折叠态宽度，滚动距离偏大）
+    if (isMusicExpanded.value) {
+        calculateExpandedTitleScroll();
+    } else {
+        expandedTitleScrollDist.value = 0;
+    }
+    // 等 0.4s 宽度过渡 + 形变动画结束再量一次，用稳定后的宽度修正滚动距离
+    setTimeout(() => {
+        if (isMusicExpanded.value) {
+            calculateExpandedTitleScroll();
+        } else {
+            expandedTitleScrollDist.value = 0;
+        }
+    }, 500);
+});
 
 // 获取当前歌词句的演唱时长（毫秒），用于动态滚动调速
 const getCurrentLineDuration = (): number => {
@@ -1392,10 +1472,17 @@ const calculateScroll = () => {
         // 由纯滚动时间反推总动画时长（纯滚动占 70%）
         let totalDuration = safeTimeToMove / 0.7;
 
-        // 滚到底的保证：动画总时长不得超过本句展示时长。
-        // 否则长句被 90px/s 钳制 / 4.5s 保底拉长后，还没滚到末尾就被下一句顶掉，
-        // 表现为「有时候歌词滚不到底」。文字在展示期内即可滚完并停住结尾。
-        totalDuration = Math.max(Math.min(totalDuration, displayWindowSec), 0.8);
+        // 视频类播放源（B站/浏览器视频）：标题常驻不随歌词变化，用固定慢速滚动，
+        // 且不受歌词展示时长限制，让长标题从容滚完再回来
+        if (isVideoLikeSource.value) {
+            const slowTimeToMove = scrollDist.value / 20;
+            totalDuration = slowTimeToMove / 0.7;
+        } else {
+            // 滚到底的保证：动画总时长不得超过本句展示时长。
+            // 否则长句被 90px/s 钳制 / 4.5s 保底拉长后，还没滚到末尾就被下一句顶掉，
+            // 表现为「有时候歌词滚不到底」。文字在展示期内即可滚完并停住结尾。
+            totalDuration = Math.max(Math.min(totalDuration, displayWindowSec), 0.8);
+        }
 
         scrollDuration.value = `${totalDuration.toFixed(2)}s`;
     } else {
@@ -3390,7 +3477,6 @@ onUnmounted(() => {
     margin-bottom: 2px;
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
     line-height: 1.2;
     width: 100%;
     text-align: left !important;
