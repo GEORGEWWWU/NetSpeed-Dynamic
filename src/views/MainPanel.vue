@@ -104,7 +104,7 @@
                                     <template v-if="themeMode === 'light'">{{ t('lightMode') }}</template>
                                     <template v-else-if="themeMode === 'dark'">{{ t('darkMode') }}</template>
                                     <template v-else-if="themeMode === 'coverglass'">{{ t('coverglassMode')
-                                    }}</template>
+                                        }}</template>
                                     <template v-else-if="themeMode === 'system'">{{ t('systemMode') }}</template>
                                 </div>
                                 <svg viewBox="0 0 24 24" class="arrow-icon"
@@ -224,9 +224,11 @@
                                     <div class="custom-dropdown" tabindex="0" @blur="isLanguageDropdownOpen = false">
                                         <div class="dropdown-trigger"
                                             @click="isLanguageDropdownOpen = !isLanguageDropdownOpen">
-                                            <div class="current-item">{{ t(currentLanguage === 'zh-CN' ?
-                                                'simplifiedChinese' :
-                                                'english') }}</div>
+                                            <div class="current-item">
+                                                {{t(languageOptions.find(opt => opt.value ===
+                                                currentLanguage)?.labelKey ||
+                                                'simplifiedChinese') }}
+                                            </div>
                                             <svg viewBox="0 0 24 24" class="arrow-icon"
                                                 :class="{ 'is-open': isLanguageDropdownOpen }">
                                                 <path d="M7 10l5 5 5-5" fill="none" stroke="currentColor"
@@ -520,7 +522,7 @@
                     </div>
                     <div class="modal-footer">
                         <button v-if="dialog.isConfirm" class="btn btn-secondary" @click="closeDialog">{{ t('cancel')
-                        }}</button>
+                            }}</button>
                         <button class="btn btn-primary" @click="handleDialogConfirm">{{ t('confirm') }}</button>
                     </div>
                 </div>
