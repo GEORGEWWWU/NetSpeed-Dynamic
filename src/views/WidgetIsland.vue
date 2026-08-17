@@ -1577,28 +1577,32 @@ const loadSavedPhysicalPos = (): { x: number; y: number } | null => {
     return isUsablePosition(x, y) ? { x: Math.round(x), y: Math.round(y) } : null;
 };
 
-// 将当前位置（物理坐标）写入缓存
+// 将当前位置（物理坐标）写入缓存（同时更新 centerX，保证 centerX 始终反映最新位置）
 const persistWindowPosition = async (win: Window) => {
     const pos = await win.outerPosition();
     if (!isUsablePosition(pos.x, pos.y)) return;
     localStorage.setItem(POSITION_KEYS.physX, String(Math.round(pos.x)));
     localStorage.setItem(POSITION_KEYS.physY, String(Math.round(pos.y)));
-};
-
-// 保存"物理中心点 + 顶部 y"（重置位置专用：窗口宽度可调整时仍保持居中）
-const persistCenteredPosition = async (win: Window) => {
-    const pos = await win.outerPosition();
-    if (!isUsablePosition(pos.x, pos.y)) return;
     const size = await win.innerSize();
     const centerX = Math.round(pos.x + size.width / 2);
     localStorage.setItem(POSITION_KEYS.centerX, String(centerX));
     localStorage.setItem(POSITION_KEYS.y, String(Math.round(pos.y)));
 };
 
-// 读取期望的物理位置：优先"左边缘"（用户手动拖动），其次"物理中心"（重置居中，按当前宽度换算左边缘）
+// 保存"物理中心点 + 顶部 y"（重置位置专用：窗口宽度可调整时仍保持居中）
+// pos 为调用方已知的居中目标（来自 adjustWindowPosition），避免 setPosition 未生效时二次读取到旧坐标
+const persistCenteredPosition = async (win: Window, pos?: { x: number; y: number }) => {
+    const p = pos ?? await win.outerPosition();
+    if (!isUsablePosition(p.x, p.y)) return;
+    const size = await win.innerSize();
+    const centerX = Math.round(p.x + size.width / 2);
+    localStorage.setItem(POSITION_KEYS.centerX, String(centerX));
+    localStorage.setItem(POSITION_KEYS.y, String(Math.round(p.y)));
+};
+
+// 读取期望的物理位置：优先"物理中心"（centerX 为唯一权威来源，重置/拖动都会更新），
+// 其次"左边缘"（旧版缓存兜底，按当前宽度换算左边缘）
 const loadExpectedPos = async (finalWPhysical: number): Promise<{ x: number; y: number } | null> => {
-    const phys = loadSavedPhysicalPos();
-    if (phys) return phys;
     const cxRaw = localStorage.getItem(POSITION_KEYS.centerX);
     const cyRaw = localStorage.getItem(POSITION_KEYS.y);
     if (cxRaw !== null && cyRaw !== null) {
@@ -1608,6 +1612,8 @@ const loadExpectedPos = async (finalWPhysical: number): Promise<{ x: number; y: 
             return { x: Math.round(cx - finalWPhysical / 2), y: cy };
         }
     }
+    const phys = loadSavedPhysicalPos();
+    if (phys) return phys;
     return null;
 };
 
@@ -1633,15 +1639,15 @@ const isPosOnAnyMonitor = async (x: number, y: number) => {
     });
 };
 
-// 调整窗口位置到正确位置
-const adjustWindowPosition = async () => {
+// 调整窗口位置到正确位置（返回居中目标物理坐标，供调用方直接保存，避免二次读取竞态）
+const adjustWindowPosition = async (): Promise<{ x: number; y: number } | null> => {
     try {
         const appWindow = getCurrentWindow();
         // 增加等待时间，确保打包环境下窗口句柄稳定
         await new Promise((resolve) => setTimeout(resolve, 200));
 
         const monitor = await currentMonitor();
-        if (!monitor) return;
+        if (!monitor) return null;
 
         const scaleFactor = monitor.scaleFactor;
 
@@ -1678,12 +1684,17 @@ const adjustWindowPosition = async () => {
         if (Math.abs(after.x - x) > 2 || Math.abs(after.y - y) > 2) {
             console.warn(`⚠️ 居中定位未生效 (目标 ${Math.round(x)},${Math.round(y)}，实际 ${after.x},${after.y})`);
         }
+        // 标记本次为程序主动移动：拦截 onMoved 防抖在 1500ms 内把旧坐标写回缓存
+        lastProgrammaticMoveEnd = Date.now();
+        // 直接返回居中目标，供调用方保存缓存，杜绝二次读取到 setPosition 未生效的旧坐标
+        return { x: Math.round(x), y: Math.round(y) };
     } catch (error) {
         console.error('调整窗口位置失败:', error);
+        return null;
     } finally {
         // 仅当灵动岛处于显示状态时才拉起透明窗口；
         // 否则空窗口会残留并拦截该区域的鼠标点击（窗体隐藏 ≠ 窗口隐藏）
-        if (!isIslandVisible.value) return;
+        if (!isIslandVisible.value) return null;
         try {
             await invoke('show_window_no_activate', { label: 'widget' });
         } catch (e) {
@@ -1864,10 +1875,19 @@ const handleRightClick = async (event: MouseEvent) => {
                 localStorage.removeItem('nsd_island_y');
                 localStorage.removeItem('nsd_island_x');
 
-                await adjustWindowPosition();
-                // 重置后立即把居中的位置保存，确保下次启动能精确还原
-                await new Promise(resolve => setTimeout(resolve, 100));
-                await persistCenteredPosition(getCurrentWindow());
+                const centered = await adjustWindowPosition();
+                // 重置后直接用居中目标保存缓存（不再二次读取，杜绝读到 setPosition 未生效的旧坐标），确保下次启动能精确还原
+                if (centered) {
+                    // 双保险：同时写入"左边缘"缓存，避免 onMoved 在重置后把旧坐标写回 physX/physY
+                    localStorage.setItem(POSITION_KEYS.physX, String(centered.x));
+                    localStorage.setItem(POSITION_KEYS.physY, String(centered.y));
+                    await persistCenteredPosition(getCurrentWindow(), centered);
+                    // 重置后 2 秒内 onMoved 不得保存，防止旧坐标污染缓存
+                    positionResetAt = Date.now();
+                    console.log('✅ 重置位置完成，已保存居中坐标:', centered);
+                } else {
+                    console.warn('⚠️ 重置位置未取得居中坐标，本次未保存');
+                }
                 showToast(t('positionReset'));
             } catch (error) {
                 console.error(error);
@@ -1973,6 +1993,8 @@ let isSizeAnimating = false;
 let sizeAnimTimer: number | null = null;
 // 程序主动移动窗口（形变动画）的结束时间戳，用于拦截滞后的 onMoved 事件
 let lastProgrammaticMoveEnd = 0;
+// 重置位置的时间戳：重置后短时间内 onMoved 不得把旧坐标写回缓存
+let positionResetAt = 0;
 
 // 在顶部声明缩放变量
 const appScale = ref(Number(localStorage.getItem('nsd_app_scale')) || 1.0);
@@ -2155,6 +2177,8 @@ onMounted(async () => {
                 if (isSizeAnimating || isMusicExpanding.value) return;
                 // 动画刚结束的滞后窗口内不保存（Rust SetWindowPos 属程序移动）
                 if (Date.now() - lastProgrammaticMoveEnd < 1500) return;
+                // 重置位置后 2 秒内不保存（防止 setPosition 未生效时把旧坐标写回缓存）
+                if (Date.now() - positionResetAt < 2000) return;
 
                 await persistWindowPosition(appWindow);
             } catch (e) {
@@ -2545,10 +2569,19 @@ onMounted(async () => {
             localStorage.removeItem('nsd_island_y');
             localStorage.removeItem('nsd_island_x');
 
-            await adjustWindowPosition();
-            // 重置后立即把居中的位置保存，确保下次启动能精确还原
-            await new Promise(resolve => setTimeout(resolve, 100));
-            await persistCenteredPosition(getCurrentWindow());
+            const centered = await adjustWindowPosition();
+            // 重置后直接用居中目标保存缓存（不再二次读取，杜绝读到 setPosition 未生效的旧坐标），确保下次启动能精确还原
+            if (centered) {
+                // 双保险：同时写入"左边缘"缓存，避免 onMoved 在重置后把旧坐标写回 physX/physY
+                localStorage.setItem(POSITION_KEYS.physX, String(centered.x));
+                localStorage.setItem(POSITION_KEYS.physY, String(centered.y));
+                await persistCenteredPosition(getCurrentWindow(), centered);
+                // 重置后 2 秒内 onMoved 不得保存，防止旧坐标污染缓存
+                positionResetAt = Date.now();
+                console.log('✅ 托盘重置位置完成，已保存居中坐标:', centered);
+            } else {
+                console.warn('⚠️ 托盘重置位置未取得居中坐标，本次未保存');
+            }
             showToast(t('positionReset'), 'sys');
         } catch (error) {
             console.error(error);
