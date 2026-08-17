@@ -1503,6 +1503,14 @@ watch(displayMusic, async () => {
             scrollDist.value = 0;
         }
     }, 100);
+    // 尺寸形变动画（约 500ms）结束后再算一次：
+    // 消息通知消失回到媒体折叠态时，若折叠态宽度缓存尚未建立（collapsedMaskWidth 为 0），
+    // 首次计算会因容器仍处于消息宽度而误判为无需滚动；动画结束后用稳定宽度重算即可恢复滚动
+    setTimeout(() => {
+        if (displayMusic.value) {
+            calculateScroll();
+        }
+    }, 600);
 });
 
 let lastRx = 0;
@@ -2078,6 +2086,9 @@ const onInnerLeave = (el: Element, done: () => void) => {
 // 记录全局灵动岛是否正在执行形变动画
 let isSizeAnimating = false;
 let sizeAnimTimer: number | null = null;
+// 形变请求序号：用于串行化 animateIslandSize，保证「最新一次请求」永远接管动画，
+// 避免旧动画（如正在进行的收缩）在异步读取窗口尺寸后覆盖新状态（如消息展开）
+let latestAnimationRequest = 0;
 // 程序主动移动窗口（形变动画）的结束时间戳，用于拦截滞后的 onMoved 事件
 let lastProgrammaticMoveEnd = 0;
 // 重置位置的时间戳：重置后短时间内 onMoved 不得把旧坐标写回缓存
@@ -2093,6 +2104,7 @@ watch(appScale, (newScale) => {
 
 // 灵动岛核心代码！（完美防漂移+防裁切+防打断抖动）
 const animateIslandSize = async (targetWidth: number, targetHeight: number) => {
+    const myRequest = ++latestAnimationRequest;
     try {
         // 核心：计算最终的缩放尺寸
         const finalWidth = targetWidth * appScale.value;
@@ -2109,6 +2121,11 @@ const animateIslandSize = async (targetWidth: number, targetHeight: number) => {
 
         const appWindow = getCurrentWindow();
         const realSize = await appWindow.innerSize();
+
+        // 若在异步读取窗口尺寸期间，又有更新的尺寸请求到来，则放弃本次，
+        // 让最新请求接管动画，避免旧动画覆盖新状态（如收缩动画覆盖消息展开）
+        if (myRequest !== latestAnimationRequest) return;
+
         const scaleFactor = window.devicePixelRatio;
 
         const realStartW = realSize.width / scaleFactor;
@@ -2149,6 +2166,10 @@ const collapseMusic = () => {
         clearTimeout(musicExpandAnimTimer);
         musicExpandAnimTimer = null;
     }
+
+    // 消息通知正在显示时，只复位媒体展开状态，不收缩岛体尺寸，
+    // 否则会把正在展示的消息压回折叠尺寸（消息应保持消息展开宽度）
+    if (isMsgActive.value) return;
 
     const { w, h } = getBaseSize();
     animateIslandSize(w, h);
@@ -2715,6 +2736,14 @@ onMounted(async () => {
 
                 if (!isMsgActive.value) {
                     isMsgActive.value = true;
+                    // 消息接管时复位媒体展开状态：避免消息消失后音乐盒以展开态显示在折叠尺寸上
+                    isMusicExpanded.value = false;
+                    isMusicExpanding.value = false;
+                    // 若媒体正在展开动画中，取消其定时器，防止稍后把 isMusicExpanded 重新置回 true
+                    if (musicExpandAnimTimer) {
+                        clearTimeout(musicExpandAnimTimer);
+                        musicExpandAnimTimer = null;
+                    }
                     animateIslandSize(nsdMsgExpandedWidth.value, 65);
                 }
 

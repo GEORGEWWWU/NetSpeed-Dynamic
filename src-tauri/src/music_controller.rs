@@ -81,7 +81,7 @@ fn get_target_media_session() -> Option<(GlobalSystemMediaTransportControlsSessi
             {
                 return Some((session, app_id_str));
             }
-            // 落雪音乐：包名可能叫 lx 或 lx-music
+            // 落雪音乐：包名叫 cn.toside.music.desktop，用lx-music作为备用包名
             else if target == "lx-music"
                 && (app_id_str.contains("cn.toside.music.desktop") || app_id_str.contains("lx-music"))
             {
