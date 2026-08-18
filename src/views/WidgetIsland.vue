@@ -124,7 +124,8 @@
                                                 {{ currentSongName }}
                                             </span>
                                         </div>
-                                        <div class="song-artist" v-show="!isVideoLikeSource">{{ currentArtistName }}</div>
+                                        <div class="song-artist" v-show="!isVideoLikeSource">{{ currentArtistName }}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1086,7 +1087,7 @@ const syncMusicStatus = async () => {
             // 记录当前是否为浏览器类应用（edge/chrome），供封面刷新逻辑区分处理
             if (artist === "edge" || artist === "chrome") {
                 currentIsBrowser.value =
-                app_id_str.includes("edge") || app_id_str.includes("chrome");
+                    app_id_str.includes("edge") || app_id_str.includes("chrome");
             }
 
             // 记录当前是否为视频类应用（potplayer/浏览器视频），供歌词显示逻辑区分处理
@@ -1149,7 +1150,7 @@ const syncMusicStatus = async () => {
                     localPositionMs.value = positionMs; // 必须补上这行，否则新歌会继承老歌的时间！
                     lastLyricChangeTime = performance.now() + 2000;
                 }
-                
+
                 // 切歌立刻把折叠态文本更新为 "标题 - 歌手"，
                 fillCollapsedWithTrackInfo();
 
@@ -1593,7 +1594,7 @@ const fetchSpeedStats = async () => {
                 const latency = await invoke<number>('get_network_latency');
                 if (rxDiff > 0 && txDiff > 0) {
                     networkStatus.value = 'good';      // 有流量变化，说明网络正常
-                }else if (rxDiff <= 0)
+                } else if (rxDiff <= 0)
                     networkStatus.value = 'error';     // 无流量变化，说明网络异常
                 console.log(latency, rxDiff, txDiff);
             } catch (error) {
@@ -1617,7 +1618,7 @@ const FAIL_THRESHOLD = 2;
 const checkNetworkLatency = async () => {
     try {
         const latency = await invoke<number>('get_network_latency');
-        
+
         // 拿到当前流量统计，计算流量变化
         const [currentRx, currentTx] = await invoke<[number, number]>('get_network_stats');
         let rxDiff = currentRx - lastRx;
@@ -1696,10 +1697,32 @@ const loadSavedPhysicalPos = (): { x: number; y: number } | null => {
     return isUsablePosition(x, y) ? { x: Math.round(x), y: Math.round(y) } : null;
 };
 
-// 将当前位置（物理坐标）写入缓存（同时更新 centerX，保证 centerX 始终反映最新位置）
 const persistWindowPosition = async (win: Window) => {
     const pos = await win.outerPosition();
     if (!isUsablePosition(pos.x, pos.y)) return;
+
+    // 禁止保存明显异常的坐标（如 0,0 或 1,1）
+    if ((pos.x === 0 && pos.y === 0) || (pos.x === 1 && pos.y === 1) || pos.x < 0 || pos.y < 0) {
+        console.warn(`坐标 (${pos.x},${pos.y}) 异常，拒绝保存`);
+        return;
+    }
+
+    // 检查坐标是否位于任一显示器上
+    const monitors = await availableMonitors();
+    if (monitors.length === 0) {
+        console.warn('无可用显示器，不保存位置');
+        return;
+    }
+    const onMonitor = monitors.some((m) => {
+        const { position, size } = m;
+        return pos.x >= position.x - 50 && pos.x <= position.x + size.width + 50 &&
+            pos.y >= position.y - 50 && pos.y <= position.y + size.height + 50;
+    });
+    if (!onMonitor) {
+        console.warn(`坐标 (${pos.x},${pos.y}) 不在任何显示器上，不保存`);
+        return;
+    }
+
     localStorage.setItem(POSITION_KEYS.physX, String(Math.round(pos.x)));
     localStorage.setItem(POSITION_KEYS.physY, String(Math.round(pos.y)));
     const size = await win.innerSize();
@@ -1719,20 +1742,67 @@ const persistCenteredPosition = async (win: Window, pos?: { x: number; y: number
     localStorage.setItem(POSITION_KEYS.y, String(Math.round(p.y)));
 };
 
-// 读取期望的物理位置：优先"物理中心"（centerX 为唯一权威来源，重置/拖动都会更新），
-// 其次"左边缘"（旧版缓存兜底，按当前宽度换算左边缘）
 const loadExpectedPos = async (finalWPhysical: number): Promise<{ x: number; y: number } | null> => {
+    const monitors = await availableMonitors();
+    // 如果没有显示器信息，返回 null，让调用方执行居中
+    if (monitors.length === 0) {
+        console.warn('无可用显示器，无法加载期望位置');
+        return null;
+    }
+
+    // 辅助函数：检查坐标是否在任意显示器内
+    const isOnAnyMonitor = (x: number, y: number) => {
+        return monitors.some((m) => {
+            const { position, size } = m;
+            return x >= position.x - 50 && x <= position.x + size.width + 50 &&
+                y >= position.y - 50 && y <= position.y + size.height + 50;
+        });
+    };
+
+    // 1. 优先使用 centerX + y（物理中心）
     const cxRaw = localStorage.getItem(POSITION_KEYS.centerX);
     const cyRaw = localStorage.getItem(POSITION_KEYS.y);
     if (cxRaw !== null && cyRaw !== null) {
         const cx = parseFloat(cxRaw);
         const cy = parseInt(cyRaw, 10);
         if (isUsablePosition(cx, cy)) {
-            return { x: Math.round(cx - finalWPhysical / 2), y: cy };
+            const x = Math.round(cx - finalWPhysical / 2);
+            if (isOnAnyMonitor(x, cy)) {
+                return { x, y: cy };
+            } else {
+                console.warn(`居中坐标 (${cx},${cy}) 对应的左边缘 (${x},${cy}) 不在显示器上，丢弃`);
+            }
         }
     }
+
+    // 2. 旧版物理坐标 (physX, physY)
     const phys = loadSavedPhysicalPos();
-    if (phys) return phys;
+    if (phys) {
+        if (isOnAnyMonitor(phys.x, phys.y)) {
+            return phys;
+        } else {
+            console.warn(`物理坐标 (${phys.x},${phys.y}) 不在显示器上，丢弃`);
+        }
+    }
+
+    // 3. 旧版逻辑坐标 (logX, logY) 迁移
+    const lxRaw = localStorage.getItem(POSITION_KEYS.logX);
+    const lyRaw = localStorage.getItem(POSITION_KEYS.logY);
+    if (lxRaw !== null && lyRaw !== null) {
+        const lx = parseFloat(lxRaw);
+        const ly = parseFloat(lyRaw);
+        if (isUsablePosition(lx, ly)) {
+            // 逻辑坐标乘以当前缩放因子转为物理
+            const monitor = monitors[0]; // 取第一个显示器缩放作为参考
+            const scale = monitor.scaleFactor;
+            const physX = Math.round(lx * scale);
+            const physY = Math.round(ly * scale);
+            if (isOnAnyMonitor(physX, physY)) {
+                return { x: physX, y: physY };
+            }
+        }
+    }
+
     return null;
 };
 
@@ -1762,15 +1832,21 @@ const isPosOnAnyMonitor = async (x: number, y: number) => {
 const adjustWindowPosition = async (): Promise<{ x: number; y: number } | null> => {
     try {
         const appWindow = getCurrentWindow();
-        // 增加等待时间，确保打包环境下窗口句柄稳定
         await new Promise((resolve) => setTimeout(resolve, 200));
 
-        const monitor = await currentMonitor();
-        if (!monitor) return null;
+        let monitor = await currentMonitor();
+        if (!monitor) {
+            const monitors = await availableMonitors();
+            if (monitors.length > 0) {
+                monitor = monitors[0];
+                console.warn('当前显示器未就绪，使用第一个显示器作为后备');
+            } else {
+                console.error('无法获取任何显示器信息，放弃居中');
+                return null;
+            }
+        }
 
         const scaleFactor = monitor.scaleFactor;
-
-        // 【关键】实时计算当前应有的尺寸，不使用外部 ref 变量
         const { w, h } = getBaseSize();
         const finalW = w * appScale.value;
         const finalH = h * appScale.value;
@@ -1780,7 +1856,6 @@ const adjustWindowPosition = async (): Promise<{ x: number; y: number } | null> 
             Math.ceil(finalH * scaleFactor)
         ));
 
-        // 重新获取设定后的真实物理尺寸，用于精准居中
         const windowSize = await appWindow.innerSize();
         const windowWidthPhysical = windowSize.width;
 
@@ -1791,34 +1866,16 @@ const adjustWindowPosition = async (): Promise<{ x: number; y: number } | null> 
         const x = monitorLeftPhysical + (monitorWidthPhysical - windowWidthPhysical) / 2;
         const y = monitorTopPhysical + (12 * scaleFactor);
 
-        console.log('[居中定位]', {
-            monitorLeft: monitorLeftPhysical, monitorTop: monitorTopPhysical,
-            monitorW: monitorWidthPhysical, windowW: windowWidthPhysical,
-            scale: scaleFactor, x: Math.round(x), y: Math.round(y),
-        });
-
         await appWindow.setPosition(new PhysicalPosition(Math.round(x), Math.round(y)));
-        // 验证居中是否真正生效
         const after = await appWindow.outerPosition();
         if (Math.abs(after.x - x) > 2 || Math.abs(after.y - y) > 2) {
-            console.warn(`⚠️ 居中定位未生效 (目标 ${Math.round(x)},${Math.round(y)}，实际 ${after.x},${after.y})`);
+            console.warn(`⚠️ 居中定位未完全生效 (目标 ${Math.round(x)},${Math.round(y)}，实际 ${after.x},${after.y})`);
         }
-        // 标记本次为程序主动移动：拦截 onMoved 防抖在 1500ms 内把旧坐标写回缓存
         lastProgrammaticMoveEnd = Date.now();
-        // 直接返回居中目标，供调用方保存缓存，杜绝二次读取到 setPosition 未生效的旧坐标
         return { x: Math.round(x), y: Math.round(y) };
     } catch (error) {
         console.error('调整窗口位置失败:', error);
         return null;
-    } finally {
-        // 仅当灵动岛处于显示状态时才拉起透明窗口；
-        // 否则空窗口会残留并拦截该区域的鼠标点击（窗体隐藏 ≠ 窗口隐藏）
-        if (!isIslandVisible.value) return null;
-        try {
-            await invoke('show_window_no_activate', { label: 'widget' });
-        } catch (e) {
-            console.error(e);
-        }
     }
 };
 
@@ -2522,15 +2579,26 @@ onMounted(async () => {
         try {
             await new Promise(resolve => setTimeout(resolve, 250));
 
-            const appWindow = getCurrentWindow();
-            const monitor = await currentMonitor();
+            let monitor = await currentMonitor();
+            let attempts = 0;
+            while (!monitor && attempts < 3) {
+                await new Promise(resolve => setTimeout(resolve, 200));
+                monitor = await currentMonitor();
+                attempts++;
+            }
             if (!monitor) {
-                console.warn('无法获取显示器信息，执行默认居中');
-                await adjustWindowPosition();
-                return;
+                const monitors = await availableMonitors();
+                if (monitors.length > 0) {
+                    monitor = monitors[0];
+                    console.warn('安全恢复位置：使用第一个显示器作为后备');
+                } else {
+                    console.warn('无法获取显示器信息，执行默认居中');
+                    await adjustWindowPosition();
+                    return;
+                }
             }
 
-            // 先确保窗口尺寸正确（setSize 只接受物理尺寸）
+            const appWindow = getCurrentWindow();
             const scaleFactor = monitor.scaleFactor;
             const { w: realW, h: realH } = getBaseSize();
             const finalW = realW * appScale.value;
@@ -2540,12 +2608,11 @@ onMounted(async () => {
                 Math.ceil(finalH * scaleFactor)
             ));
 
-            // 1️⃣ 期望位置：用户拖动的左边缘物理坐标，或重置居中的物理中心（按当前宽度换算左边缘）
+            // 期望位置（按优先级）
             const expected = await loadExpectedPos(Math.ceil(finalW * scaleFactor));
             if (expected) {
-                // 显示器变动保护：保存的位置已不在任何显示器上（如拔掉外接屏）→ 居中
                 if (!(await isPosOnAnyMonitor(expected.x, expected.y))) {
-                    console.warn(`⚠️ 保存的位置 (${expected.x},${expected.y}) 不在任何显示器上，执行默认居中`);
+                    console.warn(`保存的位置 (${expected.x},${expected.y}) 不在任何显示器上，执行默认居中`);
                     await adjustWindowPosition();
                     return;
                 }
@@ -2554,7 +2621,7 @@ onMounted(async () => {
                 return;
             }
 
-            // 2️⃣ 旧版逻辑坐标（一次性迁移：逻辑 × 当前缩放 = 物理）
+            // 旧版逻辑坐标（一次性迁移）
             const lxRaw = localStorage.getItem(POSITION_KEYS.logX);
             const lyRaw = localStorage.getItem(POSITION_KEYS.logY);
             if (lxRaw !== null && lyRaw !== null) {
@@ -2567,9 +2634,16 @@ onMounted(async () => {
                 }
             }
 
-            // 3️⃣ 无任何有效缓存 → 默认居中
+            // 无有效缓存 → 居中
             console.log('无有效缓存，执行默认居中');
-            await adjustWindowPosition();
+            const centered = await adjustWindowPosition();
+            if (centered) {
+                localStorage.setItem(POSITION_KEYS.physX, String(centered.x));
+                localStorage.setItem(POSITION_KEYS.physY, String(centered.y));
+                await persistCenteredPosition(appWindow, centered);
+            } else {
+                console.warn('调整位置失败，未保存任何缓存');
+            }
 
         } catch (error) {
             console.error('安全恢复位置失败，执行兜底居中:', error);
@@ -2584,10 +2658,31 @@ onMounted(async () => {
 
     await safeRestorePosition();
 
+    // 自启动后额外延迟重试，确保显示器信息完全就绪
+    setTimeout(async () => {
+        try {
+            const appWindow = getCurrentWindow();
+            const pos = await appWindow.outerPosition();
+            // 如果位置在左上角 (0,0) 或 (1,1) 附近，认为异常
+            if ((pos.x < 5 && pos.y < 5) || (pos.x === 0 && pos.y === 0)) {
+                console.warn('自启动后位置异常，重新执行居中');
+                const centered = await adjustWindowPosition();
+                if (centered) {
+                    localStorage.setItem(POSITION_KEYS.physX, String(centered.x));
+                    localStorage.setItem(POSITION_KEYS.physY, String(centered.y));
+                    await persistCenteredPosition(appWindow, centered);
+                    console.log('延迟重试居中成功，已更新缓存');
+                }
+            }
+        } catch (e) {
+            console.warn('延迟位置检查失败:', e);
+        }
+    }, 1500);
+
     // 检查本地记录的灵动岛开关状态
     const isWidgetEnabled = localStorage.getItem('nsd_widget_visible') !== 'false';
 
-    // 只有在【用户开启了灵动岛】且【没开静默模式】时，启动才自动拉开灵动岛
+    // 只有在用户开启了灵动岛且没开静默模式时，启动才自动拉开灵动岛
     if (isWidgetEnabled && !isMsgModeEnabled.value) {
         await invoke('show_window_no_activate', { label: 'widget' });
         isIslandVisible.value = true;
