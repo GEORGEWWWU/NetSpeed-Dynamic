@@ -108,7 +108,9 @@
                                         style="position: relative; width: 100%; height: 100%;">
                                         <transition name="lyric-fade">
                                             <span class="lyric-render-text" :key="currentTrackInfo">
+                                                <!-- 注意：加上了 :data-text="currentTrackInfo" -->
                                                 <span class="scroll-inner" ref="textInnerRef"
+                                                    :data-text="currentTrackInfo"
                                                     :class="{ 'is-scrolling': scrollDist > 0 }" :style="{
                                                         '--scroll-dist': scrollDist + 'px',
                                                         '--scroll-duration': scrollDuration,
@@ -175,7 +177,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">CPU</span>
                                     <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{ cpuUsage
-                                    }}%</span>
+                                        }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: cpuUsage + '%' }"
@@ -186,7 +188,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">RAM</span>
                                     <span class="res-value" :class="{ 'high-usage': ramUsage >= 85 }">{{ ramUsage
-                                    }}%</span>
+                                        }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: ramUsage + '%' }"
@@ -4192,39 +4194,59 @@ onUnmounted(() => {
     flex-shrink: 0;
 }
 
-/* --- 新增：仅针对单行歌词的扫描效果 --- */
+/* --- 终极无损 0 负担卡拉OK效果 --- */
+
+/* 1. 父元素：隐藏原本文字，仅用来撑开宽度和滚动，绝不破坏 color 继承 */
 .lyric-render-text .scroll-inner {
-    /* 使用 currentColor 提取文字本身的黑/白主题色，浅色占位采用半透明灰色 */
-    background-image: linear-gradient(to right, currentColor 50%, rgba(150, 150, 150, 0.4) 50%);
-    background-size: 200% 100%;
-    background-position: 100% 0;
-    /* 初始显示右半部分的未激活颜色 */
-
-    background-clip: text;
-    -webkit-background-clip: text;
+    position: relative;
     -webkit-text-fill-color: transparent;
+    font-weight: 600;
+    /* 放心加粗，已经恢复原生渲染，绝对不会发虚！ */
+}
 
-    /* 注入从左到右的扫描动画 */
+/* 2. 底层伪元素：完美的半透明未激活态（自适应黑/白主题） */
+.lyric-render-text .scroll-inner::before {
+    content: attr(data-text);
+    position: absolute;
+    left: 0;
+    top: 0;
+    -webkit-text-fill-color: currentColor;
+    /* 提取灵动岛原本的纯白或纯黑 */
+    opacity: 0.35;
+    /* 直接调低透明度作为底色，无论啥主题都能完美变暗 */
+    white-space: nowrap;
+}
+
+/* 3. 顶层伪元素：高亮激活态，像拉窗帘一样盖在上面扫过 */
+.lyric-render-text .scroll-inner::after {
+    content: attr(data-text);
+    position: absolute;
+    left: 0;
+    top: 0;
+    -webkit-text-fill-color: currentColor;
+    /* 提取真正的纯白/纯黑，绝对高亮！ */
+    white-space: nowrap;
+
+    /* 核心 0 负担动画：利用 GPU 硬件加速的裁切展开 */
+    clip-path: inset(0 100% 0 0);
     animation: scan-lyric var(--scan-duration) linear forwards;
-
-    font-weight: bold;
+    animation-play-state: inherit;
+    /* 跟随父元素一起暂停/播放 */
 }
 
-/* 结合文字过长时的乒乓滚动动画 */
+/* 4. 覆盖掉上一版错误的叠加动画，让父元素老老实实只负责横向滚动 */
 .lyric-render-text .scroll-inner.is-scrolling {
-    animation:
-        scan-lyric var(--scan-duration) linear forwards,
-        scroll-ping-pong var(--scroll-duration) linear infinite alternate;
+    animation: scroll-ping-pong var(--scroll-duration) linear infinite alternate;
 }
 
-/* --- 新增：扫描动画关键帧 --- */
+/* 5. 扫描裁切关键帧 */
 @keyframes scan-lyric {
     0% {
-        background-position: 100% 0;
+        clip-path: inset(0 100% 0 0);
     }
 
     100% {
-        background-position: 0% 0;
+        clip-path: inset(0 0 0 0);
     }
 }
 </style>
