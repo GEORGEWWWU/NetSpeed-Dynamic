@@ -177,7 +177,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">CPU</span>
                                     <span class="res-value" :class="{ 'high-usage': cpuUsage >= 85 }">{{ cpuUsage
-                                        }}%</span>
+                                    }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: cpuUsage + '%' }"
@@ -188,7 +188,7 @@
                                 <div class="res-info-row">
                                     <span class="res-label">RAM</span>
                                     <span class="res-value" :class="{ 'high-usage': ramUsage >= 85 }">{{ ramUsage
-                                        }}%</span>
+                                    }}%</span>
                                 </div>
                                 <div class="res-bar-track">
                                     <div class="res-bar-fill" :style="{ width: ramUsage + '%' }"
@@ -1156,6 +1156,12 @@ const syncMusicStatus = async () => {
                     localPositionMs.value = positionMs; // 必须补上这行，否则新歌会继承老歌的时间！
                     lastLyricChangeTime = performance.now() + 2000;
                 }
+
+                // 彻底清除上首歌的残留歌词状态和强制渲染队列
+                parsedLyrics.value = [];
+                lyricQueue.value = [];
+                currentMatchedIndex = -1;
+                renderQueue.length = 0;
 
                 // 切歌立刻把折叠态文本更新为 "标题 - 歌手"，
                 fillCollapsedWithTrackInfo();
