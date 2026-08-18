@@ -611,6 +611,8 @@ const coverCache = new Map<string, string>();
 
 // 当前播放器是否为浏览器（edge/chrome），以及是否正在展示 SMTC 本地封面
 const currentIsBrowser = ref(false);
+// 当前播放器是否正在播放视频
+const currentIsVideoPlayer = ref(false);
 const isSmtcCoverActive = ref(false);
 // 浏览器是否成功获取到封面/歌词（成功即视为播放音乐，而非视频）
 const isBrowserMusic = ref(false);
@@ -1080,12 +1082,16 @@ const syncMusicStatus = async () => {
         if (res) {
             const [song, artist, playing, positionMs, durationMs, app_id_str] = res;
             console.log('syncMusicStatus', song, artist, playing, positionMs, durationMs, app_id_str);
+
             // 记录当前是否为浏览器类应用（edge/chrome），供封面刷新逻辑区分处理
-            
             if (artist === "edge" || artist === "chrome") {
                 currentIsBrowser.value =
                 app_id_str.includes("edge") || app_id_str.includes("chrome");
             }
+
+            // 记录当前是否为视频类应用（potplayer/浏览器视频），供歌词显示逻辑区分处理
+            // 浏览器：拉到歌词即视为播放音乐（isBrowserMusic），否则视为播放视频
+            currentIsVideoPlayer.value = (artist === "potplayer" || app_id_str.includes("bilibili") || (currentIsBrowser.value && !isBrowserMusic.value));
 
             // 检测 SMTC 来源应用是否发生了切换（应用包名变更），用于及时刷新歌词
             const appSwitched = currentAppIdStr.value !== '' && currentAppIdStr.value !== app_id_str;
@@ -1155,6 +1161,7 @@ const syncMusicStatus = async () => {
                 }
 
                 // 切换播放内容时强制重新获取封面：清掉该曲目的封面缓存，避免沿用旧封面
+                // 切换 SMTC 应用时同样刷新封面，确保新应用显示正确的封面
                 coverCache.delete(newTrackInfo);
                 blurredCoverCache.delete(newTrackInfo);
 
@@ -1219,13 +1226,19 @@ const syncMusicStatus = async () => {
                 if (!isWsActive && positionMs > 1000 && Math.abs(positionMs - localPositionMs.value) > 800) {
                     localPositionMs.value = positionMs - 250;
                 }
+                // 封面被清空过（如 SMTC 短暂断开）但沉浸背景还在时，补回圆形封面，避免"背景对、圆形空白"
+                if (!coverUrl.value && blurredCoverUrl.value) {
+                    refreshCoverOnResume();
+                }
             }
         } else {
             // SMTC 未检测到播放器
             if (!isWsActive) {
                 setSafeTrackInfo(`${t('noSongPlaying')} - ${getPlayerName()}`);
                 isPlaying.value = false;
+                // 圆形封面与沉浸背景同步清空，避免 SMTC 短暂断开后留下不一致的旧背景
                 coverUrl.value = '';
+                blurredCoverUrl.value = '';
 
                 if (isMediaActive.value) {
                     isMediaActive.value = false;
@@ -1303,6 +1316,13 @@ const isVideoLikeSource = computed(() => {
 watch(isVideoLikeSource, () => {
     if (displayMusic.value && currentSongName.value !== t('noSongPlaying')) {
         fillCollapsedWithTrackInfo();
+    }
+});
+
+// 浏览器判定为播放音乐（拉到歌词）时，同步把视频类标记置为 false，允许歌词显示
+watch(isBrowserMusic, (now) => {
+    if (currentIsBrowser.value) {
+        currentIsVideoPlayer.value = !now;
     }
 });
 
@@ -2811,8 +2831,8 @@ onMounted(async () => {
             localPositionMs.value += delta;
 
             // 2. 毫秒级歌词匹配与队列逻辑 (解决快节奏吞字、闪烁消失问题)
-            // PotPlayer：不做歌词匹配，标题常驻显示
-            if (!isPotplayerSource.value && parsedLyrics.value.length > 0) {
+            // 视频类应用（potplayer/浏览器视频）：不做歌词匹配，标题常驻显示
+            if (!currentIsVideoPlayer.value && parsedLyrics.value.length > 0) {
                 let matchedIndex = -1;
 
                 // 找出当前时间进度应该播放哪一句
