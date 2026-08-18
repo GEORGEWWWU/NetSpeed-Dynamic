@@ -1081,8 +1081,12 @@ const syncMusicStatus = async () => {
             const [song, artist, playing, positionMs, durationMs, app_id_str] = res;
             console.log('syncMusicStatus', song, artist, playing, positionMs, durationMs, app_id_str);
             // 记录当前是否为浏览器类应用（edge/chrome），供封面刷新逻辑区分处理
-            currentIsBrowser.value =
+            
+            if (artist === "edge" || artist === "chrome") {
+                currentIsBrowser.value =
                 app_id_str.includes("edge") || app_id_str.includes("chrome");
+            }
+
             // 检测 SMTC 来源应用是否发生了切换（应用包名变更），用于及时刷新歌词
             const appSwitched = currentAppIdStr.value !== '' && currentAppIdStr.value !== app_id_str;
             // 记录当前 SMTC 来源应用的包名，供恢复播放时的封面刷新逻辑判断

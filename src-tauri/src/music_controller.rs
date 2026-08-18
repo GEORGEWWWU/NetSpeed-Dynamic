@@ -153,6 +153,10 @@ pub async fn fetch_netease_music_info(
 
     let mut position_ms: i64 = 0;
     let mut duration_ms: i64 = 0; // 新增：用于记录歌曲总时长
+    
+    if title.contains("抖音") || title.contains("douyin") { // 识别到抖音
+        return Ok(None);
+    }
 
     if let Ok(timeline) = session.GetTimelineProperties() {
         if let Ok(pos) = timeline.Position() {
@@ -187,11 +191,21 @@ pub async fn fetch_netease_music_info(
     }
     
     if app_id_str.contains("edge") { // 识别到 Edge 浏览器
-        return Ok(Some((title, "edge".to_string(), is_playing, position_ms, duration_ms, app_id_str)));
+        if artist.is_empty() {
+            return Ok(Some((title, "edge".to_string(), is_playing, position_ms, duration_ms, app_id_str)));
+        }
+        else {
+            return Ok(Some((title, artist, is_playing, position_ms, duration_ms, app_id_str)));
+        }
     }
 
     if app_id_str.contains("chrome") { // 识别到 Chrome 浏览器
-        return Ok(Some((title, "chrome".to_string(), is_playing, position_ms, duration_ms, app_id_str)));
+        if artist.is_empty() {
+            return Ok(Some((title, "chrome".to_string(), is_playing, position_ms, duration_ms, app_id_str)));
+        }
+        else {
+            return Ok(Some((title, artist, is_playing, position_ms, duration_ms, app_id_str)));
+        }
     }
 
     if app_id_str.contains("potplayer") { // 识别到 PotPlayer
