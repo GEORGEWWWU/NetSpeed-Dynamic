@@ -109,8 +109,12 @@
                                         <transition name="lyric-fade">
                                             <span class="lyric-render-text" :key="currentTrackInfo">
                                                 <span class="scroll-inner" ref="textInnerRef"
-                                                    :class="{ 'is-scrolling': scrollDist > 0 }"
-                                                    :style="{ '--scroll-dist': scrollDist + 'px', '--scroll-duration': scrollDuration }">
+                                                    :class="{ 'is-scrolling': scrollDist > 0 }" :style="{
+                                                        '--scroll-dist': scrollDist + 'px',
+                                                        '--scroll-duration': scrollDuration,
+                                                        '--scan-duration': scanDuration,
+                                                        animationPlayState: isPlaying ? 'running' : 'paused'
+                                                    }">
                                                     {{ currentTrackInfo }}
                                                 </span>
                                             </span>
@@ -1353,18 +1357,29 @@ const setSafeTrackInfo = (text: string) => {
 };
 
 const drainRenderQueue = () => {
-    // 如果正在播动画，或者队列空了，直接挂机
     if (isRendering || renderQueue.length === 0) return;
 
     const nextText = renderQueue.shift();
     if (!nextText || nextText === currentTrackInfo.value) {
-        drainRenderQueue(); // 跳过重复，继续查下一个
+        drainRenderQueue();
         return;
     }
 
     // 上锁！开始渲染新文字
     isRendering = true;
     currentTrackInfo.value = nextText;
+
+    // 计算并赋予歌词扫描时长
+    if (isPlaying.value && parsedLyrics.value.length > 0) {
+        // 原本：const lineDurationSec = getCurrentLineDuration() / 1000;
+
+        // 修改为：乘以 0.85，意味着在整句时间的 85% 时就扫描完毕，提速了 15%
+        const lineDurationSec = (getCurrentLineDuration() / 1000) * 0.85;
+
+        scanDuration.value = `${lineDurationSec}s`;
+    } else {
+        scanDuration.value = '0s';
+    }
 
     // 每次切换歌词后重新计算滚动距离（等 DOM 更新完再量宽度，防止拿到旧宽度/0）
     nextTick(() => {
@@ -1390,6 +1405,7 @@ const maskBoxRef = ref<HTMLElement | null>(null);
 const textInnerRef = ref<HTMLElement | null>(null);
 const scrollDist = ref(0);
 const scrollDuration = ref('0s');
+const scanDuration = ref('0s');
 
 // 展开态标题（B站/浏览器视频等长标题）滚动相关变量
 const expandedTitleBoxRef = ref<HTMLElement | null>(null);
@@ -4174,5 +4190,41 @@ onUnmounted(() => {
     background-position: center;
     background-repeat: no-repeat;
     flex-shrink: 0;
+}
+
+/* --- 新增：仅针对单行歌词的扫描效果 --- */
+.lyric-render-text .scroll-inner {
+    /* 使用 currentColor 提取文字本身的黑/白主题色，浅色占位采用半透明灰色 */
+    background-image: linear-gradient(to right, currentColor 50%, rgba(150, 150, 150, 0.4) 50%);
+    background-size: 200% 100%;
+    background-position: 100% 0;
+    /* 初始显示右半部分的未激活颜色 */
+
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+
+    /* 注入从左到右的扫描动画 */
+    animation: scan-lyric var(--scan-duration) linear forwards;
+
+    font-weight: bold;
+}
+
+/* 结合文字过长时的乒乓滚动动画 */
+.lyric-render-text .scroll-inner.is-scrolling {
+    animation:
+        scan-lyric var(--scan-duration) linear forwards,
+        scroll-ping-pong var(--scroll-duration) linear infinite alternate;
+}
+
+/* --- 新增：扫描动画关键帧 --- */
+@keyframes scan-lyric {
+    0% {
+        background-position: 100% 0;
+    }
+
+    100% {
+        background-position: 0% 0;
+    }
 }
 </style>
