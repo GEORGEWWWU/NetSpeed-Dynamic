@@ -4,7 +4,7 @@ mod music_controller;
 mod notification;
 mod system_events;
 
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -530,10 +530,7 @@ async fn get_network_latency() -> Result<u128, String> {
     ];
 
     for ip in targets {
-        let mut pinger = match client.pinger(ip, PingIdentifier(rand::random::<u16>())).await {
-            Ok(p) => p,
-            Err(_) => continue,
-        };
+        let mut pinger = client.pinger(ip, PingIdentifier(rand::random::<u16>()));
         pinger.timeout(timeout);
         let attempt_start = Instant::now();
         if pinger.ping(PingSequence(0), &[0u8; 16]).await.is_ok() {
