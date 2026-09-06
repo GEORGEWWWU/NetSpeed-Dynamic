@@ -467,6 +467,7 @@ pub struct AppState {
             CheckMenuItem<tauri::Wry>,
             CheckMenuItem<tauri::Wry>,
             CheckMenuItem<tauri::Wry>,
+            CheckMenuItem<tauri::Wry>,
         )>,
     >,
 }
@@ -477,9 +478,11 @@ fn sync_tray_menu(
     island: Option<bool>,
     quiet: Option<bool>,
     glow: Option<bool>,
+    lock: Option<bool>,
 ) {
     // 接收到 Vue 发来的状态，直接调用原生 API 改变打勾状态，不再拼接野路子字符串
-    if let Some((island_item, quiet_item, glow_item)) = &*state.tray_items.lock().unwrap() {
+    if let Some((island_item, quiet_item, glow_item, lock_item)) = &*state.tray_items.lock().unwrap()
+    {
         if let Some(v) = island {
             let _ = island_item.set_checked(v);
         }
@@ -488,6 +491,9 @@ fn sync_tray_menu(
         }
         if let Some(v) = glow {
             let _ = glow_item.set_checked(v);
+        }
+        if let Some(v) = lock {
+            let _ = lock_item.set_checked(v);
         }
     }
 }
@@ -916,21 +922,46 @@ pub fn run() {
                                                 fg_hwnd,
                                                 winapi::um::winuser::MONITOR_DEFAULTTONEAREST,
                                             );
-                                            let mut mi: winapi::um::winuser::MONITORINFO =
-                                                std::mem::zeroed();
-                                            mi.cbSize = std::mem::size_of::<
-                                                winapi::um::winuser::MONITORINFO,
-                                            >(
-                                            )
-                                                as u32;
-                                            winapi::um::winuser::GetMonitorInfoW(monitor, &mut mi);
 
-                                            if rect.left <= mi.rcMonitor.left
-                                                && rect.top <= mi.rcMonitor.top
-                                                && rect.right >= mi.rcMonitor.right
-                                                && rect.bottom >= mi.rcMonitor.bottom
+                                            // 跨屏判定：只有全屏发生在灵动岛所在的那块显示器上才触发隐藏。
+                                            // 否则副屏全屏看片/游戏时，主屏的岛也会被误藏。
+                                            // 岛窗口取不到时（启动瞬间/已销毁）回退为旧的“任意屏全屏”行为。
+                                            let mut same_monitor_as_island = true;
+                                            if let Some(island_win) =
+                                                app_handle_for_fs.get_webview_window("widget")
                                             {
-                                                is_fullscreen = true;
+                                                if let Ok(island_hwnd) = island_win.hwnd() {
+                                                    let island_monitor =
+                                                        winapi::um::winuser::MonitorFromWindow(
+                                                            island_hwnd.0 as _,
+                                                            winapi::um::winuser::MONITOR_DEFAULTTONEAREST,
+                                                        );
+                                                    same_monitor_as_island =
+                                                        island_monitor == monitor;
+                                                }
+                                            }
+                                            if !same_monitor_as_island {
+                                                // 全屏在另一块屏上：与本应用无关，维持可见
+                                            } else {
+                                                let mut mi: winapi::um::winuser::MONITORINFO =
+                                                    std::mem::zeroed();
+                                                mi.cbSize = std::mem::size_of::<
+                                                    winapi::um::winuser::MONITORINFO,
+                                                >(
+                                                )
+                                                    as u32;
+                                                winapi::um::winuser::GetMonitorInfoW(
+                                                    monitor,
+                                                    &mut mi,
+                                                );
+
+                                                if rect.left <= mi.rcMonitor.left
+                                                    && rect.top <= mi.rcMonitor.top
+                                                    && rect.right >= mi.rcMonitor.right
+                                                    && rect.bottom >= mi.rcMonitor.bottom
+                                                {
+                                                    is_fullscreen = true;
+                                                }
                                             }
                                         }
                                     }
@@ -976,6 +1007,8 @@ pub fn run() {
                 CheckMenuItem::with_id(app, "toggle_quiet", "静默模式", true, true, None::<&str>)?;
             let glow_item =
                 CheckMenuItem::with_id(app, "toggle_glow", "流光边框", true, true, None::<&str>)?;
+            let lock_item =
+                CheckMenuItem::with_id(app, "toggle_lock", "锁定位置", true, false, None::<&str>)?;
 
             let sep2 = PredefinedMenuItem::separator(app)?;
             // 下方常规按钮（文字会自动与上方的“灵动岛”对齐）
@@ -988,8 +1021,12 @@ pub fn run() {
 
             // 2. 存入引用
             {
-                *app.state::<AppState>().tray_items.lock().unwrap() =
-                    Some((island_item.clone(), quiet_item.clone(), glow_item.clone()));
+                *app.state::<AppState>().tray_items.lock().unwrap() = Some((
+                    island_item.clone(),
+                    quiet_item.clone(),
+                    glow_item.clone(),
+                    lock_item.clone(),
+                ));
             }
 
             // 3. 构建菜单
@@ -1001,6 +1038,7 @@ pub fn run() {
                     &island_item,
                     &quiet_item,
                     &glow_item,
+                    &lock_item,
                     &sep2,
                     &console_item,
                     &reset_item,
@@ -1044,6 +1082,9 @@ pub fn run() {
                         }
                         "toggle_glow" => {
                             let _ = app_handle.emit("tray-toggle-glow", ());
+                        }
+                        "toggle_lock" => {
+                            let _ = app_handle.emit("tray-toggle-lock", ());
                         }
                         "reset_pos" => {
                             let _ = app_handle.emit("tray-reset-pos", ());
