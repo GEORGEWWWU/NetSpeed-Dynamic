@@ -350,6 +350,62 @@ import { t, currentLanguage, type AppLanguage } from '../i18n';
 const isIslandVisible = ref(false);
 const isMenuOpen = ref(false);
 
+// 形变请求序号：用于串行化 animateIslandSize，保证「最新一次请求」永远接管动画，
+// 避免旧动画（如正在进行的收缩）在异步读取窗口尺寸后覆盖新状态（如消息展开）。
+// 声明必须早于下方 watch(isIslandVisible)（immediate 回调会用到，存在 TDZ）。
+let latestAnimationRequest = 0;
+
+// 岛隐藏（窗口缩成 1×1）前记录的物理中心点 { cx, y }：
+// 恢复显示时按「保中心」重定位，避免隐藏前后态宽不同（如音乐态 260px → 网速态 150px）导致整体偏移。
+let islandHiddenCenter: { cx: number; y: number } | null = null;
+
+// 位置锁定：开启后禁止拖拽灵动岛（右键菜单切换，状态持久化）
+const isPositionLocked = ref(localStorage.getItem('nsd_position_locked') === 'true');
+
+// 锁定状态变化时同步托盘菜单勾选（含右键岛菜单/托盘菜单两条切换路径）
+watch(isPositionLocked, (val) => invoke('sync_tray_menu', { lock: val }));
+
+// ==================== 岛位置持久化 ====================
+// 拖拽结束后保存左上角物理坐标，重启时优先恢复；重置位置时清除。
+const SAVED_POS_KEY = 'nsd_island_pos';
+
+const saveIslandPosition = async () => {
+    try {
+        const [pos, size] = await Promise.all([
+            getCurrentWindow().outerPosition(),
+            getCurrentWindow().outerSize()
+        ]);
+        localStorage.setItem(SAVED_POS_KEY, JSON.stringify({ x: pos.x, y: pos.y, w: size.width, h: size.height }));
+    } catch (e) {
+        console.error('保存岛位置失败:', e);
+    }
+};
+
+// 恢复已保存的位置；坐标无效（显示器拔掉/分辨率变化导致落在所有现存屏幕外）时清除并返回 false
+const restoreSavedPosition = async (): Promise<boolean> => {
+    try {
+        const raw = localStorage.getItem(SAVED_POS_KEY);
+        if (!raw) return false;
+        const saved = JSON.parse(raw);
+        if (typeof saved?.x !== 'number' || typeof saved?.y !== 'number') return false;
+
+        // 有效性检查：保存的左上角必须落在某一块现存显示器的物理范围内
+        const monitors = await availableMonitors();
+        const valid = monitors.some(m =>
+            saved.x >= m.position.x - 8 && saved.x <= m.position.x + m.size.width - 32 &&
+            saved.y >= m.position.y - 8 && saved.y <= m.position.y + m.size.height - 8
+        );
+        if (!valid) {
+            localStorage.removeItem(SAVED_POS_KEY);
+            return false;
+        }
+        await getCurrentWindow().setPosition(new PhysicalPosition(saved.x, saved.y));
+        return true;
+    } catch {
+        return false;
+    }
+};
+
 // 监听灵动岛显隐变化，同步状态给控制台
 watch(isIslandVisible, (newVal) => {
     emit('island-status-sync', { visible: newVal });
@@ -357,8 +413,10 @@ watch(isIslandVisible, (newVal) => {
 
 // 兜底保险：OS 窗口显隐必须严格跟随灵动岛状态。
 // 关闭 → 立即开启鼠标透传（点击穿透，不拦截下层窗口）；
-//         等离开动画结束后把窗口物理缩成 1×1，彻底不可点击；
-// 开启 → 关闭透传并恢复窗口到正常尺寸（正常交互）。
+//         作废在途形变动画（防止其收尾 SetWindowPos 把窗口重新撑大）；
+//         记录当前中心点；等离开动画结束后把窗口物理缩成 1×1，彻底不可点击；
+// 开启 → 关闭透传并恢复窗口到正常尺寸，再按隐藏前中心点「保中心」重定位
+//         （隐藏期间态宽可能变化，setSize 不动左上角会导致整体偏移）。
 watch(isIslandVisible, (visible) => {
     const appWindow = getCurrentWindow();
     appWindow.setIgnoreCursorEvents(!visible).catch(() => { });
@@ -367,12 +425,32 @@ watch(isIslandVisible, (visible) => {
         // 呼出时先把窗口恢复到应有的物理尺寸（getBaseSize/appScale 此时早已初始化）
         const { w, h } = getBaseSize();
         const scaleFactor = window.devicePixelRatio || 1;
-        appWindow.setSize(new PhysicalSize(
-            Math.ceil(w * appScale.value * scaleFactor),
-            Math.ceil(h * appScale.value * scaleFactor)
-        )).catch(() => { });
+        const physW = Math.ceil(w * appScale.value * scaleFactor);
+        const physH = Math.ceil(h * appScale.value * scaleFactor);
+        appWindow.setSize(new PhysicalSize(physW, physH)).then(async () => {
+            // 保中心恢复：按隐藏前记录的中心点重算左上角，宽度变化也不再偏移
+            if (islandHiddenCenter) {
+                const { cx, y } = islandHiddenCenter;
+                islandHiddenCenter = null;
+                try {
+                    await appWindow.setPosition(new PhysicalPosition(
+                        Math.round(cx - physW / 2),
+                        y
+                    ));
+                } catch (e) { }
+            }
+        }).catch(() => { });
         return;
     }
+
+    // 关闭时：先作废所有在途形变动画，防止动画收尾的 SetWindowPos 与下面的 1×1 缩放竞态
+    latestAnimationRequest++;
+    // 记录当前中心点（窗口此刻仍是正常尺寸），供恢复时保中心重定位
+    Promise.all([appWindow.innerPosition(), appWindow.innerSize()]).then(([pos, size]) => {
+        if (!isIslandVisible.value && size.width > 2 && size.height > 2) {
+            islandHiddenCenter = { cx: pos.x + Math.round(size.width / 2), y: pos.y };
+        }
+    }).catch(() => { });
 
     // 关闭时等离开动画播完（约 350ms）再缩成 1×1；期间若又被呼出则放弃缩放
     setTimeout(() => {
@@ -2606,12 +2684,18 @@ const handleMouseMove = async (event: MouseEvent) => {
         isMouseDown = false;
         return;
     }
-    
+
+    // 位置锁定：禁止拖拽（不影响点击展开——isMouseDown 保持原状，mouseDown 坐标仍有效）
+    if (isPositionLocked.value) return;
+
     // 直接拖拽，再也没有 isPositionLocked 拦截了
     if (Math.abs(event.clientX - mouseDownX) > 5 || Math.abs(event.clientY - mouseDownY) > 5) {
         isMouseDown = false;
         try {
             await getCurrentWindow().startDragging();
+            // 拖拽结束（系统拖拽循环返回）后保存新位置，重启时恢复
+            await new Promise((resolve) => setTimeout(resolve, 80));
+            await saveIslandPosition();
         } catch (error) {
             console.error('拖拽失败:', error);
         }
@@ -2619,7 +2703,7 @@ const handleMouseMove = async (event: MouseEvent) => {
 };
 
 const handleMouseUp = async () => {
-    isMouseDown = false; // 松手啥也不干，彻底干掉自动保存
+    isMouseDown = false;
 };
 
 const handleRightClick = async (event: MouseEvent) => {
@@ -2653,11 +2737,23 @@ const handleRightClick = async (event: MouseEvent) => {
         }
     });
 
+    // 锁定/解锁位置：锁定后禁止拖拽岛
+    const togglePositionLockItem = await MenuItem.new({
+        text: isPositionLocked.value ? t('unlockPosition') : t('lockPosition'),
+        id: 'toggle_position_lock',
+        action: () => {
+            isPositionLocked.value = !isPositionLocked.value;
+            localStorage.setItem('nsd_position_locked', String(isPositionLocked.value));
+            showToast(isPositionLocked.value ? t('positionLocked') : t('positionUnlocked'));
+        }
+    });
+
     // 重置位置
     const resetPositionItem = await MenuItem.new({
         text: t('resetPosition'),
         id: 'reset_position',
         action: async () => {
+            localStorage.removeItem(SAVED_POS_KEY); // 清除拖拽保存的位置，重置后不再恢复
             await adjustWindowPosition();
             showToast(t('positionReset'));
         }
@@ -2682,6 +2778,7 @@ const handleRightClick = async (event: MouseEvent) => {
     const menu = await Menu.new();
     await menu.append(openSettingsItem);
     await menu.append(toggleGlowBorderItem);
+    await menu.append(togglePositionLockItem);
     await menu.append(resetPositionItem);
     await menu.append(closeItem);
 
@@ -2743,9 +2840,7 @@ const onInnerLeave = (el: Element, done: () => void) => {
 // 记录全局灵动岛是否正在执行形变动画
 let isSizeAnimating = false;
 let sizeAnimTimer: number | null = null;
-// 形变请求序号：用于串行化 animateIslandSize，保证「最新一次请求」永远接管动画，
-// 避免旧动画（如正在进行的收缩）在异步读取窗口尺寸后覆盖新状态（如消息展开）
-let latestAnimationRequest = 0;
+// 形变请求序号 latestAnimationRequest 已上移至文件顶部 watch(isIslandVisible) 之前声明（TDZ 要求）
 
 // 在顶部声明缩放变量
 const appScale = ref(Number(localStorage.getItem('nsd_app_scale')) || 1.0);
@@ -2757,6 +2852,18 @@ watch(appScale, (newScale) => {
 
 // 灵动岛尺寸动画核心（防漂移、防裁切、防打断抖动）
 const animateIslandSize = async (targetWidth: number, targetHeight: number) => {
+    // 岛隐藏（窗口已/将缩成 1×1）时不做形变动画：
+    // Rust 侧 start_island_animation 会用 GetWindowRect 取锚点中心，
+    // 对着 1×1 窗口取到的锚点是错的，之后所有动画都围着错误中心定位，偏移被固化。
+    // 先作废所有在途请求（防止缩 1×1 后动画收尾又把窗口撑大），再放弃本次。
+    // 注意：仍需同步 DOM 逻辑宽高（正常路径由动画结束的 island-resize 事件同步），
+    // 否则隐藏期间态切换（如音乐停止）后，恢复显示时 DOM 停在旧宽度，内容被窗口裁切。
+    if (!isIslandVisible.value) {
+        latestAnimationRequest++;
+        currentWidth.value = targetWidth * appScale.value;
+        currentHeight.value = targetHeight * appScale.value;
+        return;
+    }
     const myRequest = ++latestAnimationRequest;
     try {
         // 核心：计算最终的缩放尺寸
@@ -3180,21 +3287,29 @@ onMounted(async () => {
     // 检查本地记录的灵动岛开关状态
     const isWidgetEnabled = localStorage.getItem('nsd_widget_visible') !== 'false';
 
+    // 启动定位：优先恢复用户拖拽后保存的位置（含静默模式/岛关闭的启动路径，
+    // 否则静默模式唤起时岛会出现在窗口默认位置而非用户拖放处）；
+    // 无保存或已失效（显示器拔掉等）时回退顶部居中。
+    const restored = await restoreSavedPosition();
+    if (!restored) {
+        await adjustWindowPosition();
+    }
+
     // 只有在用户开启了灵动岛且没开静默模式时，启动才自动拉开灵动岛
     if (isWidgetEnabled && !isMsgModeEnabled.value) {
-        // 第一步：在窗口还是隐藏状态下，直接强制把它算好并扔到屏幕中间！
-        await adjustWindowPosition();
-        
-        // 第二步：位置就绪后，再让透明的 OS 窗口容器显示
+        // 位置就绪后，再让透明的 OS 窗口容器显示
         await invoke('show_window_no_activate', { label: 'widget' });
         
-        // 第三步：切换 v-show 显示岛体内容（窗口此前已显示且定位完成，不会在左上角闪烁）
+        // 切换 v-show 显示岛体内容（窗口此前已显示且定位完成，不会在左上角闪烁）
         isIslandVisible.value = true;
 
         // 延时加固：防止某些显示器的 DPI 汇报过慢，0.5秒后再居中夯实一次
-        setTimeout(async () => {
-            await adjustWindowPosition();
-        }, 500);
+        // （仅未恢复保存位置时执行，否则会把用户拖拽的岛拉回居中）
+        if (!restored) {
+            setTimeout(async () => {
+                await adjustWindowPosition();
+            }, 500);
+        }
     }
 
     fetchSpeedStats();
@@ -3268,8 +3383,8 @@ onMounted(async () => {
         currentFps.value = event.payload.fps;
     });
 
-    // 启动时初始化同步一次托盘流光状态
-    invoke('sync_tray_menu', { glow: isGlowBorderEnabled.value });
+    // 启动时初始化同步一次托盘流光/锁定状态
+    invoke('sync_tray_menu', { glow: isGlowBorderEnabled.value, lock: isPositionLocked.value });
 
     // 监听托盘发来的 流光边框 开关信号
     await listen('tray-toggle-glow', () => {
@@ -3278,8 +3393,16 @@ onMounted(async () => {
         showToast(isGlowBorderEnabled.value ? t('glowBorderEnabled') : t('glowBorderDisabled'));
     });
 
+    // 监听托盘发来的 锁定位置 开关信号
+    await listen('tray-toggle-lock', () => {
+        isPositionLocked.value = !isPositionLocked.value;
+        localStorage.setItem('nsd_position_locked', String(isPositionLocked.value));
+        showToast(isPositionLocked.value ? t('positionLocked') : t('positionUnlocked'));
+    });
+
     // 监听托盘发来的 重置位置 信号
     await listen('tray-reset-pos', async () => {
+        localStorage.removeItem(SAVED_POS_KEY); // 清除拖拽保存的位置
         await adjustWindowPosition();
         showToast(t('positionReset'), 'sys');
     });
