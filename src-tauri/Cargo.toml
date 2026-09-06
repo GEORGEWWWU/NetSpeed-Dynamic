@@ -55,5 +55,6 @@ realfft = "3"
 rand = "0.8"
 tokio-tungstenite = "0.21"
 futures-util = "0.3"
+surge-ping = "0.8"
 # 活动池 HTTP 入站服务（127.0.0.1:47300）
 axum = { version = "0.8", features = ["json", "tokio"] }

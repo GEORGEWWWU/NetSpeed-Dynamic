@@ -33,15 +33,14 @@
                                     <span v-if="topActivity.kind" class="activity-kind">{{ topActivity.kind }}</span>
                                 </div>
                                 <div class="activity-subtitle" v-if="topActivity.subtitle">{{ topActivity.subtitle }}</div>
-                                <div class="activity-progress-row">
+                                <div v-if="topActivity.show_progress !== false" class="activity-progress-row">
                                     <div class="activity-progress-track">
                                         <div class="activity-progress-fill"
                                             :class="{ 'is-indeterminate': topActivity.progress == null }"
                                             :style="topActivity.progress != null ? { width: topActivity.progress + '%' } : {}">
                                         </div>
                                     </div>
-                                    <span v-if="topActivity.progress != null" class="activity-progress-text">{{
-                                        topActivity.progress }}%</span>
+                                    <span v-if="topActivity.progress != null" class="activity-progress-text">{{ topActivity.progress }}%</span>
                                 </div>
                             </div>
                         </div>
@@ -677,6 +676,7 @@ interface ActivityData {
     icon: string;
     color: string;
     progress: number | null;
+    show_progress: boolean;
     priority: number;
     remaining_ms: number | null;
     extra: unknown;
