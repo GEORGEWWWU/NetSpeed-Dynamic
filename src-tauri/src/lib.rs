@@ -530,7 +530,7 @@ async fn get_network_latency() -> Result<u128, String> {
     ];
 
     for ip in targets {
-        let mut pinger = client.pinger(ip, PingIdentifier(rand::random::<u16>()));
+        let mut pinger = client.pinger(ip, PingIdentifier(rand::random::<u16>())).await;
         pinger.timeout(timeout);
         let attempt_start = Instant::now();
         if pinger.ping(PingSequence(0), &[0u8; 16]).await.is_ok() {
