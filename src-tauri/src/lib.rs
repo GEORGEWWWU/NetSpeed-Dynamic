@@ -511,8 +511,8 @@ fn get_network_stats(state: State<'_, AppState>) -> (u64, u64) {
 #[tauri::command]
 async fn get_network_latency() -> Result<u128, String> {
     let timeout = Duration::from_millis(1500);
-    // 主目标 + 备用目标：避免单一 IP/端口被网络环境拦截导致误判断网
-    for addr_str in ["223.5.5.5:53", "114.114.114.114:53"] {
+    // 多目标：避免单一 IP/端口被网络环境拦截导致误判断网
+    for addr_str in ["223.5.5.5:53", "223.6.6.6:53", "119.29.29.29:53", "114.114.114.114:53", "1.0.0.1:53"] {
         let addr: SocketAddr = match addr_str.parse() {
             Ok(a) => a,
             Err(_) => continue,
