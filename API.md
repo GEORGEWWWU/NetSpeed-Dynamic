@@ -105,6 +105,7 @@
   "icon": "https://example.com/dl.png", // 图标 URL
   "color": "#00C853",            // 强调色（图标底色 + 进度条颜色）
   "progress": 42,                // 进度 0~100；null 表示不确定进度
+  "show_progress": 1,             // 0=隐藏进度条，1/不传=显示（默认）
   "priority": 10,                // 优先级，越大越先展示
   "ttl_ms": 3600000,             // 存活时长，到期自动移除
   "extra": { "url": "https://...", "speed": "3.2MB/s" } // 任意扩展
@@ -120,6 +121,7 @@
 | `icon` | string | 否 | `""` | 图标地址。推荐 **http(s) URL 或 data: URI**（`<img src>` 直载，不受 CORS 限制）。本地文件需先经 Tauri `convertFileSrc` 转成 asset 协议再传入。空串显示默认活动图标（心跳图形） |
 | `color` | string | 否 | `""` | 强调色，**任意 CSS 颜色值**（`#00C853`、`rgb(...)`、`hsl(...)`）。作用于：头像图标底色、进度条填充色、kind 徽标底色 |
 | `progress` | number\|null | 否 | `null` | 进度百分比 **0–100**。超出自动截断。`null` = 不确定进度（前端显示流动动画，适合"处理中/等待中"） |
+| `show_progress` | number\|null | 否 | `1` | `0`=隐藏进度条；`1`=显示；`null`/缺失=显示（默认）。隐藏后进度条区域不渲染，卡片更紧凑 |
 | `priority` | number | 否 | `0` | 可正可负。多活动并存时数字大的优先上岛（见 3.5 排序） |
 | `ttl_ms` | number | 否 | 永不过期 | 相对**服务端收到时刻**的存活毫秒，到期自动移除。已有活动不传 = 保留原过期时间（不会误刷新倒计时） |
 | `extra` | object\|null | 否 | `null` | 任意 JSON 扩展字段，服务端原样存储、原样透传，前端可自由消费。**大小上限 16KB**（序列化字节数），超限请求返回 `400`（见 7） |
@@ -156,6 +158,7 @@
 |---|---|---|---|
 | `title`/`subtitle`/`kind`/`icon`/`color` | 覆盖为字符串 | 清空为 `""` | 不改 |
 | `progress` | 覆盖为确定进度 | 转为**不确定进度**（`null`） | 不改 |
+| `show_progress` | `0`=隐藏, `1`=显示 | 不支持置空 | 不改 |
 | `priority`/`ttl_ms` | 覆盖 | 不支持置空 | 不改 |
 | `extra` | 整体替换 | 清除 | 不改 |
 
@@ -174,6 +177,7 @@ GET 与事件推送中的每个活动对象：
   "icon": "https://example.com/dl.png",
   "color": "#00C853",
   "progress": 66,
+  "show_progress": true,
   "priority": 10,
   "remaining_ms": 12400,
   "extra": { "speed": "3.2MB/s" }
@@ -183,6 +187,7 @@ GET 与事件推送中的每个活动对象：
 | 字段 | 说明 |
 |---|---|
 | `remaining_ms` | 距自动过期的剩余毫秒；`null` = 永不过期。每帧随快照刷新，前端可做倒计时/到期动画 |
+| `show_progress` | `true`=显示进度条；`false`=隐藏。快照中为 boolean 类型 |
 | 其余字段 | 与 3.1 语义一致；`icon`/`color` 空串表示"无"，前端走默认样式 |
 
 ### 3.5 排序与过滤规则
@@ -330,6 +335,7 @@ interface ActivityData {
     icon: string;
     color: string;
     progress: number | null;
+    show_progress: boolean;
     priority: number;
     remaining_ms: number | null;
     extra: unknown;
@@ -353,11 +359,12 @@ const stop = await listen<{ ts: number, activities: ActivityData[] }>('activity-
 | 池由空 → 非空 | 岛体**展开**到活动卡片宽度（≈max(设置的消息展开宽, 320px)×70px），顶掉正在显示的系统消息/音乐展开态 |
 | 持续刷新 | 进度条与百分比随 30Hz 快照实时更新（`transition: width 0.12s` 平滑过渡）；换活动（新 id 上岛）自动切换内容 |
 | `progress: null` | 进度条显示**流动动画**（不确定进度） |
+| `show_progress: false` | 进度条**完全隐藏**，卡片更紧凑，适合纯文本状态通知 |
 | 池变空 | 岛体**自动收起**，回落到底部基础显示（网速 / 音乐 / 自定义内容等） |
 | 与消息通知冲突 | 活动展示优先级高于系统消息；活动结束后，消息轮询自动恢复 |
 | 岛处于隐藏状态（静默模式） | 遵循应用现有静默策略，活动**不强制唤醒**岛体 |
 
-卡片视觉：左侧圆形图标（`color` 着色，缺省用默认图标）→ 右侧「标题 + kind 徽标」/ 副标题 / 底部进度条 + 百分比。
+卡片视觉：左侧圆形图标（`color` 着色，缺省用默认图标）→ 右侧「标题 + kind 徽标」/ 副标题 / 底部进度条 + 百分比（`show_progress: false` 时隐藏进度条区域）。
 
 ---
 

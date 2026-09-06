@@ -47,6 +47,8 @@ struct Activity {
     color: String,
     /// Some(v)=确定进度 0-100；None=不确定进度(indeterminate)
     progress: Option<u8>,
+    /// false=隐藏进度条；true=显示（默认）
+    show_progress: bool,
     /// 越大越优先展示（同优先级按更新时间倒序）
     priority: i32,
     updated_ms: u64,
@@ -80,6 +82,8 @@ struct ActivityOut {
     icon: String,
     color: String,
     progress: Option<u8>,
+    /// false=隐藏进度条；true=显示（默认）
+    show_progress: bool,
     priority: i32,
     /// 剩余存活毫秒；null = 永不过期
     remaining_ms: Option<u64>,
@@ -97,6 +101,7 @@ impl From<&Activity> for ActivityOut {
             icon: a.icon.clone(),
             color: a.color.clone(),
             progress: a.progress,
+            show_progress: a.show_progress,
             priority: a.priority,
             remaining_ms,
             extra: a.extra.clone(),
@@ -116,6 +121,8 @@ struct CreateActivityReq {
     icon: Option<String>,
     color: Option<String>,
     progress: Option<u8>,
+    /// 0=隐藏进度条；1=显示（默认）；null/missing=显示
+    show_progress: Option<u8>,
     priority: Option<i32>,
     /// 相对存活时长；已有活动不传则不重置过期
     ttl_ms: Option<u64>,
@@ -131,6 +138,8 @@ struct PatchActivityReq {
     icon: Option<Option<String>>,
     color: Option<Option<String>>,
     progress: Option<Option<u8>>,
+    /// 0=隐藏进度条；1=显示；null/missing=不改
+    show_progress: Option<u8>,
     priority: Option<i32>,
     ttl_ms: Option<u64>,
     extra: Option<Option<serde_json::Value>>,
@@ -239,6 +248,7 @@ async fn create_activity(
         icon: req.icon.unwrap_or_default(),
         color: req.color.unwrap_or_default(),
         progress: req.progress.map(clamp_progress),
+        show_progress: req.show_progress.map(|v| v != 0).unwrap_or(true),
         priority: req.priority.unwrap_or_default(),
         updated_ms: now,
         expires_at: req.ttl_ms.map(|ttl| now.saturating_add(ttl)),
@@ -290,6 +300,10 @@ async fn patch_activity(
     // progress：Some(Some(v)) 覆盖；Some(None) 转为不确定进度
     if let Some(p) = req.progress {
         entry.progress = p.map(clamp_progress);
+    }
+    // show_progress：0=隐藏，1=显示，null/missing=不改
+    if let Some(v) = req.show_progress {
+        entry.show_progress = v != 0;
     }
     if let Some(p) = req.priority {
         entry.priority = p;
