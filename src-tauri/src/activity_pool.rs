@@ -2,11 +2,13 @@
 // Rust 侧维护活动池状态，并以 30Hz 节流将快照定向推送给 widget 灵动岛窗口。
 //
 // HTTP API（均绑定 127.0.0.1:47300）：
-//   POST   /api/activities               创建或整体更新一个活动（幂等 upsert）
+//   POST   /api/activities               创建活动（仅创建：同 id 已存在则 409）
 //   PATCH  /api/activities/{id}          部分更新（字段缺失=不改，null/空串=清除）
 //   DELETE /api/activities/{id}          删除单个活动
 //   DELETE /api/activities               清空活动池
 //   GET    /api/activities               获取当前快照（调试用）
+//
+//   约束：extra 字段大小上限 EXTRA_MAX_BYTES（16KB），超限请求返回 400。
 //
 // 事件推送（30Hz 节流，定向 emit 到 "widget" 窗口）：
 //   event: "activity-pool"
@@ -28,6 +30,9 @@ const ACTIVITY_HTTP_PORT: u16 = 47300;
 const WIDGET_LABEL: &str = "widget";
 /// 节流推送间隔（30Hz）
 const TICK_INTERVAL: Duration = Duration::from_millis(33);
+/// extra 大小上限（序列化后的字节数）。每帧全量快照序列化会携带每个 extra，
+/// 无上限的超大 extra 会白白拖累 CPU，故设硬上限拒绝超限写入。
+const EXTRA_MAX_BYTES: usize = 16 * 1024;
 
 // ---------- 内部数据模型 ----------
 
@@ -44,7 +49,6 @@ struct Activity {
     progress: Option<u8>,
     /// 越大越优先展示（同优先级按更新时间倒序）
     priority: i32,
-    created_ms: u64,
     updated_ms: u64,
     /// Some = 绝对过期时间戳(ms)，到期自动从池中移除
     expires_at: Option<u64>,
@@ -53,24 +57,6 @@ struct Activity {
 }
 
 impl Activity {
-    fn new(id: String) -> Self {
-        let now = now_ms();
-        Self {
-            id,
-            title: String::new(),
-            subtitle: String::new(),
-            kind: String::new(),
-            icon: String::new(),
-            color: String::new(),
-            progress: None,
-            priority: 0,
-            created_ms: now,
-            updated_ms: now,
-            expires_at: None,
-            extra: None,
-        }
-    }
-
     /// 是否没有任何可展示内容（池里留着它没有意义）
     fn is_blank(&self) -> bool {
         self.title.is_empty()
@@ -120,9 +106,9 @@ impl From<&Activity> for ActivityOut {
 
 // ---------- HTTP 请求体 ----------
 
-/// POST 创建/整体更新
+/// POST 创建活动请求体
 #[derive(Debug, Clone, Default, Deserialize)]
-struct UpsertActivityReq {
+struct CreateActivityReq {
     id: String,
     title: Option<String>,
     subtitle: Option<String>,
@@ -175,6 +161,21 @@ fn clamp_progress(v: u8) -> u8 {
     v.min(100)
 }
 
+/// extra 值是否超过大小上限（按真实序列化字节数统计，与推送时消耗一致）
+fn extra_exceeds_limit(v: &serde_json::Value) -> bool {
+    serde_json::to_vec(v)
+        .map(|vec| vec.len() > EXTRA_MAX_BYTES)
+        // Value 通常总能序列化；万一失败按超限保守拒绝
+        .unwrap_or(true)
+}
+
+fn extra_limit_err() -> (axum::http::StatusCode, String) {
+    (
+        axum::http::StatusCode::BAD_REQUEST,
+        format!("extra 超过 {} 字节上限", EXTRA_MAX_BYTES),
+    )
+}
+
 /// 快照：清理过期 + 排序 + 转外发结构（调用方需持有锁）
 fn build_snapshot(inner: &PoolInner) -> Vec<ActivityOut> {
     let now = now_ms();
@@ -205,9 +206,9 @@ fn purge_expired(inner: &mut PoolInner) -> bool {
 
 // ---------- HTTP handlers ----------
 
-async fn upsert_activity(
+async fn create_activity(
     AxState(state): AxState<ServerState>,
-    Json(req): Json<UpsertActivityReq>,
+    Json(req): Json<CreateActivityReq>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
     if req.id.trim().is_empty() {
         return Err((
@@ -215,46 +216,35 @@ async fn upsert_activity(
             "id 不能为空".into(),
         ));
     }
+    // 大小校验无需持锁，放最前
+    if req.extra.as_ref().is_some_and(extra_exceeds_limit) {
+        return Err(extra_limit_err());
+    }
 
     let mut inner = state.pool.lock().await;
+    // 仅创建：id 已被占用时返回冲突（更新请走 PATCH，重建请先 DELETE）
+    if inner.items.contains_key(&req.id) {
+        return Err((
+            axum::http::StatusCode::CONFLICT,
+            format!("活动 {} 已存在", req.id),
+        ));
+    }
+
     let now = now_ms();
-
-    let entry = inner.items.entry(req.id.clone()).or_insert_with(|| {
-        let mut a = Activity::new(req.id.clone());
-        a.created_ms = now;
-        a
-    });
-
-    // 覆盖式更新：仅对 Some 字段生效（POST 幂等，不隐式清空）
-    if let Some(v) = req.title {
-        entry.title = v;
-    }
-    if let Some(v) = req.subtitle {
-        entry.subtitle = v;
-    }
-    if let Some(v) = req.kind {
-        entry.kind = v;
-    }
-    if let Some(v) = req.icon {
-        entry.icon = v;
-    }
-    if let Some(v) = req.color {
-        entry.color = v;
-    }
-    if let Some(v) = req.progress {
-        entry.progress = Some(clamp_progress(v));
-    }
-    if let Some(v) = req.priority {
-        entry.priority = v;
-    }
-    // ttl：显式传入才重算过期
-    if let Some(ttl) = req.ttl_ms {
-        entry.expires_at = Some(now.saturating_add(ttl));
-    }
-    if let Some(v) = req.extra {
-        entry.extra = Some(v);
-    }
-    entry.updated_ms = now;
+    let activity = Activity {
+        id: req.id.clone(),
+        title: req.title.unwrap_or_default(),
+        subtitle: req.subtitle.unwrap_or_default(),
+        kind: req.kind.unwrap_or_default(),
+        icon: req.icon.unwrap_or_default(),
+        color: req.color.unwrap_or_default(),
+        progress: req.progress.map(clamp_progress),
+        priority: req.priority.unwrap_or_default(),
+        updated_ms: now,
+        expires_at: req.ttl_ms.map(|ttl| now.saturating_add(ttl)),
+        extra: req.extra,
+    };
+    inner.items.insert(req.id.clone(), activity);
 
     inner.dirty = true;
     drop(inner);
@@ -267,6 +257,11 @@ async fn patch_activity(
     axum::extract::Path(id): axum::extract::Path<String>,
     Json(req): Json<PatchActivityReq>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
+    // PATCH 传 null 表示清除，不校验；只有写入实际值才查大小。校验无需持锁，放最前。
+    if req.extra.as_ref().and_then(|o| o.as_ref()).is_some_and(extra_exceeds_limit) {
+        return Err(extra_limit_err());
+    }
+
     let mut inner = state.pool.lock().await;
 
     let entry = match inner.items.get_mut(&id) {
@@ -361,7 +356,7 @@ pub fn start(app: AppHandle) {
     let router = Router::new()
         .route(
             "/api/activities",
-            post(upsert_activity)
+            post(create_activity)
                 .get(list_activities)
                 .delete(clear_activities),
         )
@@ -389,9 +384,16 @@ pub fn start(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut ticker = tokio::time::interval(TICK_INTERVAL);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        // 记录上次是否推过非空快照：只有"非空 → 空"才补推一次空快照通知前端收起岛体；
+        // 持续为空则完全静默（空池不空推），避免清空池 / 空活动残留时反复空推 []。
+        let mut had_content = false;
         loop {
             ticker.tick().await;
             let mut inner = state.pool.lock().await;
+            // 处于"池空且已收起"稳定态：没有活动、没有过期可清、没有内容可推，直接静默
+            if inner.items.is_empty() && !had_content {
+                continue;
+            }
             // 顺带清理过期活动（可能产生脏标记）
             let purged = purge_expired(&mut inner);
             if !inner.dirty && !purged {
@@ -400,6 +402,16 @@ pub fn start(app: AppHandle) {
             inner.dirty = false;
             let snapshot = build_snapshot(&inner);
             drop(inner);
+
+            if snapshot.is_empty() {
+                // 空快照仅在"刚由非空变空"时推一次
+                if !had_content {
+                    continue;
+                }
+                had_content = false;
+            } else {
+                had_content = true;
+            }
 
             let payload = serde_json::json!({
                 "ts": now_ms(),

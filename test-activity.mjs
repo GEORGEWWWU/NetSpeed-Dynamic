@@ -13,6 +13,8 @@ async function main() {
 
     try {
         if (cmd === 'create') {
+            // POST 仅创建：同 id 已存在会 409，故先 DELETE（幂等）再创建，保证可重复演示
+            await fetch(`${BASE}/dl-demo`, { method: 'DELETE' });
             const r = await fetch(BASE, json({
                 id: 'dl-demo', title: '正在下载', subtitle: 'NetSpeed-Setup.exe',
                 kind: '下载', progress: 15, priority: 10, ttl_ms: 60000

@@ -2393,7 +2393,6 @@ const fetchSpeedStats = async () => {
                     networkStatus.value = 'error';     // 无流量变化，说明网络异常
                 console.log(latency, rxDiff, txDiff);
             } catch (error) {
-                console.error('延迟获取失败:', error);
                 networkStatus.value = 'error';
             }
         }
