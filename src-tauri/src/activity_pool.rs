@@ -2,7 +2,7 @@
 // Rust 侧维护活动池状态，并以 30Hz 节流将快照定向推送给 widget 灵动岛窗口。
 //
 // HTTP API（均绑定 127.0.0.1:47300）：
-//   POST   /api/activities               创建或整体更新一个活动（幂等 upsert）
+//   POST   /api/activities               创建活动（仅创建：同 id 已存在则 409）
 //   PATCH  /api/activities/{id}          部分更新（字段缺失=不改，null/空串=清除）
 //   DELETE /api/activities/{id}          删除单个活动
 //   DELETE /api/activities               清空活动池
@@ -49,7 +49,6 @@ struct Activity {
     progress: Option<u8>,
     /// 越大越优先展示（同优先级按更新时间倒序）
     priority: i32,
-    created_ms: u64,
     updated_ms: u64,
     /// Some = 绝对过期时间戳(ms)，到期自动从池中移除
     expires_at: Option<u64>,
@@ -58,24 +57,6 @@ struct Activity {
 }
 
 impl Activity {
-    fn new(id: String) -> Self {
-        let now = now_ms();
-        Self {
-            id,
-            title: String::new(),
-            subtitle: String::new(),
-            kind: String::new(),
-            icon: String::new(),
-            color: String::new(),
-            progress: None,
-            priority: 0,
-            created_ms: now,
-            updated_ms: now,
-            expires_at: None,
-            extra: None,
-        }
-    }
-
     /// 是否没有任何可展示内容（池里留着它没有意义）
     fn is_blank(&self) -> bool {
         self.title.is_empty()
@@ -125,9 +106,9 @@ impl From<&Activity> for ActivityOut {
 
 // ---------- HTTP 请求体 ----------
 
-/// POST 创建/整体更新
+/// POST 创建活动请求体
 #[derive(Debug, Clone, Default, Deserialize)]
-struct UpsertActivityReq {
+struct CreateActivityReq {
     id: String,
     title: Option<String>,
     subtitle: Option<String>,
@@ -180,9 +161,12 @@ fn clamp_progress(v: u8) -> u8 {
     v.min(100)
 }
 
-/// extra 值是否超过大小上限
+/// extra 值是否超过大小上限（按真实序列化字节数统计，与推送时消耗一致）
 fn extra_exceeds_limit(v: &serde_json::Value) -> bool {
-    v.to_string().len() > EXTRA_MAX_BYTES
+    serde_json::to_vec(v)
+        .map(|vec| vec.len() > EXTRA_MAX_BYTES)
+        // Value 通常总能序列化；万一失败按超限保守拒绝
+        .unwrap_or(true)
 }
 
 fn extra_limit_err() -> (axum::http::StatusCode, String) {
@@ -222,9 +206,9 @@ fn purge_expired(inner: &mut PoolInner) -> bool {
 
 // ---------- HTTP handlers ----------
 
-async fn upsert_activity(
+async fn create_activity(
     AxState(state): AxState<ServerState>,
-    Json(req): Json<UpsertActivityReq>,
+    Json(req): Json<CreateActivityReq>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
     if req.id.trim().is_empty() {
         return Err((
@@ -238,44 +222,29 @@ async fn upsert_activity(
     }
 
     let mut inner = state.pool.lock().await;
+    // 仅创建：id 已被占用时返回冲突（更新请走 PATCH，重建请先 DELETE）
+    if inner.items.contains_key(&req.id) {
+        return Err((
+            axum::http::StatusCode::CONFLICT,
+            format!("活动 {} 已存在", req.id),
+        ));
+    }
+
     let now = now_ms();
-
-    let entry = inner.items.entry(req.id.clone()).or_insert_with(|| {
-        let mut a = Activity::new(req.id.clone());
-        a.created_ms = now;
-        a
-    });
-
-    // 覆盖式更新：仅对 Some 字段生效（POST 幂等，不隐式清空）
-    if let Some(v) = req.title {
-        entry.title = v;
-    }
-    if let Some(v) = req.subtitle {
-        entry.subtitle = v;
-    }
-    if let Some(v) = req.kind {
-        entry.kind = v;
-    }
-    if let Some(v) = req.icon {
-        entry.icon = v;
-    }
-    if let Some(v) = req.color {
-        entry.color = v;
-    }
-    if let Some(v) = req.progress {
-        entry.progress = Some(clamp_progress(v));
-    }
-    if let Some(v) = req.priority {
-        entry.priority = v;
-    }
-    // ttl：显式传入才重算过期
-    if let Some(ttl) = req.ttl_ms {
-        entry.expires_at = Some(now.saturating_add(ttl));
-    }
-    if let Some(v) = req.extra {
-        entry.extra = Some(v);
-    }
-    entry.updated_ms = now;
+    let activity = Activity {
+        id: req.id.clone(),
+        title: req.title.unwrap_or_default(),
+        subtitle: req.subtitle.unwrap_or_default(),
+        kind: req.kind.unwrap_or_default(),
+        icon: req.icon.unwrap_or_default(),
+        color: req.color.unwrap_or_default(),
+        progress: req.progress.map(clamp_progress),
+        priority: req.priority.unwrap_or_default(),
+        updated_ms: now,
+        expires_at: req.ttl_ms.map(|ttl| now.saturating_add(ttl)),
+        extra: req.extra,
+    };
+    inner.items.insert(req.id.clone(), activity);
 
     inner.dirty = true;
     drop(inner);
@@ -387,7 +356,7 @@ pub fn start(app: AppHandle) {
     let router = Router::new()
         .route(
             "/api/activities",
-            post(upsert_activity)
+            post(create_activity)
                 .get(list_activities)
                 .delete(clear_activities),
         )
