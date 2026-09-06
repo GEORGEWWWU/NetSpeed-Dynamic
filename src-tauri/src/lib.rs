@@ -4,7 +4,7 @@ mod music_controller;
 mod notification;
 mod system_events;
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -16,6 +16,7 @@ use tauri_plugin_autostart::MacosLauncher;
 use tokio::sync::Mutex as TokioMutex;
 
 use futures_util::{SinkExt, StreamExt};
+use surge_ping::{Client, Config, PingIdentifier, PingSequence};
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use tokio::sync::broadcast;
@@ -517,17 +518,25 @@ fn get_network_stats(state: State<'_, AppState>) -> (u64, u64) {
 #[tauri::command]
 async fn get_network_latency() -> Result<u128, String> {
     let timeout = Duration::from_millis(1500);
-    // 多目标：避免单一 IP/端口被网络环境拦截导致误判断网
-    for addr_str in ["223.5.5.5:53", "223.6.6.6:53", "119.29.29.29:53", "114.114.114.114:53", "1.0.0.1:53"] {
-        let addr: SocketAddr = match addr_str.parse() {
-            Ok(a) => a,
+    let client = Client::new(&Config::default())
+        .map_err(|e| format!("Failed to create ping client: {}", e))?;
+
+    // 多目标 ICMP ping：避免单一 IP 被网络环境拦截导致误判断网
+    let targets = [
+        IpAddr::V4(Ipv4Addr::new(223, 5, 5, 5)),
+        IpAddr::V4(Ipv4Addr::new(223, 6, 6, 6)),
+        IpAddr::V4(Ipv4Addr::new(119, 29, 29, 29)),
+        IpAddr::V4(Ipv4Addr::new(1, 0, 0, 1)),
+    ];
+
+    for ip in targets {
+        let mut pinger = match client.pinger(ip, PingIdentifier(rand::random::<u16>())).await {
+            Ok(p) => p,
             Err(_) => continue,
         };
+        pinger.timeout(timeout);
         let attempt_start = Instant::now();
-        if tokio::time::timeout(timeout, tokio::net::TcpStream::connect(addr))
-            .await
-            .is_ok()
-        {
+        if pinger.ping(PingSequence(0), &[0u8; 16]).await.is_ok() {
             return Ok(attempt_start.elapsed().as_millis());
         }
     }
