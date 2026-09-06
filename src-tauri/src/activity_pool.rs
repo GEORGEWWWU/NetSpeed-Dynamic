@@ -8,6 +8,8 @@
 //   DELETE /api/activities               清空活动池
 //   GET    /api/activities               获取当前快照（调试用）
 //
+//   约束：extra 字段大小上限 EXTRA_MAX_BYTES（16KB），超限请求返回 400。
+//
 // 事件推送（30Hz 节流，定向 emit 到 "widget" 窗口）：
 //   event: "activity-pool"
 //   payload: { "ts": ..., "activities": [Activity...] } 按 (priority, updated) 排序
@@ -28,6 +30,9 @@ const ACTIVITY_HTTP_PORT: u16 = 47300;
 const WIDGET_LABEL: &str = "widget";
 /// 节流推送间隔（30Hz）
 const TICK_INTERVAL: Duration = Duration::from_millis(33);
+/// extra 大小上限（序列化后的字节数）。每帧全量快照序列化会携带每个 extra，
+/// 无上限的超大 extra 会白白拖累 CPU，故设硬上限拒绝超限写入。
+const EXTRA_MAX_BYTES: usize = 16 * 1024;
 
 // ---------- 内部数据模型 ----------
 
@@ -175,6 +180,18 @@ fn clamp_progress(v: u8) -> u8 {
     v.min(100)
 }
 
+/// extra 值是否超过大小上限
+fn extra_exceeds_limit(v: &serde_json::Value) -> bool {
+    v.to_string().len() > EXTRA_MAX_BYTES
+}
+
+fn extra_limit_err() -> (axum::http::StatusCode, String) {
+    (
+        axum::http::StatusCode::BAD_REQUEST,
+        format!("extra 超过 {} 字节上限", EXTRA_MAX_BYTES),
+    )
+}
+
 /// 快照：清理过期 + 排序 + 转外发结构（调用方需持有锁）
 fn build_snapshot(inner: &PoolInner) -> Vec<ActivityOut> {
     let now = now_ms();
@@ -214,6 +231,10 @@ async fn upsert_activity(
             axum::http::StatusCode::BAD_REQUEST,
             "id 不能为空".into(),
         ));
+    }
+    // 大小校验无需持锁，放最前
+    if req.extra.as_ref().is_some_and(extra_exceeds_limit) {
+        return Err(extra_limit_err());
     }
 
     let mut inner = state.pool.lock().await;
@@ -267,6 +288,11 @@ async fn patch_activity(
     axum::extract::Path(id): axum::extract::Path<String>,
     Json(req): Json<PatchActivityReq>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
+    // PATCH 传 null 表示清除，不校验；只有写入实际值才查大小。校验无需持锁，放最前。
+    if req.extra.as_ref().and_then(|o| o.as_ref()).is_some_and(extra_exceeds_limit) {
+        return Err(extra_limit_err());
+    }
+
     let mut inner = state.pool.lock().await;
 
     let entry = match inner.items.get_mut(&id) {
@@ -389,9 +415,16 @@ pub fn start(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut ticker = tokio::time::interval(TICK_INTERVAL);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        // 记录上次是否推过非空快照：只有"非空 → 空"才补推一次空快照通知前端收起岛体；
+        // 持续为空则完全静默（空池不空推），避免清空池 / 空活动残留时反复空推 []。
+        let mut had_content = false;
         loop {
             ticker.tick().await;
             let mut inner = state.pool.lock().await;
+            // 处于"池空且已收起"稳定态：没有活动、没有过期可清、没有内容可推，直接静默
+            if inner.items.is_empty() && !had_content {
+                continue;
+            }
             // 顺带清理过期活动（可能产生脏标记）
             let purged = purge_expired(&mut inner);
             if !inner.dirty && !purged {
@@ -400,6 +433,16 @@ pub fn start(app: AppHandle) {
             inner.dirty = false;
             let snapshot = build_snapshot(&inner);
             drop(inner);
+
+            if snapshot.is_empty() {
+                // 空快照仅在"刚由非空变空"时推一次
+                if !had_content {
+                    continue;
+                }
+                had_content = false;
+            } else {
+                had_content = true;
+            }
 
             let payload = serde_json::json!({
                 "ts": now_ms(),
