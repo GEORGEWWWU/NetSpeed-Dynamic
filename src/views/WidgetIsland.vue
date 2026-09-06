@@ -446,8 +446,10 @@ watch(isIslandVisible, (visible) => {
     // 关闭时：先作废所有在途形变动画，防止动画收尾的 SetWindowPos 与下面的 1×1 缩放竞态
     latestAnimationRequest++;
     // 记录当前中心点（窗口此刻仍是正常尺寸），供恢复时保中心重定位
+    // 先捕获状态快照，避免 Promise 异步回调中 isIslandVisible 已被改变导致竞态
+    const wasVisible = isIslandVisible.value;
     Promise.all([appWindow.innerPosition(), appWindow.innerSize()]).then(([pos, size]) => {
-        if (!isIslandVisible.value && size.width > 2 && size.height > 2) {
+        if (!wasVisible && size.width > 2 && size.height > 2) {
             islandHiddenCenter = { cx: pos.x + Math.round(size.width / 2), y: pos.y };
         }
     }).catch(() => { });
