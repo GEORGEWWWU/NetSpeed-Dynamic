@@ -24,15 +24,20 @@
 
 ---
 
-NetSpeed Dynamic Pro（NSD）是一个基于 Tauri 2、Vue 3、TypeScript 与 Rust 构建的 Windows 桌面应用。它将 “实时网速监控、系统资源观察、音乐控制、系统通知、任务栏插件与个性化配置” 封装在一个悬浮式 Dynamic Island 中，旨在为桌面环境提供更轻量、更顺手的状态展示与交互体验。
+# 重要公告
+由于架构限制和性能问题，这个项目不会再做大开发了，NotchPeninsula 将继承此项目，你可以移步前往 [NPS 仓库](https://github.com/GEORGEWWWU/NotchPeninsula) 关注一下，体验上我将尽力把NSD有的功能都完美移植到新项目中。
+
+**但这不意味着即将停止维护！** 而是主要转向修复和稳定功能为主，感谢各位对此项目的持续关注，我们新家见。
+
+👉 NPS v1.3.0 主要新增歌词全套显示能力、媒体控制器交互、待机显示自定义、动画过渡与更新提示；调整唤出交互逻辑；修复歌词、媒体控制器各类 BUG，同时对动画、布局、内存占用等多项细节进行优化。下载地址：[https://github.com/GEORGEWWWU/NotchPeninsula/releases/latest](https://github.com/GEORGEWWWU/NotchPeninsula/releases/latest)
+
+<img width="1920" height="200" alt="NotchPeninsula 封面 1 3 0 效果" src="https://github.com/user-attachments/assets/7001e584-d65f-494f-9405-e3be216afb53" />
+
+ > 新项目内存占用下降 88%，实测仅有 30Mb 上下浮动，且性能更优，体验上更加流畅。
 
 ---
 
-# 自家广告位
-👉 为了极致的性能优化和内存管理，我使用 C# + Skia 新开了一个刘海屏/灵动岛项目：[https://github.com/GEORGEWWWU/NotchPeninsula](https://github.com/GEORGEWWWU/NotchPeninsula)，实测内存占用 20-30 mb 上下！吊打Webview，体验上也不用担心，目前项目在持续开发中，感兴趣的小伙伴可以点亮一个 Star 支持一下！也非常感谢所有使用 NSD 的小伙伴，我爱你们。
-
-<img width="1200" height="608" alt="image" src="https://github.com/user-attachments/assets/7283e6ba-b94c-4a7e-ab57-88e1f5b7e4b1" />
-
+NetSpeed Dynamic Pro（NSD）是一个基于 Tauri 2、Vue 3、TypeScript 与 Rust 构建的 Windows 桌面应用。它将 “实时网速监控、系统资源观察、音乐控制、系统通知、任务栏插件与个性化配置” 封装在一个悬浮式 Dynamic Island 中，旨在为桌面环境提供更轻量、更顺手的状态展示与交互体验。
 
 ## 项目亮点
 
