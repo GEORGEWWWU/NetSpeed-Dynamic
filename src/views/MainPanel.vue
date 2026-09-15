@@ -530,7 +530,7 @@
             </div>
             <div class="ft_right">
                 <span class="action-link" @click="openNSDweb">{{ t('officialWebsite') }}</span>
-                <span class="action-link" @click="openNSDdata">{{ t('openSourceData') }}</span>
+                <span class="action-link highlight-tag" title="了解继承版" @click="downNPS">{{ t('downNPS') }}</span>
                 <span class="action-link"
                     :style="{ opacity: isChecking ? 0.5 : 1, pointerEvents: isChecking ? 'none' : 'auto', position: 'relative' }"
                     @click="checkUpdate">
@@ -1424,8 +1424,8 @@ const openNSDweb = async () => {
     openUrl('https://nsd.georgewu.top/');
 }
 
-const openNSDdata = async () => {
-    openUrl('https://nsd.georgewu.top/#stats');
+const downNPS = async () => {
+    openUrl('https://github.com/GEORGEWWWU/NotchPeninsula');
 }
 
 const checkUpdate = async () => {
@@ -3222,6 +3222,19 @@ input:disabled+.slider {
     align-items: center;
     justify-content: center;
     opacity: 0.8;
+}
+
+/* 下载继承版按钮的高亮标签样式 */
+.highlight-tag {
+    background-color: #f1f5f91a;
+    padding: 3px 10px; /* 上下左右留白，撑起标签形状 */
+    border-radius: 6px; /* 小圆角 */
+    font-weight: 600; /* 字体加粗一点，增强视觉引导 */
+    text-decoration: none !important; /* 鼠标悬停时不要出现下划线，保持标签感 */
+}
+
+.highlight-tag:hover {
+    background-color: #f1f5f91a;
 }
 
 /* 自定义显示内灵动岛背景*/
