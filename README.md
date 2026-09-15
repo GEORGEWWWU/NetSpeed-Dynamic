@@ -29,7 +29,7 @@
 
 **但这不意味着即将停止维护！** 而是主要转向修复和稳定功能为主，感谢各位对此项目的持续关注，我们新家见。
 
-👉 NPS v1.3.0 主要新增歌词全套显示能力、媒体控制器交互、待机显示自定义、动画过渡与更新提示；调整唤出交互逻辑；修复歌词、媒体控制器各类 BUG，同时对动画、布局、内存占用等多项细节进行优化。下载地址：[https://github.com/GEORGEWWWU/NotchPeninsula/releases/latest](https://github.com/GEORGEWWWU/NotchPeninsula/releases/latest)
+👉 NPS v1.5.0 主要新增组合模式，支持自定义显示任意组件，拼好岛，以及支持了点击消息弹窗唤醒对应应用窗口。并更新了Wiki文档，将在下个版本推出插件市场。下载地址：[https://github.com/GEORGEWWWU/NotchPeninsula/releases/latest](https://github.com/GEORGEWWWU/NotchPeninsula/releases/latest)
 
 <img width="1920" height="200" alt="NotchPeninsula 封面 1 3 0 效果" src="https://github.com/user-attachments/assets/7001e584-d65f-494f-9405-e3be216afb53" />
 
