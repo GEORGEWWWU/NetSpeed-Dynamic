@@ -29,7 +29,7 @@
 
 **但这不意味着即将停止维护！** 而是主要转向修复和稳定功能为主，感谢各位对此项目的持续关注，我们新家见。
 
-👉 NPS v1.6.0 主要新增插件市场、自定义字体、灵动岛插件相关能力、穿透模式与置顶开关；修复时间不准、歌词乱码等问题；优化内存、穿透逻辑，新增通知布局并重构插件UI。下载地址：[https://github.com/GEORGEWWWU/NotchPeninsula/releases/latest](https://github.com/GEORGEWWWU/NotchPeninsula/releases/latest)
+👉 NPS v1.7.0 主要新增剪贴板链接检测、翻译歌词与播放进度拖动，修复了歌词残留与同步丢失、穿透模式下自动隐藏失效等问题，优化了插件行宽度预算、岛体宽度上限与展开态收起策略。下载地址：[https://github.com/GEORGEWWWU/NotchPeninsula/releases/latest](https://github.com/GEORGEWWWU/NotchPeninsula/releases/latest)
 
 <img width="1920" height="200" alt="NotchPeninsula 封面 1 3 0 效果" src="https://github.com/user-attachments/assets/7001e584-d65f-494f-9405-e3be216afb53" />
 
